@@ -1,0 +1,197 @@
+import { useState, useMemo } from "react";
+import { DndContext } from "@dnd-kit/core";
+import { useTaskStore } from "../../state/taskStore";
+import { useAppearanceStore } from "../../state/appearanceStore";
+
+import KanbanColumn from "./KanbanColumn";
+import GlobalLabelManager from "./GlobalLabelManager";
+import CardFieldManager from "./CardFieldManager";
+import ColumnVisibilityManager from "./ColumnVisibilityManager";
+import FilterManager from "./FilterManager";
+
+export default function KanbanBoard() {
+  const records      = useTaskStore(s => s.records);
+  const statusMaster = useTaskStore(s => s.statusMaster);
+  const updateStatus = useTaskStore(s => s.updateStatus);
+
+  const { activeFilters, columnWidth, setColumnWidth, hiddenStatuses } = useAppearanceStore();
+
+  const [showLabelMgr, setShowLabelMgr]   = useState(false);
+  const [showFieldMgr, setShowFieldMgr]   = useState(false);
+  const [showColMgr,   setShowColMgr]     = useState(false);
+  const [showFilter,   setShowFilter]     = useState(false);
+  const [showSlider,   setShowSlider]     = useState(false);
+  const [search,       setSearch]         = useState("");
+  const [sortBy, setSortBy] = useState<"id_asc"|"id_desc"|"newest"|"oldest"|"aging_asc"|"aging_desc">("id_asc");
+
+  const visibleStatuses = useMemo(() => {
+    if (!statusMaster?.primary) return [];
+    return statusMaster.primary.filter(s => !hiddenStatuses.includes(s));
+  }, [statusMaster, hiddenStatuses]);
+
+  const statusColumnName = useMemo(() => statusMaster?.status_column || "StatusPekerjaan", [statusMaster]);
+
+  const processedRecords = useMemo(() => {
+    let result = [...records];
+
+    if (Object.keys(activeFilters).length > 0) {
+      result = result.filter(r =>
+        Object.entries(activeFilters).every(([key, vals]) => vals.includes(String(r.data[key] || "")))
+      );
+    }
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(r =>
+        Object.values(r.data).join(" ").toLowerCase().includes(q) || String(r.row_id).includes(q)
+      );
+    }
+
+    result.sort((a, b) => {
+      const idA = a.data["ID PA"] || "";
+      const idB = b.data["ID PA"] || "";
+      if (sortBy === "id_asc")  return idA.localeCompare(idB);
+      if (sortBy === "id_desc") return idB.localeCompare(idA);
+      if (sortBy === "newest")  return b.row_id - a.row_id;
+      if (sortBy === "oldest")  return a.row_id - b.row_id;
+      if (sortBy === "aging_desc") {
+        const tA = new Date(a.data["TGL TERBIT PA"] || 0).getTime();
+        const tB = new Date(b.data["TGL TERBIT PA"] || 0).getTime();
+        return tA - tB; // terlama = terkecil tanggal
+      }
+      if (sortBy === "aging_asc") {
+        const tA = new Date(a.data["TGL TERBIT PA"] || 0).getTime();
+        const tB = new Date(b.data["TGL TERBIT PA"] || 0).getTime();
+        return tB - tA;
+      }
+      return 0;
+    });
+
+    return result;
+  }, [records, search, sortBy, activeFilters]);
+
+  const activeFilterCount = Object.keys(activeFilters).length;
+
+  const onDragEnd = (event: any) => {
+    const { active, over } = event;
+    if (!over) return;
+    const rowId = active.data.current?.row_id;
+    const nextStatus = over.id;
+    if (rowId && nextStatus) updateStatus(rowId, nextStatus, undefined);
+  };
+
+  if (!statusMaster) return (
+    <div className="flex items-center justify-center h-full">
+      <div className="text-sm" style={{ color: "var(--text-muted)" }}>Memuat data kanban...</div>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col h-full">
+
+      {/* Toolbar */}
+      <div className="px-4 py-2.5 shrink-0 flex flex-wrap items-center gap-2" style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
+
+        {/* Search */}
+        <div className="relative">
+          <svg className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ color: "var(--text-muted)" }}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text" placeholder="Cari..." value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="th-input pl-8 pr-3 py-1.5 text-xs w-44"
+          />
+        </div>
+
+        {/* Sort */}
+        <select value={sortBy} onChange={e => setSortBy(e.target.value as any)} className="th-select text-xs py-1.5">
+          <option value="id_asc">ID ↑</option>
+          <option value="id_desc">ID ↓</option>
+          <option value="newest">Terbaru</option>
+          <option value="oldest">Terlama</option>
+          <option value="aging_desc">Aging ↓ (tertua)</option>
+          <option value="aging_asc">Aging ↑ (termuda)</option>
+        </select>
+
+        <div className="h-4 w-px mx-1" style={{ background: "var(--border)" }} />
+
+        {/* Filter */}
+        <button onClick={() => setShowFilter(true)}
+          className="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-2.5"
+          style={activeFilterCount > 0 ? { background: "var(--accent-soft)", borderColor: "var(--accent)", color: "var(--accent)" } : {}}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+          Filter {activeFilterCount > 0 && <span className="font-bold text-[10px] px-1.5 py-0.5 rounded-full text-white" style={{ background: "var(--accent)" }}>{activeFilterCount}</span>}
+        </button>
+
+        {/* Kolom Status */}
+        <button onClick={() => setShowColMgr(true)} className="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-2.5">
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" /></svg>
+          <span className="hidden sm:inline">Kolom</span>
+        </button>
+
+        {/* Isi Kartu */}
+        <button onClick={() => setShowFieldMgr(true)} className="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-2.5">
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" /></svg>
+          <span className="hidden sm:inline">Kartu</span>
+        </button>
+
+        {/* Warna Label */}
+        <button onClick={() => setShowLabelMgr(true)} className="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-2.5">
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
+          <span className="hidden sm:inline">Warna</span>
+        </button>
+
+        <div className="h-4 w-px mx-1" style={{ background: "var(--border)" }} />
+
+        {/* Ukuran kolom */}
+        <div className="relative">
+          <button onClick={() => setShowSlider(v => !v)} className="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-2.5">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+            <span className="hidden sm:inline font-mono-data">{columnWidth}px</span>
+          </button>
+          {showSlider && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowSlider(false)} />
+              <div className="absolute top-full left-0 mt-1.5 z-20 rounded-xl p-4 w-56 th-modal">
+                <div className="flex justify-between mb-2 text-[10px]" style={{ color: "var(--text-muted)" }}>
+                  <span>Ramping (220)</span><span>Lebar (500)</span>
+                </div>
+                <input type="range" min="220" max="500" step="10" value={columnWidth}
+                  onChange={e => setColumnWidth(Number(e.target.value))}
+                  className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
+                  style={{ accentColor: "var(--accent)" }}
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Stats */}
+        <div className="ml-auto flex items-center gap-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
+          <span>{processedRecords.length} / {records.length} kartu</span>
+        </div>
+      </div>
+
+      {/* Board */}
+      <DndContext onDragEnd={onDragEnd}>
+        <div className="flex gap-3 overflow-x-auto overflow-y-hidden flex-1 p-4 custom-scrollbar">
+          {visibleStatuses.map(status => (
+            <KanbanColumn
+              key={status}
+              status={status}
+              records={processedRecords.filter(r => r.data[statusColumnName] === status)}
+            />
+          ))}
+        </div>
+      </DndContext>
+
+      {/* Modals */}
+      {showLabelMgr && <GlobalLabelManager onClose={() => setShowLabelMgr(false)} />}
+      {showFieldMgr && <CardFieldManager   onClose={() => setShowFieldMgr(false)} />}
+      {showColMgr   && <ColumnVisibilityManager onClose={() => setShowColMgr(false)} />}
+      {showFilter   && <FilterManager      onClose={() => setShowFilter(false)} />}
+    </div>
+  );
+}

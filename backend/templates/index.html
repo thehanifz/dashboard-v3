@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Testcomm Doc Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/static/css/style.css?v=6">
+</head>
+<body>
+
+<!-- ══ APP HEADER ══ -->
+<header class="app-header">
+  <div class="app-header-inner">
+    <div class="app-logo">📋</div>
+    <div class="app-title">
+      <h1>Testcomm Generator</h1>
+      <p>Iconplus Network Services</p>
+    </div>
+    <a href="https://asplan.thehanifz.fun" class="btn-nav">📐 Asbuilt</a>
+  </div>
+</header>
+
+<div class="wrapper">
+
+  <!-- Progress Steps -->
+  <div class="progress-steps" id="progressSteps">
+    <div class="step active" data-step="1">
+      <span class="step-num">1</span>
+      <span class="step-label">Layanan</span>
+    </div>
+    <div class="step" data-step="2">
+      <span class="step-num">2</span>
+      <span class="step-label">Info Umum</span>
+    </div>
+    <div class="step" data-step="3">
+      <span class="step-num">3</span>
+      <span class="step-label">Dokumentasi</span>
+    </div>
+    <div class="step" data-step="4">
+      <span class="step-num">4</span>
+      <span class="step-label">Hasil Test</span>
+    </div>
+    <div class="step" data-step="5">
+      <span class="step-num">5</span>
+      <span class="step-label">Generate</span>
+    </div>
+  </div>
+
+  <!-- Success Banner -->
+  <div id="success-banner">
+    <span class="sb-icon">✅</span>
+    <span class="sb-text">Dokumen berhasil dibuat dan didownload!</span>
+    <button class="sb-close" onclick="this.closest('#success-banner').classList.remove('show')">✕</button>
+  </div>
+
+  <form id="mainForm" novalidate>
+
+    <!-- ══ KARTU 1: TIPE & LAYANAN ══ -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-icon">⚙️</div>
+        <h2>Tipe &amp; Kategori Layanan</h2>
+        <span class="badge">Step 1</span>
+      </div>
+      <div class="card-body">
+        <div class="grid-2">
+          <div class="field">
+            <label>Kategori Layanan</label>
+            <select id="kategori_layanan" name="kategori_layanan" class="service-select">
+              <option value="CC_TDM">Clear Channel TDM</option>
+              <option value="CC_IP">CC IP / Metronet / IPVPN / Internet</option>
+              <option value="DARK_FIBER">Dark Fiber</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Tipe Pengujian</label>
+            <div class="tipe-buttons">
+              <button type="button" class="tipe-btn active" data-val="OT" id="btn-ot">
+                <span class="tipe-icon">🔄</span>
+                <span>OT</span>
+                <span class="tipe-sub">Ori-Termi</span>
+              </button>
+              <button type="button" class="tipe-btn" data-val="T" id="btn-t">
+                <span class="tipe-icon">📍</span>
+                <span>T</span>
+                <span class="tipe-sub">Termi Only</span>
+              </button>
+            </div>
+            <input type="hidden" name="tipe" id="tipe_hidden" value="OT">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ KARTU 2: INFORMASI UMUM ══ -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-icon">📝</div>
+        <h2>Informasi Umum</h2>
+        <span class="badge">Step 2</span>
+      </div>
+      <div class="card-body">
+        <div class="grid-2">
+          <div class="field">
+            <label>No PA</label>
+            <input type="text" name="no_pa" placeholder="A121101000083">
+          </div>
+          <div class="field">
+            <label>Service ID (SID)</label>
+            <input type="text" name="sid" placeholder="121101000061">
+          </div>
+          <div class="field">
+            <label>Nama Pelanggan</label>
+            <input type="text" name="user" placeholder="PT PLN (Persero) ...">
+          </div>
+          <div class="field">
+            <label>Project Team Leader</label>
+            <input type="text" name="project_team" placeholder="Hanif Firdaus">
+          </div>
+          <div class="field">
+            <label>Nama Layanan</label>
+            <input type="text" name="nama_layanan" placeholder="CLEAR CHANNEL TIPE 1-A">
+          </div>
+          <div class="field">
+            <label>Tanggal BAI &amp; Instalasi</label>
+            <input type="date" name="tanggal_bai" id="tanggal_bai">
+          </div>
+          <div class="field">
+            <label>Bandwidth / Kapasitas</label>
+            <input type="text" name="bandwidth" placeholder="2 Mbps / 2 core">
+          </div>
+          <div class="field">
+            <label>Vendor Instalasi</label>
+            <input type="text" name="vendor_instalasi" placeholder="PT Mitra Telkom ...">
+          </div>
+          <div class="field">
+            <label>No Surat Permohonan</label>
+            <input type="text" name="no_surat" placeholder="001/ICP/2026/...">
+          </div>
+          <div class="field">
+            <label>Tanggal Surat</label>
+            <input type="date" name="tgl_surat" id="tgl_surat">
+          </div>
+        </div>
+
+        <!-- Field tambahan per kategori -->
+        <div id="field-interface" style="display:none">
+          <div class="section-divider"><span>Detail Teknis</span></div>
+          <div class="grid-2">
+            <div class="field">
+              <label>Interface</label>
+              <input type="text" name="interface" placeholder="GE/FE/STM-1 ...">
+            </div>
+          </div>
+        </div>
+
+        <div id="field-jarak" style="display:none">
+          <div class="section-divider"><span>Detail Dark Fiber</span></div>
+          <div class="grid-2">
+            <div class="field">
+              <label>Jarak OTDR (m)</label>
+              <input type="text" name="jarak_otdr" placeholder="1250">
+            </div>
+          </div>
+        </div>
+
+        <!-- Lokasi -->
+        <div class="section-divider"><span>Lokasi Terminating</span></div>
+        <div class="grid-3">
+          <div class="field">
+            <label>Nama Terminating</label>
+            <input type="text" name="nama_t" id="nama_t" placeholder="GI 70 KV CIBADAK">
+          </div>
+          <div class="field">
+            <label>Perangkat / ODF</label>
+            <input type="text" name="perangkat_t" placeholder="SDH OSN 1800">
+          </div>
+          <div class="field">
+            <label>Kanal / Port</label>
+            <input type="text" name="kanal_t" placeholder="Slot 2 Ch 6">
+          </div>
+        </div>
+
+        <!-- Originating (OT only) -->
+        <div id="field-ori-group" style="display:none">
+          <div class="section-divider"><span>Lokasi Originating</span></div>
+          <div class="grid-3">
+            <div class="field">
+              <label>Nama Originating</label>
+              <input type="text" name="nama_o" id="nama_o" placeholder="GI 70 KV UBRUG">
+            </div>
+            <div class="field">
+              <label>Perangkat / ODF</label>
+              <input type="text" name="perangkat_o" placeholder="SDH OSN 1800">
+            </div>
+            <div class="field">
+              <label>Kanal / Port</label>
+              <input type="text" name="kanal_o" placeholder="Slot 7 Ch 9">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ KARTU 3: FOTO AS-PLAN ══ -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-icon">🗺️</div>
+        <h2>Foto As-Plan</h2>
+        <span class="badge" id="badge-asplan">0 foto</span>
+      </div>
+      <div class="card-body">
+        <div class="info-note">
+          <span class="note-icon">💡</span>
+          Bisa upload banyak foto. Maks 20 foto, tiap foto maks 10 MB.
+        </div>
+        <div class="dropzone dropzone-multi" id="dz-asplan">
+          <input type="file" name="foto_asplan" accept="image/*" multiple id="input-asplan">
+          <div class="dz-empty" id="asplan-empty">
+            <span class="dz-icon">🖼️</span>
+            <span class="dz-label">Drag foto atau <strong>klik untuk pilih</strong></span>
+          </div>
+          <div class="dz-multi-grid" id="asplan-grid"></div>
+        </div>
+        <span class="field-error" id="err-asplan"></span>
+      </div>
+    </div>
+
+    <!-- ══ KARTU 4: DOKUMENTASI TERMINATING ══ -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-icon">📍</div>
+        <h2 id="judul-termi">Dokumentasi Terminating</h2>
+        <span class="badge">Step 3</span>
+      </div>
+      <div class="card-body">
+        <div class="lokasi-split">
+          <!-- PLN -->
+          <div class="lokasi-box">
+            <div class="lokasi-box-header">
+              <span class="lokasi-badge termi">🏢 Sisi PLN</span>
+            </div>
+            <div class="field">
+              <label>Full Rack PLN</label>
+              <div class="dropzone">
+                <input type="file" name="foto_rack_pln_t" accept="image/*">
+                <div class="dz-empty"><span class="dz-icon">🖼️</span><span class="dz-label"><strong>Klik</strong> atau drag</span></div>
+                <div class="dz-preview"><img src="" alt=""><span class="dz-info"></span><div class="dz-actions"><button type="button" class="btn-remove">✕ Hapus</button><button type="button" class="btn-change">↺ Ganti</button></div></div>
+              </div><span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label>Perangkat PLN</label>
+              <div class="dropzone">
+                <input type="file" name="foto_perangkat_pln_t" accept="image/*">
+                <div class="dz-empty"><span class="dz-icon">🖼️</span><span class="dz-label"><strong>Klik</strong> atau drag</span></div>
+                <div class="dz-preview"><img src="" alt=""><span class="dz-info"></span><div class="dz-actions"><button type="button" class="btn-remove">✕ Hapus</button><button type="button" class="btn-change">↺ Ganti</button></div></div>
+              </div><span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label>Label Kabel PLN</label>
+              <div class="dropzone">
+                <input type="file" name="foto_label_pln_t" accept="image/*">
+                <div class="dz-empty"><span class="dz-icon">🖼️</span><span class="dz-label"><strong>Klik</strong> atau drag</span></div>
+                <div class="dz-preview"><img src="" alt=""><span class="dz-info"></span><div class="dz-actions"><button type="button" class="btn-remove">✕ Hapus</button><button type="button" class="btn-change">↺ Ganti</button></div></div>
+              </div><span class="field-error"></span>
+            </div>
+          </div>
+          <!-- ICP -->
+          <div class="lokasi-box">
+            <div class="lokasi-box-header">
+              <span class="lokasi-badge ori">🏭 Sisi Iconplus</span>
+            </div>
+            <div class="field">
+              <label>Full Rack Iconplus</label>
+              <div class="dropzone">
+                <input type="file" name="foto_rack_icp_t" accept="image/*">
+                <div class="dz-empty"><span class="dz-icon">🖼️</span><span class="dz-label"><strong>Klik</strong> atau drag</span></div>
+                <div class="dz-preview"><img src="" alt=""><span class="dz-info"></span><div class="dz-actions"><button type="button" class="btn-remove">✕ Hapus</button><button type="button" class="btn-change">↺ Ganti</button></div></div>
+              </div><span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label>Perangkat Iconplus</label>
+              <div class="dropzone">
+                <input type="file" name="foto_perangkat_icp_t" accept="image/*">
+                <div class="dz-empty"><span class="dz-icon">🖼️</span><span class="dz-label"><strong>Klik</strong> atau drag</span></div>
+                <div class="dz-preview"><img src="" alt=""><span class="dz-info"></span><div class="dz-actions"><button type="button" class="btn-remove">✕ Hapus</button><button type="button" class="btn-change">↺ Ganti</button></div></div>
+              </div><span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label>Label Kabel ODF Iconplus</label>
+              <div class="dropzone">
+                <input type="file" name="foto_label_icp_t" accept="image/*">
+                <div class="dz-empty"><span class="dz-icon">🖼️</span><span class="dz-label"><strong>Klik</strong> atau drag</span></div>
+                <div class="dz-preview"><img src="" alt=""><span class="dz-info"></span><div class="dz-actions"><button type="button" class="btn-remove">✕ Hapus</button><button type="button" class="btn-change">↺ Ganti</button></div></div>
+              </div><span class="field-error"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ KARTU 5: DOKUMENTASI ORIGINATING (OT only) ══ -->
+    <div class="card" id="card-originating" style="display:none">
+      <div class="card-header">
+        <div class="card-header-icon">📍</div>
+        <h2 id="judul-ori">Dokumentasi Originating</h2>
+      </div>
+      <div class="card-body">
+        <div class="lokasi-split">
+          <!-- PLN Ori -->
+          <div class="lokasi-box">
+            <div class="lokasi-box-header">
+              <span class="lokasi-badge termi">🏢 Sisi PLN</span>
+            </div>
+            <div class="field">
+              <label>Full Rack PLN</label>
+              <div class="dropzone">
+                <input type="file" name="foto_rack_pln_o" accept="image/*">
+                <div class="dz-empty"><span class="dz-icon">🖼️</span><span class="dz-label"><strong>Klik</strong> atau drag</span></div>
+                <div class="dz-preview"><img src="" alt=""><span class="dz-info"></span><div class="dz-actions"><button type="button" class="btn-remove">✕ Hapus</button><button type="button" class="btn-change">↺ Ganti</button></div></div>
+              </div><span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label>Perangkat PLN</label>
+              <div class="dropzone">
+                <input type="file" name="foto_perangkat_pln_o" accept="image/*">
+                <div class="dz-empty"><span class="dz-icon">🖼️</span><span class="dz-label"><strong>Klik</strong> atau drag</span></div>
+                <div class="dz-preview"><img src="" alt=""><span class="dz-info"></span><div class="dz-actions"><button type="button" class="btn-remove">✕ Hapus</button><button type="button" class="btn-change">↺ Ganti</button></div></div>
+              </div><span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label>Label Kabel PLN</label>
+              <div class="dropzone">
+                <input type="file" name="foto_label_pln_o" accept="image/*">
+                <div class="dz-empty"><span class="dz-icon">🖼️</span><span class="dz-label"><strong>Klik</strong> atau drag</span></div>
+                <div class="dz-preview"><img src="" alt=""><span class="dz-info"></span><div class="dz-actions"><button type="button" class="btn-remove">✕ Hapus</button><button type="button" class="btn-change">↺ Ganti</button></div></div>
+              </div><span class="field-error"></span>
+            </div>
+          </div>
+          <!-- ICP Ori -->
+          <div class="lokasi-box">
+            <div class="lokasi-box-header">
+              <span class="lokasi-badge ori">🏭 Sisi Iconplus</span>
+            </div>
+            <div class="field">
+              <label>Full Rack Iconplus</label>
+              <div class="dropzone">
+                <input type="file" name="foto_rack_icp_o" accept="image/*">
+                <div class="dz-empty"><span class="dz-icon">🖼️</span><span class="dz-label"><strong>Klik</strong> atau drag</span></div>
+                <div class="dz-preview"><img src="" alt=""><span class="dz-info"></span><div class="dz-actions"><button type="button" class="btn-remove">✕ Hapus</button><button type="button" class="btn-change">↺ Ganti</button></div></div>
+              </div><span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label>Perangkat Iconplus</label>
+              <div class="dropzone">
+                <input type="file" name="foto_perangkat_icp_o" accept="image/*">
+                <div class="dz-empty"><span class="dz-icon">🖼️</span><span class="dz-label"><strong>Klik</strong> atau drag</span></div>
+                <div class="dz-preview"><img src="" alt=""><span class="dz-info"></span><div class="dz-actions"><button type="button" class="btn-remove">✕ Hapus</button><button type="button" class="btn-change">↺ Ganti</button></div></div>
+              </div><span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label>Label Kabel ODF Iconplus</label>
+              <div class="dropzone">
+                <input type="file" name="foto_label_icp_o" accept="image/*">
+                <div class="dz-empty"><span class="dz-icon">🖼️</span><span class="dz-label"><strong>Klik</strong> atau drag</span></div>
+                <div class="dz-preview"><img src="" alt=""><span class="dz-info"></span><div class="dz-actions"><button type="button" class="btn-remove">✕ Hapus</button><button type="button" class="btn-change">↺ Ganti</button></div></div>
+              </div><span class="field-error"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ KARTU 6: HASIL PENGETESAN ══ -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-icon">📊</div>
+        <h2>Hasil Pengetesan</h2>
+        <span class="badge">Step 4</span>
+      </div>
+      <div class="card-body">
+
+        <!-- CC TDM: BERT multi upload -->
+        <div id="hasil-cc-tdm">
+          <div class="info-note">
+            <span class="note-icon">📡</span>
+            Upload satu atau beberapa foto hasil BERT.
+          </div>
+          <div class="dropzone dropzone-multi" id="dz-bert">
+            <input type="file" name="foto_bert" accept="image/*" multiple id="input-bert">
+            <div class="dz-empty" id="bert-empty">
+              <span class="dz-icon">📡</span>
+              <span class="dz-label">Drag foto atau <strong>klik untuk pilih</strong></span>
+            </div>
+            <div class="dz-multi-grid" id="bert-grid"></div>
+          </div>
+          <span class="field-error" id="err-bert"></span>
+        </div>
+
+        <!-- CC IP: Ping & Speedtest -->
+        <div id="hasil-cc-ip" style="display:none">
+          <div class="info-note">
+            <span class="note-icon">🌐</span>
+            Upload screenshot hasil Ping + IP Config dan Speedtest / TFGen / Netpersec.
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label>Screenshot Ping + IP Config</label>
+              <div class="dropzone">
+                <input type="file" name="foto_ping" accept="image/*">
+                <div class="dz-empty"><span class="dz-icon">🖥️</span><span class="dz-label"><strong>Klik</strong> atau drag</span></div>
+                <div class="dz-preview"><img src="" alt=""><span class="dz-info"></span><div class="dz-actions"><button type="button" class="btn-remove">✕ Hapus</button><button type="button" class="btn-change">↺ Ganti</button></div></div>
+              </div><span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label>Screenshot Speedtest / TFGen</label>
+              <div class="dropzone">
+                <input type="file" name="foto_speedtest" accept="image/*">
+                <div class="dz-empty"><span class="dz-icon">⚡</span><span class="dz-label"><strong>Klik</strong> atau drag</span></div>
+                <div class="dz-preview"><img src="" alt=""><span class="dz-info"></span><div class="dz-actions"><button type="button" class="btn-remove">✕ Hapus</button><button type="button" class="btn-change">↺ Ganti</button></div></div>
+              </div><span class="field-error"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dark Fiber: OTDR multi -->
+        <div id="hasil-dark-fiber" style="display:none">
+          <div class="info-note">
+            <span class="note-icon">🔦</span>
+            Upload foto hasil OTDR / OPM untuk setiap core. Bisa banyak foto.
+          </div>
+          <div class="dropzone dropzone-multi" id="dz-otdr">
+            <input type="file" name="foto_otdr" accept="image/*" multiple id="input-otdr">
+            <div class="dz-empty" id="otdr-empty">
+              <span class="dz-icon">🔦</span>
+              <span class="dz-label">Drag foto atau <strong>klik untuk pilih</strong></span>
+            </div>
+            <div class="dz-multi-grid" id="otdr-grid"></div>
+          </div>
+          <span class="field-error" id="err-otdr"></span>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ══ SUBMIT ══ -->
+    <div class="submit-section">
+      <button type="submit" class="btn-generate" id="btnGenerate">
+        <span id="btn-icon">🚀</span>
+        <span id="btn-text">Generate Dokumen DOCX</span>
+      </button>
+      <div class="progress-bar-wrap" id="progressWrap">
+        <div class="progress-bar-inner indeterminate" id="progressBar"></div>
+      </div>
+    </div>
+
+  </form>
+</div>
+
+<script src="/static/js/dropzone.js?v=6"></script>
+</body>
+</html>

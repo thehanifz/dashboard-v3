@@ -1,0 +1,274 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Light Theme Variables ─────────────────────────────────────────────── */
+:root, [data-theme="light"] {
+  --bg-app:        #f0f2f7;
+  --bg-surface:    #ffffff;
+  --bg-surface2:   #f8fafc;
+  --bg-surface3:   #f1f5f9;
+  --bg-sidebar:    #0f172a;
+  --bg-hover:      #f1f5f9;
+  --bg-active:     #e8f0fe;
+
+  --border:        #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  --text-primary:  #0f172a;
+  --text-secondary:#475569;
+  --text-muted:    #94a3b8;
+  --text-sidebar:  #94a3b8;
+  --text-sidebar-active: #ffffff;
+
+  --accent:        #2563eb;
+  --accent-hover:  #1d4ed8;
+  --accent-soft:   #eff6ff;
+
+  --shadow-sm:     0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md:     0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg:     0 10px 30px rgba(0,0,0,0.1), 0 4px 8px rgba(0,0,0,0.05);
+
+  --topbar-bg:     #ffffff;
+  --topbar-border: #e2e8f0;
+
+  --table-head-bg: #f8fafc;
+  --table-row-alt: #fafbfc;
+  --table-row-hover: #f1f5f9;
+
+  --input-bg:      #ffffff;
+  --input-border:  #e2e8f0;
+  --input-focus:   #2563eb;
+
+  --badge-bg:      #f1f5f9;
+  --badge-text:    #475569;
+
+  --kanban-col-bg: #f8fafc;
+  --card-bg:       #ffffff;
+  --card-border:   #e2e8f0;
+  --card-hover:    #f8fafc;
+}
+
+/* ─── Dark Theme Variables ──────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --bg-app:        #0d1117;
+  --bg-surface:    #161b22;
+  --bg-surface2:   #1c2333;
+  --bg-surface3:   #21262d;
+  --bg-sidebar:    #0d1117;
+  --bg-hover:      #21262d;
+  --bg-active:     #1c2951;
+
+  --border:        #30363d;
+  --border-strong: #484f58;
+
+  --text-primary:  #e6edf3;
+  --text-secondary:#8b949e;
+  --text-muted:    #6e7681;
+  --text-sidebar:  #8b949e;
+  --text-sidebar-active: #ffffff;
+
+  --accent:        #388bfd;
+  --accent-hover:  #58a6ff;
+  --accent-soft:   #1c2951;
+
+  --shadow-sm:     0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-md:     0 4px 12px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.2);
+  --shadow-lg:     0 10px 30px rgba(0,0,0,0.5), 0 4px 8px rgba(0,0,0,0.3);
+
+  --topbar-bg:     #161b22;
+  --topbar-border: #30363d;
+
+  --table-head-bg: #1c2333;
+  --table-row-alt: #1a2030;
+  --table-row-hover: #21262d;
+
+  --input-bg:      #21262d;
+  --input-border:  #30363d;
+  --input-focus:   #388bfd;
+
+  --badge-bg:      #21262d;
+  --badge-text:    #8b949e;
+
+  --kanban-col-bg: #1c2333;
+  --card-bg:       #161b22;
+  --card-border:   #30363d;
+  --card-hover:    #1c2333;
+}
+
+/* ─── Base ─────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* ─── Custom Scrollbar ──────────────────────────────────────────────────── */
+.custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ─── Surface components ────────────────────────────────────────────────── */
+.surface    { background: var(--bg-surface);  border: 1px solid var(--border); }
+.surface-2  { background: var(--bg-surface2); border: 1px solid var(--border); }
+.topbar     { background: var(--topbar-bg);   border-bottom: 1px solid var(--topbar-border); }
+.sidebar-bg { background: var(--bg-sidebar); }
+
+/* ─── Input ─────────────────────────────────────────────────────────────── */
+.th-input {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--text-primary);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.th-input:focus { border-color: var(--input-focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
+.th-input::placeholder { color: var(--text-muted); }
+
+/* ─── Button variants ────────────────────────────────────────────────────── */
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-primary:hover { background: var(--accent-hover); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-ghost:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* ─── KPI Card ───────────────────────────────────────────────────────────── */
+.kpi-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.kpi-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+
+/* ─── Table ─────────────────────────────────────────────────────────────── */
+.th-table-head {
+  background: var(--table-head-bg);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.th-table-row { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+.th-table-row:hover { background: var(--table-row-hover); }
+.th-table-row-alt { background: var(--table-row-alt); }
+
+/* ─── Kanban ────────────────────────────────────────────────────────────── */
+.kanban-col {
+  background: var(--kanban-col-bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.task-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.15s, border-color 0.15s, transform 0.1s;
+}
+.task-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+/* ─── Modal / Panel ────────────────────────────────────────────────────── */
+.th-modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+}
+.th-overlay { background: rgba(0,0,0,0.5); }
+
+/* ─── Select ────────────────────────────────────────────────────────────── */
+.th-select {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--text-primary);
+  border-radius: 6px;
+  font-size: 12px;
+  padding: 4px 8px;
+  outline: none;
+  cursor: pointer;
+}
+.th-select:focus { border-color: var(--input-focus); }
+
+/* ─── Mono font ─────────────────────────────────────────────────────────── */
+.font-mono-data { font-family: 'JetBrains Mono', monospace; }
+
+/* ─── Spinner ────────────────────────────────────────────────────────────── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: white; border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+}
+
+/* ─── Animations ─────────────────────────────────────────────────────────── */
+.view-enter { animation: fadeSlideIn 0.2s ease; }
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.toast { animation: toastIn 0.25s ease, toastOut 0.25s ease 2.75s forwards; }
+@keyframes toastIn  { from { opacity:0; transform: translateY(10px) scale(0.95); } to { opacity:1; transform: none; } }
+@keyframes toastOut { to   { opacity:0; transform: translateY(-8px) scale(0.95); } }
+
+/* ─── Mobile bottom nav ─────────────────────────────────────────────────── */
+.bottom-nav {
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border);
+}
+
+/* ─── Resize handle ─────────────────────────────────────────────────────── */
+.resize-handle { position: absolute; top: 0; right: 0; width: 4px; height: 100%; cursor: col-resize; z-index: 10; }
+.resize-handle:hover { background: var(--accent); opacity: 0.5; }
+
+/* ─── Chip / Tag ─────────────────────────────────────────────────────────── */
+.th-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--badge-bg); color: var(--badge-text);
+  border: 1px solid var(--border); border-radius: 99px;
+  padding: 2px 8px; font-size: 11px; font-weight: 500;
+}
+
+/* ─── Toggle switch ─────────────────────────────────────────────────────── */
+.toggle-track { width: 36px; height: 20px; border-radius: 99px; position: relative; cursor: pointer; transition: background 0.2s; }
+.toggle-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: white; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.3); transition: transform 0.2s; }
+.toggle-track.on .toggle-thumb { transform: translateX(16px); }

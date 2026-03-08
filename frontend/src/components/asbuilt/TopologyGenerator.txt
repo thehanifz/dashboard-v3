@@ -1,0 +1,126 @@
+import { useState, useEffect } from "react";
+import asbuiltApi from "../../services/asbuiltApi";
+
+interface Props {
+  selectedTemplate: string;
+  onToast: (msg: string, type?: "success" | "error") => void;
+}
+
+export default function TopologyGenerator({ selectedTemplate, onToast }: Props) {
+  const [fields, setFields]   = useState<string[]>([]);
+  const [values, setValues]   = useState<Record<string, string>>({});
+  const [svgUrl, setSvgUrl]   = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedTemplate) {
+      setFields([]);
+      setValues({});
+      setSvgUrl(null);
+      return;
+    }
+    asbuiltApi.getTemplateDetail(selectedTemplate).then((detail) => {
+      setFields(detail.fields);
+      setValues(Object.fromEntries(detail.fields.map((f) => [f, ""])));
+      setSvgUrl(null);
+    });
+  }, [selectedTemplate]);
+
+  const handleGenerate = async () => {
+    if (!selectedTemplate) return;
+    setLoading(true);
+    try {
+      const blob = await asbuiltApi.generateSVG(selectedTemplate, values);
+      const url  = URL.createObjectURL(blob);
+      setSvgUrl(url);
+    } catch {
+      onToast("Gagal generate diagram", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDownload = () => {
+    if (!svgUrl) return;
+    const a       = document.createElement("a");
+    a.href        = svgUrl;
+    a.download    = selectedTemplate.replace(".svg", "_generated.svg");
+    a.click();
+  };
+
+  if (!selectedTemplate) {
+    return (
+      <div className="h-full flex items-center justify-center" style={{ color: "var(--text-muted)" }}>
+        <div className="text-center">
+          <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" /></svg>
+          <p className="text-sm">Pilih template dari Library untuk mulai</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full" style={{ color: "var(--text-primary)" }}>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="font-bold text-base">Konfigurasi Diagram</h2>
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>{selectedTemplate}</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={handleGenerate}
+            disabled={loading || fields.length === 0}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-opacity"
+            style={{ background: "var(--accent)", opacity: (loading || fields.length === 0) ? 0.5 : 1 }}
+          >
+            {loading ? "Memproses..." : "Preview"}
+          </button>
+          {svgUrl && (
+            <button onClick={handleDownload} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-primary)" }}>
+              Download SVG
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-1 gap-4 overflow-hidden">
+        {/* Form Fields */}
+        <div className="w-64 shrink-0 overflow-y-auto space-y-3 pr-1">
+          {fields.length === 0 ? (
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>Memuat field...</p>
+          ) : (
+            fields.map((field) => (
+              <div key={field}>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>{field}</label>
+                <input
+                  type="text"
+                  value={values[field] || ""}
+                  onChange={(e) => setValues((prev) => ({ ...prev, [field]: e.target.value }))}
+                  placeholder={`Isi ${field}`}
+                  className="w-full px-3 py-2 rounded-lg text-sm border transition-colors"
+                  style={{
+                    background: "var(--bg-surface2)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text-primary)",
+                    outline: "none",
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
+                  onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
+                />
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* SVG Preview */}
+        <div className="flex-1 rounded-xl overflow-hidden flex items-center justify-center" style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}>
+          {svgUrl ? (
+            <img src={svgUrl} alt="Preview Diagram" className="max-w-full max-h-full object-contain p-4" />
+          ) : (
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>Preview Diagram</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
