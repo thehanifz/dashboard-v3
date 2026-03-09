@@ -1,27 +1,48 @@
-import { useState } from "react";
+// frontend/src/components/teskom/TeskomForm.tsx  ✏️ MODIFIED
+import { useState, useCallback, useEffect, useRef } from "react";
 import AutoFillSearch from "./AutoFillSearch";
 import PhotoUpload from "./PhotoUpload";
+import FormFields from "./forms/FormFields";
+import { FORM_REGISTRY, Tipe } from "./formRegistry";
 import teskomApi, { AutoFillResult } from "../../services/teskomApi";
 
 interface Props {
   onToast: (msg: string, type?: "success" | "error") => void;
 }
 
-type Tipe = "T" | "OT";
-type Kategori = "CC_TDM" | "CC_IP" | "DARK_FIBER";
+const TABS = [
+  { id: "section-layanan",     label: "Layanan" },
+  { id: "section-info",        label: "Info Umum" },
+  { id: "section-dokumentasi", label: "Dokumentasi" },
+  { id: "section-hasil",       label: "Hasil Test" },
+];
 
-const KATEGORI_LABELS: Record<Kategori, string> = {
-  CC_TDM: "Clear Channel TDM",
-  CC_IP: "Clear Channel IP",
-  DARK_FIBER: "Dark Fiber",
-};
+const kategoriList = Object.entries(FORM_REGISTRY);
+const initialKategori = kategoriList[0][0];
+
+// Divider bergaya eksisting
+const Divider = ({ label }: { label: string }) => (
+  <div className="flex items-center gap-3 my-4">
+    <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
+    <span className="text-xs font-semibold uppercase tracking-wider shrink-0"
+      style={{ color: "var(--accent)" }}>
+      {label}
+    </span>
+    <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
+  </div>
+);
 
 export default function TeskomForm({ onToast }: Props) {
-  const [tipe, setTipe]           = useState<Tipe>("T");
-  const [kategori, setKategori]   = useState<Kategori>("CC_IP");
+  const [kategori, setKategori]     = useState(initialKategori);
+  const [tipe, setTipe]             = useState<Tipe>(FORM_REGISTRY[initialKategori].defaultTipe);
   const [generating, setGenerating] = useState(false);
+  const [activeTab, setActiveTab]   = useState(TABS[0].id);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const [form, setForm] = useState({
+  const supportedTipe = FORM_REGISTRY[kategori]?.supportedTipe ?? ["T", "OT"];
+  const activeTipe: Tipe = supportedTipe.includes(tipe) ? tipe : FORM_REGISTRY[kategori].defaultTipe;
+
+  const [form, setFormState] = useState<Record<string, string>>({
     tanggal_bai: "", nama_layanan: "", user: "", sid: "",
     bandwidth: "", peruntukan_layanan: "", no_pa: "",
     project_team: "", nama_wakil_user: "", jabatan_user: "",
@@ -32,31 +53,66 @@ export default function TeskomForm({ onToast }: Props) {
   });
 
   const [photos, setPhotos] = useState<Record<string, File | File[] | null>>({
-    foto_asplan: null, foto_rack_pln_t: null, foto_perangkat_pln_t: null,
-    foto_label_pln_t: null, foto_rack_icp_t: null, foto_perangkat_icp_t: null,
-    foto_label_icp_t: null, foto_rack_pln_o: null, foto_perangkat_pln_o: null,
-    foto_label_pln_o: null, foto_rack_icp_o: null, foto_perangkat_icp_o: null,
-    foto_label_icp_o: null, foto_ping: null, foto_speedtest: null,
-    foto_bert: null, foto_otdr: null,
+    foto_asplan: null,
+    foto_rack_pln_t: null, foto_perangkat_pln_t: null, foto_label_pln_t: null,
+    foto_rack_icp_t: null, foto_perangkat_icp_t: null, foto_label_icp_t: null,
+    foto_rack_pln_o: null, foto_perangkat_pln_o: null, foto_label_pln_o: null,
+    foto_rack_icp_o: null, foto_perangkat_icp_o: null, foto_label_icp_o: null,
+    foto_ping: null, foto_speedtest: null, foto_bert: null, foto_otdr: null,
   });
 
-  const setField = (key: string, val: string) => setForm((prev) => ({ ...prev, [key]: val }));
+  const setField = useCallback((key: string, val: string) =>
+    setFormState((p) => ({ ...p, [key]: val })), []);
 
-  const handleAutofill = (data: AutoFillResult["autofill"]) => {
-    setForm((prev) => ({
+  const onPhotoChange = useCallback((key: string, val: File | File[] | null) =>
+    setPhotos((p) => ({ ...p, [key]: val })), []);
+
+  const handleKategoriChange = (newKategori: string) => {
+    setKategori(newKategori);
+    setTipe(FORM_REGISTRY[newKategori].defaultTipe);
+  };
+
+  // Fix #1 — alamat_kantor_user tidak ikut autofill
+  const handleAutofill = useCallback((data: AutoFillResult["autofill"]) => {
+    setFormState((prev) => ({
       ...prev,
-      no_pa:              data.no_pa || prev.no_pa,
-      sid:                data.sid || prev.sid,
-      user:               data.user || prev.user,
-      nama_layanan:       data.nama_layanan || prev.nama_layanan,
-      bandwidth:          data.bandwidth || prev.bandwidth,
-      no_surat:           data.no_surat || prev.no_surat,
-      vendor_instalasi:   data.vendor_instalasi || prev.vendor_instalasi,
-      project_team:       data.project_team || prev.project_team,
-      nama_t:             data.nama_t || prev.nama_t,
-      nama_o:             data.nama_o || prev.nama_o,
-      alamat_kantor_user: data.alamat_kantor_user || prev.alamat_kantor_user,
+      no_pa:            data.no_pa            || prev.no_pa,
+      sid:              data.sid              || prev.sid,
+      user:             data.user             || prev.user,
+      nama_layanan:     data.nama_layanan     || prev.nama_layanan,
+      bandwidth:        data.bandwidth        || prev.bandwidth,
+      no_surat:         data.no_surat         || prev.no_surat,
+      vendor_instalasi: data.vendor_instalasi || prev.vendor_instalasi,
+      project_team:     data.project_team     || prev.project_team,
+      nama_t:           data.nama_t           || prev.nama_t,
+      nama_o:           data.nama_o           || prev.nama_o,
+      // alamat_kantor_user sengaja tidak diisi dari autofill
     }));
+  }, []);
+
+  // IntersectionObserver — tab aktif ikut scroll
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) setActiveTab(entry.target.id);
+        });
+      },
+      { root: container, threshold: 0.2 }
+    );
+    TABS.forEach(({ id }) => {
+      const el = container.querySelector(`#${id}`);
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  const scrollToSection = (id: string) => {
+    const container = scrollRef.current;
+    const el = container?.querySelector(`#${id}`) as HTMLElement | null;
+    if (el && container) container.scrollTo({ top: el.offsetTop - 8, behavior: "smooth" });
   };
 
   const handleGenerate = async () => {
@@ -64,20 +120,20 @@ export default function TeskomForm({ onToast }: Props) {
     setGenerating(true);
     try {
       const fd = new FormData();
-      fd.append("tipe", tipe);
+      fd.append("tipe", activeTipe);
       fd.append("kategori_layanan", kategori);
-      Object.entries(form).forEach(([k, v]) => { if (v) fd.append(k, v); });
-
-      // Append photos
-      Object.entries(photos).forEach(([k, v]) => {
-        if (!v) return;
-        if (Array.isArray(v)) {
-          v.forEach((f) => fd.append(k, f));
-        } else {
+      Object.entries(form).forEach(([k, v]) => {
+        if (k === "nama_wakil_user") {
+          fd.append(k, v.trim() || " ".repeat(15));
+        } else if (v) {
           fd.append(k, v);
         }
       });
-
+      Object.entries(photos).forEach(([k, v]) => {
+        if (!v) return;
+        if (Array.isArray(v)) v.forEach((f) => fd.append(k, f));
+        else fd.append(k, v);
+      });
       const blob = await teskomApi.generateDoc(fd);
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement("a");
@@ -93,189 +149,139 @@ export default function TeskomForm({ onToast }: Props) {
     }
   };
 
-  const InputField = ({ label, fkey, type = "text", placeholder = "" }: { label: string; fkey: string; type?: string; placeholder?: string }) => (
-    <div>
-      <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>{label}</label>
-      <input
-        type={type}
-        value={(form as any)[fkey]}
-        onChange={(e) => setField(fkey, e.target.value)}
-        placeholder={placeholder}
-        className="w-full px-3 py-2 rounded-lg text-sm border transition-colors"
-        style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-primary)", outline: "none" }}
-        onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
-        onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
-      />
-    </div>
-  );
-
-  const SectionTitle = ({ children }: { children: React.ReactNode }) => (
-    <h3 className="text-xs font-bold uppercase tracking-wider pt-4 pb-2 border-t" style={{ color: "var(--accent)", borderColor: "var(--border)" }}>{children}</h3>
-  );
+  // Fix #3 — judul dokumentasi dinamis dari nama lokasi
+  const judulT = form.nama_t ? `Dokumentasi Termi (${form.nama_t})` : "Foto Dokumentasi Terminating";
+  const judulO = form.nama_o ? `Dokumentasi Ori (${form.nama_o})`   : "Foto Dokumentasi Originating";
 
   const FOTO_T = [
-    { key: "foto_rack_pln_t",       label: "Rack PLN Terminating" },
-    { key: "foto_perangkat_pln_t",  label: "Perangkat PLN Terminating" },
-    { key: "foto_label_pln_t",      label: "Label PLN Terminating" },
-    { key: "foto_rack_icp_t",       label: "Rack ICP Terminating" },
-    { key: "foto_perangkat_icp_t",  label: "Perangkat ICP Terminating" },
-    { key: "foto_label_icp_t",      label: "Label ICP Terminating" },
+    { key: "foto_rack_pln_t",      label: "Rack PLN" },
+    { key: "foto_perangkat_pln_t", label: "Perangkat PLN" },
+    { key: "foto_label_pln_t",     label: "Label PLN" },
+    { key: "foto_rack_icp_t",      label: "Rack ICP" },
+    { key: "foto_perangkat_icp_t", label: "Perangkat ICP" },
+    { key: "foto_label_icp_t",     label: "Label ICP" },
+  ];
+  const FOTO_O = [
+    { key: "foto_rack_pln_o",      label: "Rack PLN" },
+    { key: "foto_perangkat_pln_o", label: "Perangkat PLN" },
+    { key: "foto_label_pln_o",     label: "Label PLN" },
+    { key: "foto_rack_icp_o",      label: "Rack ICP" },
+    { key: "foto_perangkat_icp_o", label: "Perangkat ICP" },
+    { key: "foto_label_icp_o",     label: "Label ICP" },
   ];
 
-  const FOTO_O = [
-    { key: "foto_rack_pln_o",       label: "Rack PLN Originating" },
-    { key: "foto_perangkat_pln_o",  label: "Perangkat PLN Originating" },
-    { key: "foto_label_pln_o",      label: "Label PLN Originating" },
-    { key: "foto_rack_icp_o",       label: "Rack ICP Originating" },
-    { key: "foto_perangkat_icp_o",  label: "Perangkat ICP Originating" },
-    { key: "foto_label_icp_o",      label: "Label ICP Originating" },
-  ];
+  const SpecificForm = FORM_REGISTRY[kategori]?.component;
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto" style={{ color: "var(--text-primary)" }}>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+    <div className="flex flex-col h-full overflow-hidden" style={{ color: "var(--text-primary)" }}>
+
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between mb-3 shrink-0">
         <h2 className="font-bold text-base">Form Test Commissioning</h2>
-        <button
-          onClick={handleGenerate}
-          disabled={generating}
+        <button onClick={handleGenerate} disabled={generating}
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white"
-          style={{ background: "var(--accent)", opacity: generating ? 0.6 : 1 }}
-        >
-          {generating ? (
-            <span className="spinner" />
-          ) : (
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-          )}
+          style={{ background: "var(--accent)", opacity: generating ? 0.6 : 1 }}>
           {generating ? "Membuat dokumen..." : "Generate DOCX"}
         </button>
       </div>
 
-      {/* Auto-fill */}
-      <AutoFillSearch onAutofill={handleAutofill} onToast={onToast} />
+      {/* ── Sticky Tabs ── */}
+      <div className="flex gap-1 mb-3 shrink-0 overflow-x-auto pb-1">
+        {TABS.map((tab) => (
+          <button key={tab.id} onClick={() => scrollToSection(tab.id)}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all"
+            style={activeTab === tab.id
+              ? { background: "var(--accent)", color: "#fff" }
+              : { background: "var(--bg-surface2)", color: "var(--text-secondary)", border: "1px solid var(--border)" }
+            }>
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-      {/* Tipe & Kategori */}
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <div>
-          <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Tipe</label>
-          <div className="flex gap-2">
-            {(["T", "OT"] as Tipe[]).map((t) => (
-              <button key={t} onClick={() => setTipe(t)}
-                className="flex-1 py-2 rounded-lg text-sm font-medium border transition-all"
-                style={tipe === t
-                  ? { background: "var(--accent)", color: "#fff", border: "1px solid var(--accent)" }
-                  : { background: "var(--bg-surface2)", color: "var(--text-secondary)", border: "1px solid var(--border)" }
-                }
-              >{t === "T" ? "Terminating" : "OT (O+T)"}</button>
-            ))}
+      {/* ── Scrollable Content ── */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto pr-1">
+
+        {/* Section 1: Layanan */}
+        <div id="section-layanan">
+          <AutoFillSearch onAutofill={handleAutofill} onToast={onToast} />
+          <div className="grid grid-cols-2 gap-4 mb-2">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
+                Kategori Layanan
+              </label>
+              <select value={kategori} onChange={(e) => handleKategoriChange(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg text-sm border"
+                style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-primary)" }}>
+                {kategoriList.map(([key, entry]) => (
+                  <option key={key} value={key}>{entry.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Tipe</label>
+              <div className="flex gap-2">
+                {(["T", "OT"] as Tipe[]).map((t) => {
+                  const disabled = !supportedTipe.includes(t);
+                  return (
+                    <button key={t} onClick={() => !disabled && setTipe(t)} disabled={disabled}
+                      className="flex-1 py-2 rounded-lg text-sm font-medium border transition-all"
+                      style={activeTipe === t
+                        ? { background: "var(--accent)", color: "#fff", border: "1px solid var(--accent)" }
+                        : { background: "var(--bg-surface2)", color: disabled ? "var(--text-muted)" : "var(--text-secondary)",
+                            border: "1px solid var(--border)", opacity: disabled ? 0.4 : 1,
+                            cursor: disabled ? "not-allowed" : "pointer" }
+                      }>
+                      {t === "T" ? "Terminating" : "OT (O+T)"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
-        <div>
-          <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Kategori Layanan</label>
-          <select
-            value={kategori}
-            onChange={(e) => setKategori(e.target.value as Kategori)}
-            className="w-full px-3 py-2 rounded-lg text-sm border"
-            style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
-          >
-            {(Object.entries(KATEGORI_LABELS) as [Kategori, string][]).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
-          </select>
+
+        {/* Section 2: Info Umum */}
+        <div id="section-info">
+          <Divider label="Info Umum" />
+          <FormFields form={form} setField={setField} tipe={activeTipe} />
         </div>
+
+        {/* Section 3: Dokumentasi */}
+        <div id="section-dokumentasi">
+          <Divider label="Foto As-Plan" />
+          <PhotoUpload
+            slots={[{ key: "foto_asplan", label: "Foto As-Plan (bisa multiple)", multiple: true }]}
+            files={photos} onChange={onPhotoChange} cols={3}
+          />
+
+          {/* Fix #3 — judul dinamis dari nama lokasi */}
+          <Divider label={judulT} />
+          <PhotoUpload slots={FOTO_T} files={photos} onChange={onPhotoChange} cols={3} />
+
+          {activeTipe === "OT" && (
+            <>
+              <Divider label={judulO} />
+              <PhotoUpload slots={FOTO_O} files={photos} onChange={onPhotoChange} cols={3} />
+            </>
+          )}
+        </div>
+
+        {/* Section 4: Hasil Test */}
+        <div id="section-hasil">
+          <Divider label="Foto Hasil Test" />
+          {SpecificForm && (
+            <SpecificForm
+              photos={photos}
+              onPhotoChange={onPhotoChange}
+              form={form}
+              setField={setField}
+            />
+          )}
+        </div>
+
+        <div className="pb-8" />
       </div>
-
-      {/* Data Layanan */}
-      <SectionTitle>Data Layanan</SectionTitle>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <InputField label="No. PA *" fkey="no_pa" placeholder="A121101000105" />
-        <InputField label="Service ID (SID)" fkey="sid" />
-        <InputField label="Nama Layanan" fkey="nama_layanan" />
-        <InputField label="Bandwidth" fkey="bandwidth" placeholder="10 MBPS" />
-        <InputField label="User / Pelanggan" fkey="user" />
-        <InputField label="Peruntukan Layanan" fkey="peruntukan_layanan" />
-        <InputField label="Tanggal BAI" fkey="tanggal_bai" type="date" />
-        <InputField label="No. Surat Permohonan" fkey="no_surat" />
-        <InputField label="Tanggal Surat" fkey="tgl_surat" type="date" />
-        <InputField label="Vendor Instalasi" fkey="vendor_instalasi" />
-        <InputField label="Project Team (PTL)" fkey="project_team" />
-        {kategori === "DARK_FIBER" && <InputField label="Jarak OTDR (km)" fkey="jarak_otdr" />}
-      </div>
-
-      {/* Data User */}
-      <SectionTitle>Data Perwakilan User</SectionTitle>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <InputField label="Nama Wakil User" fkey="nama_wakil_user" />
-        <InputField label="Jabatan" fkey="jabatan_user" />
-        <InputField label="No. HP" fkey="no_hp_user" />
-        <InputField label="Alamat Kantor" fkey="alamat_kantor_user" />
-      </div>
-
-      {/* Data Lokasi Terminating */}
-      <SectionTitle>Lokasi Terminating</SectionTitle>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <InputField label="Nama Lokasi T" fkey="nama_t" />
-        <InputField label="Perangkat T" fkey="perangkat_t" />
-        <InputField label="Kanal T" fkey="kanal_t" />
-      </div>
-
-      {/* Data Lokasi Originating (hanya OT) */}
-      {tipe === "OT" && (
-        <>
-          <SectionTitle>Lokasi Originating</SectionTitle>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <InputField label="Nama Lokasi O" fkey="nama_o" />
-            <InputField label="Perangkat O" fkey="perangkat_o" />
-            <InputField label="Kanal O" fkey="kanal_o" />
-          </div>
-        </>
-      )}
-
-      {/* Foto As-Plan */}
-      <SectionTitle>Foto As-Plan</SectionTitle>
-      <PhotoUpload
-        slots={[{ key: "foto_asplan", label: "Foto As-Plan (bisa multiple)", multiple: true }]}
-        files={photos}
-        onChange={(k, v) => setPhotos((p) => ({ ...p, [k]: v }))}
-      />
-
-      {/* Foto Dokumentasi Terminating */}
-      <SectionTitle>Foto Dokumentasi Terminating</SectionTitle>
-      <PhotoUpload slots={FOTO_T} files={photos} onChange={(k, v) => setPhotos((p) => ({ ...p, [k]: v }))} />
-
-      {/* Foto Dokumentasi Originating */}
-      {tipe === "OT" && (
-        <>
-          <SectionTitle>Foto Dokumentasi Originating</SectionTitle>
-          <PhotoUpload slots={FOTO_O} files={photos} onChange={(k, v) => setPhotos((p) => ({ ...p, [k]: v }))} />
-        </>
-      )}
-
-      {/* Foto Hasil Test */}
-      <SectionTitle>Foto Hasil Test</SectionTitle>
-      {kategori === "CC_TDM" && (
-        <PhotoUpload
-          slots={[{ key: "foto_bert", label: "Foto BERT (bisa multiple)", multiple: true }]}
-          files={photos}
-          onChange={(k, v) => setPhotos((p) => ({ ...p, [k]: v }))}
-        />
-      )}
-      {kategori === "CC_IP" && (
-        <PhotoUpload
-          slots={[{ key: "foto_ping", label: "Foto Ping" }, { key: "foto_speedtest", label: "Foto Speedtest" }]}
-          files={photos}
-          onChange={(k, v) => setPhotos((p) => ({ ...p, [k]: v }))}
-        />
-      )}
-      {kategori === "DARK_FIBER" && (
-        <PhotoUpload
-          slots={[{ key: "foto_otdr", label: "Foto OTDR (bisa multiple)", multiple: true }]}
-          files={photos}
-          onChange={(k, v) => setPhotos((p) => ({ ...p, [k]: v }))}
-        />
-      )}
-
-      <div className="pb-8" />
     </div>
   );
 }
