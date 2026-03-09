@@ -15,6 +15,7 @@ import PresetEditorModal from "../preset/PresetEditorModal";
 import ColumnFilter from "./ColumnFilter";
 import EditableColumnsModal from "./EditableColumnsModal";
 import BaiActionButton from "./BaiActionButton";
+import TeskomActionButton from "./TeskomActionButton";   // ← tambah
 import { useToast } from "../../utils/useToast";
 
 const MIN_COL_WIDTH     = 60;
@@ -156,9 +157,9 @@ export default function DynamicTable() {
               <table className="text-xs border-collapse" style={{ tableLayout: "fixed", width: "max-content" }}>
                 <thead className="sticky top-0 z-10 th-table-head">
                   <tr>
-                    {/* Kolom Action BAI — fixed paling kiri */}
-                    <th className="sticky left-0 z-20 th-table-head" style={{ width: 40, minWidth: 40, padding: "10px 8px", borderBottom: "2px solid var(--border)", textAlign: "center" }}>
-                      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>BAI</span>
+                    {/* Kolom Action — BAI + Teskom, fixed paling kiri */}
+                    <th className="sticky left-0 z-20 th-table-head" style={{ width: 64, minWidth: 64, padding: "10px 8px", borderBottom: "2px solid var(--border)", textAlign: "center" }}>
+                      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Aksi</span>
                     </th>
                     <SortableContext items={columns} strategy={horizontalListSortingStrategy}>
                       {columns.map(col => (
@@ -186,14 +187,19 @@ export default function DynamicTable() {
                         className={`th-table-row ${rowIdx % 2 !== 0 ? "th-table-row-alt" : ""}`}
                         style={{ background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)" }}
                       >
-                        {/* Action cell BAI */}
-                        <td className="sticky left-0 z-10 border-r" style={{ width: 40, minWidth: 40, padding: "4px 8px", textAlign: "center", borderColor: "var(--border)", background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)" }}>
-                          <BaiActionButton
-                            rowId={r.row_id}
-                            idPa={r.data["ID PA"] || ""}
-                            namaPerusahaan={r.data["NAMA PERUSAHAAN"] || ""}
-                            onToast={showToast}
-                          />
+                        {/* Action cell — BAI + Teskom berdampingan */}
+                        <td className="sticky left-0 z-10 border-r" style={{ width: 64, minWidth: 64, padding: "4px 8px", textAlign: "center", borderColor: "var(--border)", background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)" }}>
+                          <div className="flex items-center justify-center gap-1">
+                            <BaiActionButton
+                              rowId={r.row_id}
+                              idPa={r.data["ID PA"] || ""}
+                              namaPerusahaan={r.data["NAMA PERUSAHAAN"] || ""}
+                              onToast={showToast}
+                            />
+                            <TeskomActionButton
+                              idPa={r.data["ID PA"] || ""}
+                            />
+                          </div>
                         </td>
                         {columns.map(col => {
                           const colWidth = widths[col] ?? DEFAULT_COL_WIDTH;

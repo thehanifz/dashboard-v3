@@ -5,6 +5,7 @@ import PhotoUpload from "./PhotoUpload";
 import FormFields from "./forms/FormFields";
 import { FORM_REGISTRY, Tipe } from "./formRegistry";
 import teskomApi, { AutoFillResult } from "../../services/teskomApi";
+import { useAppStore } from "../../state/appStore";
 
 interface Props {
   onToast: (msg: string, type?: "success" | "error") => void;
@@ -20,7 +21,6 @@ const TABS = [
 const kategoriList = Object.entries(FORM_REGISTRY);
 const initialKategori = kategoriList[0][0];
 
-// Divider bergaya eksisting
 const Divider = ({ label }: { label: string }) => (
   <div className="flex items-center gap-3 my-4">
     <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
@@ -38,6 +38,10 @@ export default function TeskomForm({ onToast }: Props) {
   const [generating, setGenerating] = useState(false);
   const [activeTab, setActiveTab]   = useState(TABS[0].id);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // ── Autofill dari tabel dashboard ──
+  const teskomAutofillId  = useAppStore((s) => s.teskomAutofillId);
+  const setTeskomAutofill = useAppStore((s) => s.setTeskomAutofill);
 
   const supportedTipe = FORM_REGISTRY[kategori]?.supportedTipe ?? ["T", "OT"];
   const activeTipe: Tipe = supportedTipe.includes(tipe) ? tipe : FORM_REGISTRY[kategori].defaultTipe;
@@ -72,7 +76,6 @@ export default function TeskomForm({ onToast }: Props) {
     setTipe(FORM_REGISTRY[newKategori].defaultTipe);
   };
 
-  // Fix #1 — alamat_kantor_user tidak ikut autofill
   const handleAutofill = useCallback((data: AutoFillResult["autofill"]) => {
     setFormState((prev) => ({
       ...prev,
@@ -89,6 +92,22 @@ export default function TeskomForm({ onToast }: Props) {
       // alamat_kantor_user sengaja tidak diisi dari autofill
     }));
   }, []);
+
+  // ── Saat halaman dibuka dari tombol tabel — jalankan autofill otomatis ──
+  useEffect(() => {
+    if (!teskomAutofillId) return;
+    const idPa = teskomAutofillId;
+    setTeskomAutofill(null); // clear segera agar tidak trigger ulang
+    teskomApi.autofill(idPa)
+      .then((result) => {
+        handleAutofill(result.autofill);
+        onToast(`Data "${idPa}" berhasil dimuat dari GSheet`, "success");
+      })
+      .catch(() => {
+        onToast(`Gagal autofill ID PA "${idPa}"`, "error");
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // sengaja deps kosong — hanya jalan sekali saat mount
 
   // IntersectionObserver — tab aktif ikut scroll
   useEffect(() => {
@@ -149,7 +168,7 @@ export default function TeskomForm({ onToast }: Props) {
     }
   };
 
-  // Fix #3 — judul dokumentasi dinamis dari nama lokasi
+  // Judul dokumentasi dinamis dari nama lokasi
   const judulT = form.nama_t ? `Dokumentasi Termi (${form.nama_t})` : "Foto Dokumentasi Terminating";
   const judulO = form.nama_o ? `Dokumentasi Ori (${form.nama_o})`   : "Foto Dokumentasi Originating";
 
@@ -255,7 +274,6 @@ export default function TeskomForm({ onToast }: Props) {
             files={photos} onChange={onPhotoChange} cols={3}
           />
 
-          {/* Fix #3 — judul dinamis dari nama lokasi */}
           <Divider label={judulT} />
           <PhotoUpload slots={FOTO_T} files={photos} onChange={onPhotoChange} cols={3} />
 
