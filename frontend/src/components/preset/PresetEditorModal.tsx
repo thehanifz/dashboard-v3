@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useTaskStore } from "../../state/taskStore";
 import { usePresetStore } from "../../state/presetStore";
+import { useToast } from "../../utils/useToast";
 
 type Props = {
   presetId: string;
@@ -12,6 +13,8 @@ export default function PresetEditorModal({ presetId, onClose }: Props) {
   const presets = usePresetStore((s) => s.presets);
   const updatePresetColumns = usePresetStore((s) => s.updatePresetColumns);
   const renamePreset = usePresetStore((s) => s.renamePreset);
+  const deletePreset = usePresetStore((s) => s.deletePreset);
+  const { show: showToast } = useToast();
 
   const preset = presets.find((p) => p.id === presetId);
   
@@ -75,6 +78,22 @@ export default function PresetEditorModal({ presetId, onClose }: Props) {
     if (localName.trim()) renamePreset(presetId, localName);
     updatePresetColumns(presetId, selectedCols);
     onClose();
+  };
+
+  const handleDelete = () => {
+    if (!preset) return;
+    
+    // Konfirmasi sebelum hapus
+    const confirmed = window.confirm(`Apakah Anda yakin ingin menghapus preset "${preset.name}"?`);
+    if (confirmed) {
+      deletePreset(presetId);
+      showToast({
+        title: "Preset dihapus",
+        description: `Preset "${preset.name}" telah dihapus.`,
+        type: "success"
+      });
+      onClose();
+    }
   };
 
   const toggleCol = (col: string) => {
@@ -214,19 +233,33 @@ export default function PresetEditorModal({ presetId, onClose }: Props) {
         </div>
 
         {/* ================= FOOTER AREA (STATIS) ================= */}
-        <div className="p-4 border-t bg-white shrink-0 flex justify-end gap-3 rounded-b-xl z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-           <button 
-             onClick={onClose}
-             className="px-5 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded transition-colors"
+        <div className="p-4 border-t bg-white shrink-0 flex justify-between items-center gap-3 rounded-b-xl z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+           <button
+             onClick={handleDelete}
+             className="px-5 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded transition-colors"
            >
-             Batal
+             <div className="flex items-center gap-2">
+               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+               </svg>
+               <span>Hapus Preset</span>
+             </div>
            </button>
-           <button 
-             onClick={handleSave}
-             className="px-6 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded shadow-md hover:shadow-lg transition-all transform active:scale-95"
-           >
-             Simpan Perubahan
-           </button>
+           
+           <div className="flex gap-2">
+             <button
+               onClick={onClose}
+               className="px-5 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded transition-colors"
+             >
+               Batal
+             </button>
+             <button
+               onClick={handleSave}
+               className="px-6 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded shadow-md hover:shadow-lg transition-all transform active:scale-95"
+             >
+               Simpan Perubahan
+             </button>
+           </div>
         </div>
 
       </div>
