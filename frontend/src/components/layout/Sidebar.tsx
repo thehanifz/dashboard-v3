@@ -39,7 +39,7 @@ const ROLE_COLOR: Record<string, string> = { engineer: "#3b82f6", ptl: "#8b5cf6"
 
 // Menu yang tampil per role — tidak di-disable, tidak dirender sama sekali
 const ROLE_PAGES: Record<string, AppPage[]> = {
-  engineer: ["dashboard", "asbuilt", "teskom"],
+  engineer: ["dashboard", "asbuilt", "teskom", "mitra-config", "sync"],
   ptl:      ["dashboard"],
   mitra:    ["dashboard"],
 };
@@ -118,6 +118,8 @@ export default function Sidebar({ view, onViewChange, collapsed, onToast }: Side
     { id: "dashboard", label: "Dashboard PA", icon: <IconDash /> },
     { id: "asbuilt",   label: "As-Built",     icon: <IconNetwork /> },
     { id: "teskom",    label: "Teskom",        icon: <IconDoc /> },
+    { id: "mitra-config", label: "Pengaturan Tabel Mitra", icon: <IconTable /> },
+    { id: "sync",         label: "Sync Dashboard",          icon: <IconChart /> },
   ];
 
   const visiblePages = ALL_PAGES.filter(p => allowedPages.includes(p.id));

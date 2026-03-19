@@ -17,6 +17,9 @@ import EditableColumnsModal from "./EditableColumnsModal";
 import BaiActionButton from "./BaiActionButton";
 import TeskomActionButton from "./TeskomActionButton";   // ← tambah
 import { useToast } from "../../utils/useToast";
+// Tambah di baris import paling atas
+import { useAuthStore } from "../../state/authStore";
+
 
 const MIN_COL_WIDTH     = 60;
 const DEFAULT_COL_WIDTH = 150;
@@ -34,6 +37,37 @@ export default function DynamicTable() {
   const activePreset = presets.find(p => p.id === activePresetId);
 
   const { show: showToast } = useToast();
+  // ── Inline edit state (Phase 4) ───────────────────────────────────────────
+const { user }                            = useAuthStore();
+const updateCell                          = useTaskStore(s => s.updateCell);
+const [editingCell, setEditingCell]       = useState<{ rowId: number; col: string } | null>(null);
+const [editingValue, setEditingValue]     = useState("");
+
+const PTL_EDITABLE   = new Set(["STATUS", "DETAIL", "KETERANGAN"]);
+const role           = user?.role ?? "engineer";
+
+function canEditCell(col: string): boolean {
+  if (role === "engineer") return true;
+  if (role === "ptl") return PTL_EDITABLE.has(col);
+  return false;
+}
+
+function handleCellClick(rowId: number, col: string, currentValue: string) {
+  if (!canEditCell(col)) return;
+  setEditingCell({ rowId, col });
+  setEditingValue(currentValue ?? "");
+}
+
+async function handleCellCommit(rowId: number, col: string) {
+  setEditingCell(null);
+  await updateCell(rowId, col, editingValue);
+}
+
+function handleCellKeyDown(e: React.KeyboardEvent, rowId: number, col: string) {
+  if (e.key === "Enter") handleCellCommit(rowId, col);
+  if (e.key === "Escape") setEditingCell(null);
+}
+
   const [search,              setSearch]             = useState("");
   const [showEditor,          setShowEditor]          = useState(false);
   const [showEditableColumns, setShowEditableColumns] = useState(false);
@@ -269,22 +303,57 @@ export default function DynamicTable() {
                           </div>
                         </td>
                         {columns.map(col => {
-                          const colWidth = widths[col] ?? DEFAULT_COL_WIDTH;
+                          const colWidth  = widths[col] ?? DEFAULT_COL_WIDTH;
+                          const isEditing = editingCell?.rowId === r.row_id && editingCell?.col === col;
+                          const editable  = canEditCell(col);
+
                           return (
-                            <td key={col}
+                            <td
+                              key={col}
                               className="px-3 py-2 border-r overflow-hidden"
-                              style={{ borderColor: "var(--border)", maxWidth: colWidth }}
-                              title={r.data[col]}
+                              style={{
+                                borderColor: "var(--border)",
+                                maxWidth: colWidth,
+                                cursor: editable ? "pointer" : "default",
+                              }}
+                              title={isEditing ? undefined : r.data[col]}
+                              onClick={() => !isEditing && handleCellClick(r.row_id, col, r.data[col] ?? "")}
                             >
-                              <div className="truncate w-full block" style={{ maxWidth: `${colWidth - 24}px` }}>
-                                {statusMaster?.status_column && statusMaster?.detail_column
-                                  ? renderCell(r, col, labelColors, statusMaster.status_column, statusMaster.detail_column)
-                                  : renderCell(r, col, labelColors)
-                                }
-                              </div>
+                              {isEditing ? (
+                                <input
+                                  autoFocus
+                                  value={editingValue}
+                                  onChange={e => setEditingValue(e.target.value)}
+                                  onBlur={() => handleCellCommit(r.row_id, col)}
+                                  onKeyDown={e => handleCellKeyDown(e, r.row_id, col)}
+                                  className="w-full text-xs px-1 py-0.5 rounded border outline-none"
+                                  style={{
+                                    background: "var(--bg-app)",
+                                    color: "var(--text-primary)",
+                                    borderColor: "var(--accent)",
+                                    width: `${colWidth - 24}px`,
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  className="truncate w-full block"
+                                  style={{
+                                    maxWidth: `${colWidth - 24}px`,
+                                    outline: editable ? "1px dashed transparent" : undefined,
+                                  }}
+                                  onMouseEnter={e => { if (editable) (e.currentTarget as HTMLElement).style.outline = "1px dashed var(--accent)"; }}
+                                  onMouseLeave={e => { if (editable) (e.currentTarget as HTMLElement).style.outline = "1px dashed transparent"; }}
+                                >
+                                  {statusMaster?.status_column && statusMaster?.detail_column
+                                    ? renderCell(r, col, labelColors, statusMaster.status_column, statusMaster.detail_column)
+                                    : renderCell(r, col, labelColors)
+                                  }
+                                </div>
+                              )}
                             </td>
                           );
                         })}
+
                       </tr>
                     );
                   })}

@@ -14,6 +14,9 @@ from app.api.asbuilt  import router as asbuilt_router
 from app.api.teskom   import router as teskom_router
 from app.api.bai      import router as bai_router
 from app.api.auth     import router as auth_router
+from app.api.admin import router as admin_router
+from app.api.role_config import router as role_config_router
+from app.api.sync import router as sync_router
 
 # ── Rate Limiter ──────────────────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
@@ -49,6 +52,10 @@ app.include_router(status_router,  prefix="/api/status")
 app.include_router(asbuilt_router, prefix="/api/asbuilt")
 app.include_router(teskom_router,  prefix="/api/teskom")
 app.include_router(bai_router,     prefix="/api/bai")
+app.include_router(admin_router, prefix="/api/admin")
+app.include_router(role_config_router, prefix="/api/role-config")
+app.include_router(sync_router, prefix="/api/sync")
+
 
 @app.get("/health")
 def health():
