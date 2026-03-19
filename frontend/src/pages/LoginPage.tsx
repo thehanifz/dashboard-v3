@@ -1,17 +1,6 @@
-/**
- * pages/LoginPage.tsx
- * Halaman login. Setelah berhasil, redirect ke halaman sesuai role.
- */
 import { useState, FormEvent } from "react";
 import { authApi } from "../services/authApi";
 import { useAuthStore, UserRole, AuthUser } from "../state/authStore";
-
-const ROLE_HOME: Record<UserRole, string> = {
-  engineer:  "/",
-  ptl:       "/",
-  mitra:     "/",
-  superuser: "/users",
-};
 
 export default function LoginPage() {
   const { setAuth } = useAuthStore();
@@ -32,7 +21,8 @@ export default function LoginPage() {
         role:         res.role as UserRole,
       };
       setAuth(user, res.access_token);
-      window.location.href = ROLE_HOME[user.role] ?? "/";
+      // Semua role redirect ke "/" — halaman /users belum ada di Phase 1
+      window.location.href = "/";
     } catch (err: any) {
       const msg = err?.response?.data?.detail ?? "Terjadi kesalahan. Coba lagi.";
       setError(msg);
@@ -44,7 +34,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-950">
       <div className="w-full max-w-sm bg-gray-900 border border-gray-700 rounded-2xl p-8 shadow-2xl">
-        {/* Logo / Title */}
         <div className="text-center mb-8">
           <div className="text-3xl font-bold text-white tracking-tight">Dashboard V3</div>
           <div className="text-sm text-gray-400 mt-1">Masuk untuk melanjutkan</div>
@@ -69,7 +58,6 @@ export default function LoginPage() {
               className="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
-
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-1">Password</label>
             <input
@@ -82,7 +70,6 @@ export default function LoginPage() {
               className="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
-
           <button
             type="submit"
             disabled={loading}

@@ -1,7 +1,7 @@
 /**
  * authStore.ts
- * State autentikasi. Access token disimpan di memory (bukan localStorage) — aman dari XSS.
- * Refresh token ada di httpOnly cookie, dihandle otomatis oleh browser.
+ * Access token disimpan di sessionStorage — survive page reload,
+ * hilang saat tab/browser ditutup. Refresh token di httpOnly cookie.
  */
 import { create } from "zustand";
 
@@ -12,6 +12,17 @@ export interface AuthUser {
   nama_lengkap: string;
   role: UserRole;
 }
+
+const TOKEN_KEY = "dash_v3_at";
+const USER_KEY  = "dash_v3_user";
+
+const storedToken = sessionStorage.getItem(TOKEN_KEY) ?? null;
+const storedUser  = (() => {
+  try {
+    const raw = sessionStorage.getItem(USER_KEY);
+    return raw ? (JSON.parse(raw) as AuthUser) : null;
+  } catch { return null; }
+})();
 
 interface AuthState {
   user: AuthUser | null;
@@ -25,14 +36,28 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
-  user: null,
-  accessToken: null,
+  user:        storedUser,
+  accessToken: storedToken,
 
-  setAuth: (user, accessToken) => set({ user, accessToken }),
-  setToken: (accessToken) => set({ accessToken }),
-  clearAuth: () => set({ user: null, accessToken: null }),
+  setAuth: (user, accessToken) => {
+    sessionStorage.setItem(TOKEN_KEY, accessToken);
+    sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+    set({ user, accessToken });
+  },
+
+  setToken: (accessToken) => {
+    sessionStorage.setItem(TOKEN_KEY, accessToken);
+    set({ accessToken });
+  },
+
+  clearAuth: () => {
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(USER_KEY);
+    set({ user: null, accessToken: null });
+  },
 
   isLoggedIn: () => !!get().accessToken && !!get().user,
+
   hasRole: (...roles) => {
     const role = get().user?.role;
     return role ? roles.includes(role) : false;
