@@ -72,3 +72,50 @@ def update_cells(row_id: int, updates: dict):
         spreadsheetId=SPREADSHEET_ID,
         body=body,
     ).execute()
+
+
+def update_cells_external(
+    spreadsheet_id: str,
+    sheet_name: str,
+    row_id: int,
+    updates: dict,
+    headers: list[str],
+):
+    """
+    Update cell di GSheet external (GSheet PTL) — bukan GSheet Engineer.
+
+    Args:
+        spreadsheet_id : ID spreadsheet target
+        sheet_name     : nama sheet aktif
+        row_id         : nomor baris (1 = header)
+        updates        : dict {nama_kolom: nilai_baru}
+        headers        : list nama kolom dari sheet tersebut
+    """
+    virtual_cols = {"AGING", "AGING_HARI"}
+    filtered = {k: v for k, v in updates.items() if k not in virtual_cols}
+    if not filtered:
+        return
+
+    creds = Credentials.from_service_account_file(
+        GOOGLE_APPLICATION_CREDENTIALS,
+        scopes=["https://www.googleapis.com/auth/spreadsheets"],
+    )
+    service = build("sheets", "v4", credentials=creds)
+
+    data = []
+    for col_name, value in filtered.items():
+        col_idx = find_col_index(headers, col_name)
+        if col_idx is None:
+            raise RuntimeError(
+                f"Kolom '{col_name}' tidak ditemukan di sheet '{sheet_name}'. "
+                f"Kolom tersedia: {headers}"
+            )
+        col_letter = col_index_to_letter(col_idx)
+        cell_range = f"{sheet_name}!{col_letter}{row_id}"
+        data.append({"range": cell_range, "values": [[value]]})
+
+    body = {"valueInputOption": "USER_ENTERED", "data": data}
+    service.spreadsheets().values().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body=body,
+    ).execute()

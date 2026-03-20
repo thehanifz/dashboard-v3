@@ -1,28 +1,45 @@
 """
 records.py
-Phase 2 + Phase 4:
-- Filter data per role
-- PTL editable columns whitelist + sync_log
-- Mitra editable whitelist (Phase 7)
+Phase 2 + Phase 4 + Phase 7 (bugfix) + PTL GSheet own data:
+- Engineer: semua data
+- PTL: baca dari GSheet sendiri (/ptl-sheet), update tulis ke GSheet PTL
+- Mitra: filter by MITRA_COLUMN_NAME, update dengan validasi role_table_config DB
 """
 import json
+import re
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import insert
 
 from app.core.deps import get_current_user, require_role
 from app.core.config import (
-    PTL_COLUMN_NAME, MITRA_COLUMN_NAME,
+    PTL_COL_TERMINATING, PTL_COL_ORIGINATING,
+    MITRA_COLUMN_NAME,
     PTL_EDITABLE_COLUMNS, MITRA_EDITABLE_WHITELIST,
 )
 from app.db.models import User, SyncLog
 from app.db.database import get_db
 from app.services.sheet_reader import read_sheet
-from app.services.sheet_writer import update_cells
+from app.services.sheet_writer import update_cells, update_cells_external
 from app.services.status_reader import read_status_master
+from app.services.role_config_service import get_config
+from app.services.sync_engine import read_ptl_sheet
 
 router = APIRouter(tags=["records"])
+
+FORMULA_PREFIXES = ("=", "+", "-", "@")
+
+
+def _sanitize(value: str) -> str:
+    """Sanitasi formula injection."""
+    if value and value[0] in FORMULA_PREFIXES:
+        return "'" + value
+    return value
+
+
+def _extract_spreadsheet_id(url: str):
+    match = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", url)
+    return match.group(1) if match else None
 
 
 class StatusUpdatePayload(BaseModel):
@@ -34,15 +51,14 @@ class GeneralUpdatePayload(BaseModel):
     updates: dict[str, str]
 
 
-def _filter_records(sheet_data: dict, user: User) -> dict:
+def _filter_records_engineer(sheet_data: dict, user: User) -> dict:
+    """Filter data Engineer untuk role Mitra (PTL sudah pakai GSheet sendiri)."""
     role = user.role.value
     if role == "engineer":
         return sheet_data
     records = sheet_data.get("records", [])
     nama = user.nama_lengkap.strip().lower()
-    if role == "ptl":
-        filtered = [r for r in records if r["data"].get(PTL_COLUMN_NAME, "").strip().lower() == nama]
-    elif role == "mitra":
+    if role == "mitra":
         filtered = [r for r in records if r["data"].get(MITRA_COLUMN_NAME, "").strip().lower() == nama]
     else:
         filtered = records
@@ -73,11 +89,122 @@ async def _write_sync_log(
     await db.commit()
 
 
-# ── GET /records ──────────────────────────────────────────────────────────────
+# ── GET /records/ptl-sheet — PTL baca GSheet milik sendiri ───────────────────
+@router.get("/ptl-sheet")
+async def get_ptl_own_sheet(
+    current_user: User = Depends(require_role("ptl")),
+):
+    """
+    PTL fetch data dari GSheet milik mereka sendiri.
+    Kalau belum set gsheet_url → return flag no_gsheet=True.
+    """
+    if not current_user.gsheet_url:
+        return {"no_gsheet": True, "columns": [], "records": []}
+
+    try:
+        data = read_ptl_sheet(
+            current_user.gsheet_url,
+            current_user.gsheet_sheet_name,
+        )
+        return {**data, "no_gsheet": False}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Gagal baca GSheet PTL: {str(e)}",
+        )
+
+
+# ── POST /records/ptl-sheet/{row_id}/cells — PTL update ke GSheet sendiri ────
+@router.post("/ptl-sheet/{row_id}/cells")
+async def update_ptl_own_sheet(
+    row_id: int,
+    payload: GeneralUpdatePayload,
+    current_user: User = Depends(require_role("ptl")),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    PTL update cell → tulis ke GSheet PTL milik mereka.
+    Sync engine nanti yang push ke GSheet Engineer.
+    """
+    if row_id < 2:
+        raise HTTPException(status_code=400, detail="row_id harus >= 2")
+
+    if not current_user.gsheet_url:
+        raise HTTPException(status_code=400, detail="GSheet PTL belum dikonfigurasi")
+
+    spreadsheet_id = _extract_spreadsheet_id(current_user.gsheet_url)
+    if not spreadsheet_id:
+        raise HTTPException(status_code=400, detail="URL GSheet PTL tidak valid")
+
+    # Validasi whitelist kolom
+    invalid_cols = [c for c in payload.updates if c not in PTL_EDITABLE_COLUMNS]
+    if invalid_cols:
+        raise HTTPException(
+            status_code=403,
+            detail=f"PTL tidak diizinkan edit kolom: {invalid_cols}. "
+                   f"Kolom yang boleh: {list(PTL_EDITABLE_COLUMNS)}",
+        )
+
+    # Baca sheet PTL untuk dapat headers + data existing
+    try:
+        ptl_data = read_ptl_sheet(
+            current_user.gsheet_url,
+            current_user.gsheet_sheet_name,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal baca GSheet PTL: {e}")
+
+    headers    = ptl_data.get("columns", [])
+    sheet_name = current_user.gsheet_sheet_name or (
+        ptl_data.get("sheet_name", "Sheet1")
+    )
+
+    # Validasi kolom exist di sheet
+    if headers:
+        invalid = [c for c in payload.updates if c not in headers]
+        if invalid:
+            raise HTTPException(status_code=400, detail=f"Kolom tidak ada di GSheet PTL: {invalid}")
+
+    # Sanitasi nilai
+    sanitized = {k: _sanitize(str(v)) for k, v in payload.updates.items()}
+
+    # Tulis ke GSheet PTL
+    try:
+        update_cells_external(
+            spreadsheet_id=spreadsheet_id,
+            sheet_name=sheet_name,
+            row_id=row_id,
+            updates=sanitized,
+            headers=headers,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal update GSheet PTL: {e}")
+
+    # Catat sync_log
+    record = next((r for r in ptl_data["records"] if r["row_id"] == row_id), None)
+    id_pa  = record["data"].get("ID PA", str(row_id)) if record else str(row_id)
+
+    for field, new_val in sanitized.items():
+        old_val = record["data"].get(field) if record else None
+        await _write_sync_log(
+            db,
+            ptl_user_id=current_user.id,
+            id_pa=id_pa,
+            field_changed=field,
+            old_value=old_val,
+            new_value=new_val,
+            sync_type="ptl_own_sheet",
+            synced_by=current_user.username,
+        )
+
+    return {"ok": True, "row_id": row_id, "updated": list(sanitized.keys())}
+
+
+# ── GET /records — Engineer + Mitra (PTL sudah pakai /ptl-sheet) ──────────────
 @router.get("")
-def get_records(current_user: User = Depends(require_role("engineer", "ptl", "mitra"))):
+def get_records(current_user: User = Depends(require_role("engineer", "mitra"))):
     sheet_data = read_sheet()
-    return _filter_records(sheet_data, current_user)
+    return _filter_records_engineer(sheet_data, current_user)
 
 
 # ── POST /records/by-id/{record_id}/status ────────────────────────────────────
@@ -85,10 +212,10 @@ def get_records(current_user: User = Depends(require_role("engineer", "ptl", "mi
 def update_record_status_by_id(
     record_id: str,
     payload: StatusUpdatePayload,
-    current_user: User = Depends(require_role("engineer", "ptl", "mitra")),
+    current_user: User = Depends(require_role("engineer", "mitra")),
 ):
     sheet_data = read_sheet()
-    filtered   = _filter_records(sheet_data, current_user)
+    filtered   = _filter_records_engineer(sheet_data, current_user)
     record     = next((r for r in filtered["records"] if r["id"] == record_id), None)
 
     if not record:
@@ -117,18 +244,17 @@ def update_record_status_by_id(
 def update_record_status(
     row_id: int,
     payload: StatusUpdatePayload,
-    current_user: User = Depends(require_role("engineer", "ptl", "mitra")),
+    current_user: User = Depends(require_role("engineer", "mitra")),
 ):
     if row_id < 2:
         raise HTTPException(status_code=400, detail="row_id harus >= 2")
 
     role = current_user.role.value
-    if role in ("ptl", "mitra"):
+    if role == "mitra":
         sheet_data = read_sheet()
         record = next((r for r in sheet_data["records"] if r["row_id"] == row_id), None)
         if record:
-            col = PTL_COLUMN_NAME if role == "ptl" else MITRA_COLUMN_NAME
-            owner = record["data"].get(col, "").strip().lower()
+            owner = record["data"].get(MITRA_COLUMN_NAME, "").strip().lower()
             if owner != current_user.nama_lengkap.strip().lower():
                 raise HTTPException(status_code=403, detail="Akses ditolak — bukan data milikmu")
 
@@ -158,12 +284,12 @@ def update_record_status(
     return {"ok": True, "row_id": row_id, "status": status, "detail": detail or "-"}
 
 
-# ── POST /records/{row_id}/cells ──────────────────────────────────────────────
+# ── POST /records/{row_id}/cells — Engineer + Mitra ──────────────────────────
 @router.post("/{row_id}/cells")
 async def update_record_cells(
     row_id: int,
     payload: GeneralUpdatePayload,
-    current_user: User = Depends(require_role("engineer", "ptl", "mitra")),
+    current_user: User = Depends(require_role("engineer", "mitra")),
     db: AsyncSession = Depends(get_db),
 ):
     if row_id < 2:
@@ -171,58 +297,47 @@ async def update_record_cells(
 
     role = current_user.role.value
 
-    # ── Validasi whitelist kolom per role ─────────────────────────────────────
-    if role == "ptl":
-        invalid_cols = [c for c in payload.updates if c not in PTL_EDITABLE_COLUMNS]
-        if invalid_cols:
-            raise HTTPException(
-                status_code=403,
-                detail=f"PTL tidak diizinkan edit kolom: {invalid_cols}. "
-                       f"Kolom yang boleh: {list(PTL_EDITABLE_COLUMNS)}",
-            )
-    elif role == "mitra":
-        invalid_cols = [c for c in payload.updates if c not in MITRA_EDITABLE_WHITELIST]
+    if role == "mitra":
+        # Double-check: whitelist dev DAN editable_columns dari DB
+        mitra_config     = await get_config(db, "mitra")
+        db_editable      = set(mitra_config.editable_columns) if mitra_config else set()
+        allowed_mitra_cols = MITRA_EDITABLE_WHITELIST & db_editable
+        invalid_cols = [c for c in payload.updates if c not in allowed_mitra_cols]
         if invalid_cols:
             raise HTTPException(
                 status_code=403,
                 detail=f"Mitra tidak diizinkan edit kolom: {invalid_cols}.",
             )
 
-    # ── Validasi ownership baris ──────────────────────────────────────────────
+    # Validasi ownership Mitra
     sheet_data = read_sheet()
     record = next((r for r in sheet_data["records"] if r["row_id"] == row_id), None)
 
-    if role in ("ptl", "mitra") and record:
-        col   = PTL_COLUMN_NAME if role == "ptl" else MITRA_COLUMN_NAME
-        owner = record["data"].get(col, "").strip().lower()
+    if role == "mitra" and record:
+        owner = record["data"].get(MITRA_COLUMN_NAME, "").strip().lower()
         if owner != current_user.nama_lengkap.strip().lower():
             raise HTTPException(status_code=403, detail="Akses ditolak — bukan data milikmu")
 
-    # ── Validasi kolom exist di sheet ─────────────────────────────────────────
     if sheet_data["columns"]:
         invalid = [col for col in payload.updates if col not in sheet_data["columns"]]
         if invalid:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Kolom tidak valid: {invalid}",
-            )
+            raise HTTPException(status_code=400, detail=f"Kolom tidak valid: {invalid}")
 
-    # ── Tulis ke GSheet ───────────────────────────────────────────────────────
     update_cells(row_id=row_id, updates=payload.updates)
 
-    # ── Catat sync_log untuk PTL ──────────────────────────────────────────────
-    if role == "ptl" and record:
+    # Catat sync_log Mitra
+    if role == "mitra" and record:
         id_pa = record["data"].get("ID PA", str(row_id))
         for field, new_val in payload.updates.items():
             old_val = record["data"].get(field)
             await _write_sync_log(
                 db,
-                ptl_user_id=current_user.id,
+                ptl_user_id=None,
                 id_pa=id_pa,
                 field_changed=field,
                 old_value=old_val,
                 new_value=new_val,
-                sync_type="dashboard",
+                sync_type="mitra_update",
                 synced_by=current_user.username,
             )
 

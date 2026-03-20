@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import GOOGLE_APPLICATION_CREDENTIALS
 from app.db.models import SyncLog, SyncMismatch, MismatchTypeEnum, SyncTypeEnum, User
 from app.services.sheet_reader import read_sheet, parse_ptl_name
+from app.core.config import PTL_COL_TERMINATING, PTL_COL_ORIGINATING
 
 
 # Kolom kunci untuk join Engineer ↔ PTL
@@ -38,10 +39,11 @@ def _extract_spreadsheet_id(url: str) -> str | None:
     return match.group(1) if match else None
 
 
-def read_ptl_sheet(gsheet_url: str) -> dict:
+def read_ptl_sheet(gsheet_url: str, sheet_name: str | None = None) -> dict:
     """
     Baca GSheet milik PTL.
-    Otomatis deteksi nama sheet pertama — tidak hardcode 'Sheet1'.
+    Kalau sheet_name diberikan, pakai itu.
+    Kalau tidak, otomatis deteksi nama sheet pertama.
     """
     spreadsheet_id = _extract_spreadsheet_id(gsheet_url)
     if not spreadsheet_id:
@@ -53,17 +55,19 @@ def read_ptl_sheet(gsheet_url: str) -> dict:
     )
     service = build("sheets", "v4", credentials=creds)
 
-    # Ambil metadata dulu untuk dapat nama sheet pertama
-    spreadsheet = service.spreadsheets().get(
-        spreadsheetId=spreadsheet_id
-    ).execute()
-
-    first_sheet_name = spreadsheet["sheets"][0]["properties"]["title"]
+    # Gunakan sheet_name dari parameter, atau ambil sheet pertama
+    if sheet_name:
+        target_sheet = sheet_name
+    else:
+        spreadsheet = service.spreadsheets().get(
+            spreadsheetId=spreadsheet_id
+        ).execute()
+        target_sheet = spreadsheet["sheets"][0]["properties"]["title"]
 
     result = (
         service.spreadsheets()
         .values()
-        .get(spreadsheetId=spreadsheet_id, range=first_sheet_name)
+        .get(spreadsheetId=spreadsheet_id, range=target_sheet)
         .execute()
     )
 
@@ -82,6 +86,7 @@ def read_ptl_sheet(gsheet_url: str) -> dict:
         })
 
     return {"columns": headers, "records": records}
+
 
 
 
@@ -105,7 +110,7 @@ def compare_records(
     eng_records = {
         r["data"][JOIN_KEY]: r
         for r in engineer_data["records"]
-        if parse_ptl_name(r["data"].get("PTL TERMINATING", "")).strip().lower() == nama_lower
+        if parse_ptl_name(r["data"].get(PTL_COL_TERMINATING, "")).strip().lower() == nama_lower
         and r["data"].get(JOIN_KEY)
     }
 

@@ -16,9 +16,12 @@ from app.api.bai      import router as bai_router
 from app.api.auth     import router as auth_router
 from app.api.admin import router as admin_router
 from app.api.role_config import router as role_config_router
-from app.api.sync import router as sync_router
+from app.api.sync    import router as sync_router
+from app.api.profile import router as profile_router
 
 # ── Rate Limiter ──────────────────────────────────────────────────────────────
+# Default limit: 200/menit untuk semua endpoint
+# Login limit lebih ketat: 5x per 10 menit — diset langsung di auth.py
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 app = FastAPI(
@@ -54,7 +57,8 @@ app.include_router(teskom_router,  prefix="/api/teskom")
 app.include_router(bai_router,     prefix="/api/bai")
 app.include_router(admin_router, prefix="/api/admin")
 app.include_router(role_config_router, prefix="/api/role-config")
-app.include_router(sync_router, prefix="/api/sync")
+app.include_router(sync_router,    prefix="/api/sync")
+app.include_router(profile_router, prefix="/api/profile")
 
 
 @app.get("/health")

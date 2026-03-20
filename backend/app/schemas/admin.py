@@ -11,6 +11,7 @@ class UserCreateRequest(BaseModel):
     nama_lengkap: str = Field(..., min_length=3, max_length=150)
     role: UserRole
     gsheet_url: Optional[str] = Field(default=None, max_length=500)
+    gsheet_sheet_name: Optional[str] = Field(default=None, max_length=100)
 
     @field_validator("username")
     @classmethod
@@ -32,11 +33,19 @@ class UserCreateRequest(BaseModel):
             return None
         return value.strip() or None
 
+    @field_validator("gsheet_sheet_name")
+    @classmethod
+    def validate_gsheet_sheet_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        return value.strip() or None
+
 
 class UserUpdateRequest(BaseModel):
     nama_lengkap: str = Field(..., min_length=3, max_length=150)
     role: UserRole
     gsheet_url: Optional[str] = Field(default=None, max_length=500)
+    gsheet_sheet_name: Optional[str] = Field(default=None, max_length=100)
     is_active: bool = True
 
     @field_validator("nama_lengkap")
@@ -47,6 +56,13 @@ class UserUpdateRequest(BaseModel):
     @field_validator("gsheet_url")
     @classmethod
     def validate_gsheet_url(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        return value.strip() or None
+
+    @field_validator("gsheet_sheet_name")
+    @classmethod
+    def validate_gsheet_sheet_name(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return None
         return value.strip() or None
@@ -62,6 +78,7 @@ class UserResponse(BaseModel):
     nama_lengkap: str
     role: str
     gsheet_url: Optional[str]
+    gsheet_sheet_name: Optional[str] = None
     is_active: bool
     created_at: Optional[str] = None
     created_by: Optional[str] = None
