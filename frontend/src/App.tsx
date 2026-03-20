@@ -24,7 +24,9 @@ export default function App() {
 
   return (
     <AuthGuard>
-      {page === "profile" ? <ProfilePage /> : <MainPage />}
+      <div className="h-screen overflow-hidden flex flex-col">
+        {page === "profile" ? <ProfilePage /> : <MainPage />}
+      </div>
     </AuthGuard>
   );
 }
