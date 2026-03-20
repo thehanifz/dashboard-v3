@@ -4,11 +4,11 @@
  * Render panel yang tepat berdasarkan role + page state dari appStore.
  *
  * Struktur render:
- *   superuser → SuperuserPage (self-contained, punya layout sendiri)
- *   ptl       → PTLDashboardPanel
+ *   superuser → SuperuserPanel (self-contained)
+ *   ptl       → PTLDashboardPanel | PTLDetailPanel | AsBuiltPage | TeskomPage
  *   mitra     → MitraDashboardPanel
- *   engineer  → EngineerDashboardPanel | AsBuiltPage | TeskomPage |
- *               MitraTableConfigPage | SyncDashboardPage
+ *   engineer  → EngineerDashboardPanel | EngineerDetailPanel |
+ *               AsBuiltPage | TeskomPage | MitraTableConfigPage | SyncDashboardPage
  *
  * Halaman profile ditangani di App.tsx (shared semua role).
  */
@@ -17,10 +17,12 @@ import { useAppStore }  from "../state/appStore";
 
 // Role panels
 import PTLDashboardPanel      from "../components/ptl/PTLDashboardPanel";
+import PTLDetailPanel         from "../components/ptl/PTLDetailPanel";
 import MitraDashboardPanel    from "../components/mitra/MitraDashboardPanel";
 import EngineerDashboardPanel from "../components/engineer/EngineerDashboardPanel";
+import EngineerDetailPanel    from "../components/engineer/EngineerDetailPanel";
 
-// Pages khusus engineer
+// Pages khusus engineer + ptl
 import AsBuiltPage          from "./AsBuiltPage";
 import TeskomPage           from "./TeskomPage";
 import MitraTableConfigPage from "./MitraTableConfigPage";
@@ -40,6 +42,10 @@ export default function MainPage() {
 
   // ── PTL ───────────────────────────────────────────────────────────────────
   if (user?.role === "ptl") {
+    if (page === "detail")  return <PTLDetailPanel />;
+    if (page === "asbuilt") return <AsBuiltPage />;
+    if (page === "teskom")  return <TeskomPage />;
+    // default: dashboard
     return <PTLDashboardPanel />;
   }
 
@@ -50,6 +56,7 @@ export default function MainPage() {
 
   // ── Engineer ──────────────────────────────────────────────────────────────
   if (user?.role === "engineer") {
+    if (page === "detail")       return <EngineerDetailPanel />;
     if (page === "asbuilt")      return <AsBuiltPage />;
     if (page === "teskom")       return <TeskomPage />;
     if (page === "mitra-config") return <MitraTableConfigPage />;

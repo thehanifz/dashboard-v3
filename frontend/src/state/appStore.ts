@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type AppPage = "dashboard" | "asbuilt" | "teskom" | "mitra-config" | "sync" | "profile";
+export type AppPage = "dashboard" | "detail" | "asbuilt" | "teskom" | "mitra-config" | "sync" | "profile";
 export type AsBuiltView = "library" | "generate";
 
 // Halaman yang TIDAK disimpan ke localStorage — selalu reset ke default saat load
