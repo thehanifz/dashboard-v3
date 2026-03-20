@@ -26,8 +26,8 @@ import TeskomPage           from "./TeskomPage";
 import MitraTableConfigPage from "./MitraTableConfigPage";
 import SyncDashboardPage    from "./SyncDashboardPage";
 
-// Page superuser (self-contained)
-import SuperuserPage from "./SuperuserPage";
+// Panel superuser
+import SuperuserPanel from "../components/superuser/SuperuserPanel";
 
 export default function MainPage() {
   const { user }    = useAuthStore();
@@ -35,7 +35,7 @@ export default function MainPage() {
 
   // ── Superuser ──────────────────────────────────────────────────────────────
   if (user?.role === "superuser") {
-    return <SuperuserPage />;
+    return <SuperuserPanel />;
   }
 
   // ── PTL ───────────────────────────────────────────────────────────────────
