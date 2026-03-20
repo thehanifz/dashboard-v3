@@ -10,7 +10,6 @@
   --bg-surface:    #ffffff;
   --bg-surface2:   #f8fafc;
   --bg-surface3:   #f1f5f9;
-  --bg-sidebar:    #0f172a;
   --bg-hover:      #f1f5f9;
   --bg-active:     #e8f0fe;
 
@@ -20,8 +19,6 @@
   --text-primary:  #0f172a;
   --text-secondary:#475569;
   --text-muted:    #94a3b8;
-  --text-sidebar:  #94a3b8;
-  --text-sidebar-active: #ffffff;
 
   --accent:        #2563eb;
   --accent-hover:  #1d4ed8;
@@ -49,6 +46,20 @@
   --card-bg:       #ffffff;
   --card-border:   #e2e8f0;
   --card-hover:    #f8fafc;
+
+  /* ── Sidebar light — putih bersih dengan aksen biru subtle ── */
+  --bg-sidebar:          #ffffff;
+  --sidebar-border:      #e8ecf2;
+  --text-sidebar:        #64748b;
+  --text-sidebar-active: #ffffff;
+  --sidebar-shadow:      2px 0 12px rgba(0, 0, 0, 0.06);
+
+  /* User card di sidebar */
+  --sidebar-user-bg:     #f1f5f9;
+  --sidebar-user-border: #e2e8f0;
+
+  /* Hover item sidebar */
+  --sidebar-item-hover:  #f1f5f9;
 }
 
 /* ─── Dark Theme Variables ──────────────────────────────────────────────── */
@@ -96,6 +107,13 @@
   --card-bg:       #161b22;
   --card-border:   #30363d;
   --card-hover:    #1c2333;
+
+  /* Sidebar dark — tetap gelap seperti semula */
+  --sidebar-border:     #30363d;
+  --sidebar-shadow:     none;
+  --sidebar-user-bg:    rgba(255,255,255,0.05);
+  --sidebar-user-border:#30363d;
+  --sidebar-item-hover: rgba(255,255,255,0.08);
 }
 
 /* ─── Base ─────────────────────────────────────────────────────────────── */
@@ -119,7 +137,13 @@ body {
 .surface    { background: var(--bg-surface);  border: 1px solid var(--border); }
 .surface-2  { background: var(--bg-surface2); border: 1px solid var(--border); }
 .topbar     { background: var(--topbar-bg);   border-bottom: 1px solid var(--topbar-border); }
-.sidebar-bg { background: var(--bg-sidebar); }
+
+/* Sidebar — pakai variabel baru agar light/dark otomatis */
+.sidebar-bg {
+  background:  var(--bg-sidebar);
+  border-right: 1px solid var(--sidebar-border, var(--border)) !important;
+  box-shadow:  var(--sidebar-shadow, none);
+}
 
 /* ─── Input ─────────────────────────────────────────────────────────────── */
 .th-input {

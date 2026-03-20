@@ -1,8 +1,11 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type AppPage = "dashboard" | "asbuilt" | "teskom" | "mitra-config" | "sync";
+export type AppPage = "dashboard" | "asbuilt" | "teskom" | "mitra-config" | "sync" | "profile";
 export type AsBuiltView = "library" | "generate";
+
+// Halaman yang TIDAK disimpan ke localStorage — selalu reset ke default saat load
+const TRANSIENT_PAGES: AppPage[] = ["profile"];
 
 interface AppState {
   currentPage: AppPage;
@@ -23,6 +26,14 @@ export const useAppStore = create<AppState>()(
       setAsBuiltView:    (view) => set({ asbuiltView: view }),
       setTeskomAutofill: (idPa) => set({ teskomAutofillId: idPa }),
     }),
-    { name: "app-navigation" }
+    {
+      name: "app-navigation",
+      // Hanya simpan currentPage kalau bukan halaman transient
+      partialize: (state) => ({
+        currentPage:      TRANSIENT_PAGES.includes(state.currentPage) ? "dashboard" : state.currentPage,
+        asbuiltView:      state.asbuiltView,
+        teskomAutofillId: state.teskomAutofillId,
+      }),
+    }
   )
 );

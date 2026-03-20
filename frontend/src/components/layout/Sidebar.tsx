@@ -1,8 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useThemeStore } from "../../state/themeStore";
 import { useAppStore, AppPage, AsBuiltView } from "../../state/appStore";
 import { useAuthStore } from "../../state/authStore";
-import { authApi } from "../../services/authApi";
+import { syncApi } from "../../services/syncApi";
 
 type DashView = "summary" | "kanban" | "table";
 
@@ -22,44 +22,58 @@ const IconDoc      = () => <svg className="w-[18px] h-[18px] shrink-0" fill="non
 const IconDash     = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 7a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V7zm0 6a1 1 0 011-1h8a1 1 0 011 1v4a1 1 0 01-1 1H4a1 1 0 01-1-1v-4zm12 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg>;
 const SunIcon      = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" /></svg>;
 const MoonIcon     = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>;
-const DownloadIcon = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>;
-const UploadIcon   = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>;
 const IconLibrary  = () => <svg className="w-[15px] h-[15px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>;
 const IconGenerate = () => <svg className="w-[15px] h-[15px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>;
-const IconLogout   = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>;
 const IconChevron  = ({ open }: { open: boolean }) => (
   <svg className="w-3.5 h-3.5 shrink-0 transition-transform" style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+  </svg>
+);
+const IconChevronRight = () => (
+  <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
   </svg>
 );
 
 // ── Role config ───────────────────────────────────────────────────────────────
 const ROLE_LABEL: Record<string, string> = { engineer: "Engineer", ptl: "PTL", mitra: "Mitra", superuser: "Superuser" };
-const ROLE_COLOR: Record<string, string> = { engineer: "#3b82f6", ptl: "#8b5cf6", mitra: "#10b981", superuser: "#f59e0b" };
+const ROLE_COLOR: Record<string, string> = { engineer: "#2563eb", ptl: "#7c3aed", mitra: "#059669", superuser: "#d97706" };
 
-// Menu yang tampil per role — tidak di-disable, tidak dirender sama sekali
 const ROLE_PAGES: Record<string, AppPage[]> = {
-  engineer: ["dashboard", "asbuilt", "teskom", "mitra-config", "sync"],
-  ptl:      ["dashboard"],
-  mitra:    ["dashboard"],
+  engineer:  ["dashboard", "asbuilt", "teskom", "mitra-config", "sync"],
+  ptl:       ["dashboard"],
+  mitra:     ["dashboard"],
+  superuser: [],
 };
 
+// ── Mismatch Badge ────────────────────────────────────────────────────────────
+function MismatchBadge({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <span className="ml-auto shrink-0 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+      style={{ background: "#ef4444", padding: "0 4px" }}>
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
 // ── Sidebar Button ────────────────────────────────────────────────────────────
-function SidebarBtn({ onClick, title, icon, label, collapsed, active = false, indent = false, danger = false }: any) {
+function SidebarBtn({ onClick, title, icon, label, collapsed, active = false, indent = false, badge = 0 }: any) {
   return (
     <button onClick={onClick} title={collapsed ? title : undefined}
-      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all"
+      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all"
       style={{
-        background: active ? "var(--accent)" : "transparent",
-        color: active ? "#fff" : danger ? "#f87171" : "var(--text-sidebar)",
+        background:     active ? "var(--accent)" : "transparent",
+        color:          active ? "#fff" : "var(--text-sidebar)",
         justifyContent: collapsed ? "center" : "flex-start",
-        paddingLeft: indent && !collapsed ? "1.75rem" : undefined,
+        paddingLeft:    indent && !collapsed ? "1.75rem" : undefined,
       }}
-      onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = danger ? "rgba(248,113,113,0.1)" : "rgba(255,255,255,0.08)"; }}
+      onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = "var(--sidebar-item-hover, rgba(255,255,255,0.08))"; }}
       onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
     >
       {icon}
-      {!collapsed && label && <span>{label}</span>}
+      {!collapsed && label && <span className="flex-1 text-left truncate">{label}</span>}
+      {!collapsed && badge > 0 && <MismatchBadge count={badge} />}
     </button>
   );
 }
@@ -69,7 +83,7 @@ function SubMenuBtn({ onClick, icon, label, active }: { onClick: () => void; ico
     <button onClick={onClick}
       className="w-full flex items-center gap-2.5 rounded-lg text-xs font-medium transition-all"
       style={{ padding: "7px 10px 7px 28px", background: active ? "var(--accent)" : "transparent", color: active ? "#fff" : "var(--text-sidebar)" }}
-      onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.07)"; }}
+      onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = "var(--sidebar-item-hover, rgba(255,255,255,0.07))"; }}
       onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = active ? "var(--accent)" : "transparent"; }}
     >
       {icon}<span>{label}</span>
@@ -79,50 +93,49 @@ function SubMenuBtn({ onClick, icon, label, active }: { onClick: () => void; ico
 
 // ── Main Sidebar ──────────────────────────────────────────────────────────────
 export default function Sidebar({ view, onViewChange, collapsed, onToast }: SidebarProps) {
-  const { theme, toggleTheme, exportConfig, importConfig } = useThemeStore();
+  const { theme, toggleTheme } = useThemeStore();
   const { currentPage, setPage, asbuiltView, setAsBuiltView } = useAppStore();
-  const { user, clearAuth } = useAuthStore();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuthStore();
   const isDark = theme === "dark";
 
-  const [asbuiltOpen, setAsbuiltOpen] = useState(currentPage === "asbuilt");
-  const [loggingOut, setLoggingOut]   = useState(false);
+  const [asbuiltOpen, setAsbuiltOpen]     = useState(currentPage === "asbuilt");
+  const [mismatchCount, setMismatchCount] = useState(0);
 
-  const role      = user?.role ?? "engineer";
-  const roleLabel = ROLE_LABEL[role] ?? role;
-  const roleColor = ROLE_COLOR[role] ?? "#3b82f6";
-  const allowedPages = ROLE_PAGES[role] ?? ["dashboard"];
+  const role       = user?.role ?? "engineer";
+  const roleLabel  = ROLE_LABEL[role] ?? role;
+  const roleColor  = ROLE_COLOR[role] ?? "#2563eb";
+  const allowedPages = ROLE_PAGES[role] ?? [];
+  const sectionColor = isDark ? "var(--text-sidebar)" : "#94a3b8";
 
-  const handleLogout = async () => {
-    setLoggingOut(true);
-    try { await authApi.logout(); } catch {}
-    clearAuth();
-    window.location.href = "/";
-  };
+  // Fetch mismatch count untuk Engineer — poll tiap 5 menit
+  useEffect(() => {
+    if (role !== "engineer") return;
+    const fetchCount = async () => {
+      try {
+        const items = await syncApi.getMismatches();
+        setMismatchCount(items.filter((m: any) => m.mismatch_type === "missing_in_engineer").length);
+      } catch { /* silent */ }
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [role]);
 
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try { const msg = await importConfig(file); onToast(msg, "success"); }
-    catch (err: any) { onToast(err || "Gagal import config", "error"); }
-    finally { e.target.value = ""; }
-  };
+  const ALL_PAGES: { id: AppPage; label: string; icon: JSX.Element; badge?: number }[] = [
+    { id: "dashboard",    label: "Dashboard PA",           icon: <IconDash /> },
+    { id: "asbuilt",      label: "As-Built",               icon: <IconNetwork /> },
+    { id: "teskom",       label: "Teskom",                 icon: <IconDoc /> },
+    { id: "mitra-config", label: "Pengaturan Tabel Mitra", icon: <IconTable /> },
+    { id: "sync",         label: "Sync Dashboard",         icon: <IconChart />, badge: mismatchCount },
+  ];
+
+  const visiblePages = ALL_PAGES.filter(p => allowedPages.includes(p.id));
 
   const DASH_VIEWS: { id: DashView; label: string; icon: JSX.Element }[] = [
     { id: "summary", label: "Summary", icon: <IconChart /> },
     { id: "kanban",  label: "Kanban",  icon: <IconKanban /> },
     { id: "table",   label: "Tabel",   icon: <IconTable /> },
   ];
-
-  const ALL_PAGES: { id: AppPage; label: string; icon: JSX.Element }[] = [
-    { id: "dashboard", label: "Dashboard PA", icon: <IconDash /> },
-    { id: "asbuilt",   label: "As-Built",     icon: <IconNetwork /> },
-    { id: "teskom",    label: "Teskom",        icon: <IconDoc /> },
-    { id: "mitra-config", label: "Pengaturan Tabel Mitra", icon: <IconTable /> },
-    { id: "sync",         label: "Sync Dashboard",          icon: <IconChart /> },
-  ];
-
-  const visiblePages = ALL_PAGES.filter(p => allowedPages.includes(p.id));
 
   const ASBUILT_VIEWS: { id: AsBuiltView; label: string; icon: JSX.Element }[] = [
     { id: "library",  label: "Library",  icon: <IconLibrary /> },
@@ -133,10 +146,11 @@ export default function Sidebar({ view, onViewChange, collapsed, onToast }: Side
     <>
       {/* ── Desktop Sidebar ── */}
       <aside className="hidden md:flex flex-col h-full shrink-0 transition-all duration-200 sidebar-bg"
-        style={{ width: collapsed ? 60 : 220, borderRight: "1px solid var(--border)" }}>
+        style={{ width: collapsed ? 60 : 220 }}>
 
         {/* Logo */}
-        <div className="flex items-center gap-3 px-4 shrink-0" style={{ height: 56, borderBottom: "1px solid var(--border)" }}>
+        <div className="flex items-center gap-3 px-4 shrink-0"
+          style={{ height: 56, borderBottom: "1px solid var(--sidebar-border, var(--border))" }}>
           <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shrink-0 shadow-sm">
             <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -144,30 +158,62 @@ export default function Sidebar({ view, onViewChange, collapsed, onToast }: Side
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <p className="text-white text-xs font-bold leading-tight truncate">Dashboard v3</p>
-              <p className="text-[11px] leading-tight truncate" style={{ color: "var(--text-sidebar)" }}>PA PLN Icon+</p>
+              <p className="text-xs font-bold leading-tight truncate" style={{ color: "var(--text-primary)" }}>Dashboard v3</p>
+              <p className="text-[11px] leading-tight truncate" style={{ color: sectionColor }}>PA PLN Icon+</p>
             </div>
           )}
         </div>
 
-        {/* User info */}
-        {!collapsed && user && (
-          <div className="px-3 py-2.5 mx-2 mt-2 rounded-lg" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)" }}>
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold text-white" style={{ background: roleColor }}>
-                {user.nama_lengkap.charAt(0).toUpperCase()}
+        {/* User card — klik → ke ProfilePage */}
+        {user && (
+          <button
+            onClick={() => setPage("profile")}
+            className="mx-3 mt-3 mb-1 rounded-xl px-3 py-2.5 transition-all text-left w-auto"
+            style={{
+              background:  currentPage === "profile"
+                ? "var(--accent-soft, rgba(37,99,235,0.08))"
+                : "var(--sidebar-user-bg, rgba(255,255,255,0.05))",
+              border:      `1px solid ${currentPage === "profile" ? "var(--accent)" : "var(--sidebar-user-border, var(--border))"}`,
+              cursor:      "pointer",
+            }}
+            title={collapsed ? `${user.nama_lengkap} — Profil` : undefined}
+          >
+            {collapsed ? (
+              // Mode collapsed: hanya avatar
+              <div className="flex justify-center">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                  style={{ background: roleColor }}>
+                  {user.nama_lengkap.charAt(0).toUpperCase()}
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold truncate" style={{ color: "var(--text-primary)" }}>{user.nama_lengkap}</p>
-                <p className="text-[10px] font-medium" style={{ color: roleColor }}>{roleLabel}</p>
+            ) : (
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold text-white shadow-sm"
+                  style={{ background: roleColor }}>
+                  {user.nama_lengkap.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold truncate leading-tight" style={{ color: "var(--text-primary)" }}>
+                    {user.nama_lengkap}
+                  </p>
+                  <span className="inline-block mt-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md"
+                    style={{ background: `${roleColor}18`, color: roleColor }}>
+                    {roleLabel}
+                  </span>
+                </div>
+                <IconChevronRight />
               </div>
-            </div>
-          </div>
+            )}
+          </button>
         )}
 
         {/* Nav */}
-        <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto custom-scrollbar">
-          {!collapsed && <p className="text-[10px] font-semibold uppercase tracking-widest px-2 mb-1" style={{ color: "var(--text-sidebar)" }}>Aplikasi</p>}
+        <nav className="flex-1 py-2 px-2 space-y-0.5 overflow-y-auto custom-scrollbar">
+          {!collapsed && visiblePages.length > 0 && (
+            <p className="text-[10px] font-semibold uppercase tracking-widest px-2 pt-1 pb-1.5" style={{ color: sectionColor }}>
+              Aplikasi
+            </p>
+          )}
 
           {visiblePages.map((p) => (
             <div key={p.id}>
@@ -175,9 +221,9 @@ export default function Sidebar({ view, onViewChange, collapsed, onToast }: Side
                 <div>
                   <button onClick={() => { setPage("asbuilt"); if (!collapsed) setAsbuiltOpen(v => !v); }}
                     title={collapsed ? "As-Built" : undefined}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all"
                     style={{ background: currentPage === "asbuilt" ? "var(--accent)" : "transparent", color: currentPage === "asbuilt" ? "#fff" : "var(--text-sidebar)", justifyContent: collapsed ? "center" : "flex-start" }}
-                    onMouseEnter={(e) => { if (currentPage !== "asbuilt") (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.08)"; }}
+                    onMouseEnter={(e) => { if (currentPage !== "asbuilt") (e.currentTarget as HTMLElement).style.background = "var(--sidebar-item-hover, rgba(255,255,255,0.08))"; }}
                     onMouseLeave={(e) => { if (currentPage !== "asbuilt") (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                   >
                     <IconNetwork />
@@ -191,10 +237,12 @@ export default function Sidebar({ view, onViewChange, collapsed, onToast }: Side
                 </div>
               ) : (
                 <div>
-                  <SidebarBtn onClick={() => setPage(p.id)} icon={p.icon} label={p.label} title={p.label} collapsed={collapsed} active={currentPage === p.id} />
+                  <SidebarBtn onClick={() => setPage(p.id)} icon={p.icon} label={p.label} title={p.label} collapsed={collapsed} active={currentPage === p.id} badge={p.badge ?? 0} />
                   {p.id === "dashboard" && currentPage === "dashboard" && !collapsed && (
                     <div className="mt-0.5 space-y-0.5">
-                      {DASH_VIEWS.map(v => <SidebarBtn key={v.id} onClick={() => onViewChange(v.id)} icon={v.icon} label={v.label} title={v.label} collapsed={collapsed} active={view === v.id} indent={true} />)}
+                      {DASH_VIEWS.map(v => (
+                        <SidebarBtn key={v.id} onClick={() => onViewChange(v.id)} icon={v.icon} label={v.label} title={v.label} collapsed={collapsed} active={view === v.id} indent={true} />
+                      ))}
                     </div>
                   )}
                 </div>
@@ -203,39 +251,58 @@ export default function Sidebar({ view, onViewChange, collapsed, onToast }: Side
           ))}
         </nav>
 
-        {/* Footer */}
-        <div className="shrink-0 px-2 pb-4 pt-3 space-y-0.5" style={{ borderTop: "1px solid var(--border)" }}>
-          {!collapsed && <p className="text-[10px] font-semibold uppercase tracking-widest px-2 mb-2" style={{ color: "var(--text-sidebar)" }}>Pengaturan</p>}
-          <SidebarBtn onClick={toggleTheme} icon={isDark ? <SunIcon /> : <MoonIcon />} label={isDark ? "Light Mode" : "Dark Mode"} title="Toggle Tema" collapsed={collapsed} />
-          <SidebarBtn onClick={exportConfig} icon={<DownloadIcon />} label="Export Config" title="Export Config" collapsed={collapsed} />
-          <SidebarBtn onClick={() => fileInputRef.current?.click()} icon={<UploadIcon />} label="Import Config" title="Import Config" collapsed={collapsed} />
-          <input ref={fileInputRef} type="file" accept=".json" onChange={handleImport} className="hidden" />
-          <SidebarBtn onClick={handleLogout} icon={<IconLogout />} label={loggingOut ? "Keluar..." : "Logout"} title="Logout" collapsed={collapsed} danger={true} />
-          {!collapsed && <p className="text-[10px] px-3 pt-2" style={{ color: "var(--text-muted)" }}>v3.1 · 2026</p>}
+        {/* Footer — hanya toggle theme + versi */}
+        <div style={{ height: 1, background: "var(--sidebar-border, var(--border))", margin: "0 12px" }} />
+        <div className="shrink-0 px-2 py-3">
+          <button onClick={toggleTheme}
+            title={collapsed ? "Toggle Tema" : undefined}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all"
+            style={{ background: "transparent", color: "var(--text-sidebar)", justifyContent: collapsed ? "center" : "flex-start" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--sidebar-item-hover, rgba(255,255,255,0.08))"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+          >
+            {isDark ? <SunIcon /> : <MoonIcon />}
+            {!collapsed && <span>{isDark ? "Light Mode" : "Dark Mode"}</span>}
+          </button>
+          {!collapsed && <p className="text-[10px] px-3 pt-1" style={{ color: sectionColor }}>v3.2 · 2026</p>}
         </div>
       </aside>
 
       {/* ── Mobile Bottom Nav ── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bottom-nav flex items-center justify-around px-1 py-1" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bottom-nav flex items-center justify-around px-1 py-1"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
         {visiblePages.map(p => {
           const isActive = currentPage === p.id;
           return (
             <button key={p.id} onClick={() => setPage(p.id)}
-              className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all"
+              className="relative flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all"
               style={{ color: isActive ? "var(--accent)" : "var(--text-muted)", background: isActive ? "var(--accent-soft)" : "transparent" }}
             >
               {p.icon}
+              {p.badge && p.badge > 0 && (
+                <span className="absolute top-1 right-1 min-w-[14px] h-[14px] rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+                  style={{ background: "#ef4444", padding: "0 2px" }}>
+                  {p.badge > 99 ? "99+" : p.badge}
+                </span>
+              )}
               <span className="text-[10px] font-semibold">{p.label}</span>
             </button>
           );
         })}
-        <button onClick={toggleTheme} className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all" style={{ color: "var(--text-muted)" }}>
+        {/* Profil di mobile */}
+        <button onClick={() => setPage("profile")}
+          className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all"
+          style={{ color: currentPage === "profile" ? "var(--accent)" : "var(--text-muted)", background: currentPage === "profile" ? "var(--accent-soft)" : "transparent" }}
+        >
+          <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+            style={{ background: ROLE_COLOR[role] ?? "#2563eb" }}>
+            {user?.nama_lengkap?.charAt(0).toUpperCase() ?? "?"}
+          </div>
+          <span className="text-[10px] font-semibold">Profil</span>
+        </button>
+        <button onClick={toggleTheme} className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl" style={{ color: "var(--text-muted)" }}>
           {isDark ? <SunIcon /> : <MoonIcon />}
           <span className="text-[10px] font-semibold">Tema</span>
-        </button>
-        <button onClick={handleLogout} className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all" style={{ color: "#f87171" }}>
-          <IconLogout />
-          <span className="text-[10px] font-semibold">Logout</span>
         </button>
       </nav>
     </>
