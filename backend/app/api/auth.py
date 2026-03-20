@@ -10,6 +10,8 @@ GET  /api/auth/me       → info user yang sedang login
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +28,9 @@ from app.db.models import AuditLog, RefreshToken, User
 from app.core.deps import get_current_user
 
 router = APIRouter(tags=["auth"])
+
+# Rate limiter khusus login — 5 percobaan per 10 menit per IP
+_limiter = Limiter(key_func=get_remote_address)
 
 REFRESH_COOKIE = "refresh_token"
 
@@ -68,6 +73,7 @@ async def _write_audit(
 
 # ── POST /login ───────────────────────────────────────────────────────────────
 @router.post("/login", response_model=LoginResponse)
+@_limiter.limit("5/10minute")
 async def login(
     body: LoginRequest,
     request: Request,

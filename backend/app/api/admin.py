@@ -28,6 +28,7 @@ def serialize_user(user) -> UserResponse:
         nama_lengkap=user.nama_lengkap,
         role=user.role.value if hasattr(user.role, "value") else user.role,
         gsheet_url=user.gsheet_url,
+        gsheet_sheet_name=user.gsheet_sheet_name,
         is_active=user.is_active,
         created_at=user.created_at.isoformat() if user.created_at else None,
         created_by=user.created_by,

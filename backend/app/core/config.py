@@ -29,7 +29,9 @@ STATUS_COL_PRIMARY             = os.getenv("STATUS_COL_PRIMARY", "Status Pekerja
 STATUS_COL_DETAIL              = os.getenv("STATUS_COL_DETAIL", "Detail Progres")
 
 # Nama kolom di GSheet untuk filter per role
-PTL_COLUMN_NAME   = os.getenv("PTL_COLUMN_NAME", "PTL TERMINATING")
+# Dua kolom PTL — filter OR: baris dimana salah satu kolom = nama PTL
+PTL_COL_TERMINATING = os.getenv("PTL_COL_TERMINATING", "PTL TERMINATING")
+PTL_COL_ORIGINATING = os.getenv("PTL_COL_ORIGINATING", "PTL ORIGINATING")
 MITRA_COLUMN_NAME = os.getenv("MITRA_COLUMN_NAME", "MITRA")
 
 # ── AsBuilt ───────────────────────────────────────────────────────────────────

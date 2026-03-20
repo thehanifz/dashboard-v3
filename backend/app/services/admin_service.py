@@ -66,6 +66,7 @@ async def create_user(
         )
 
     gsheet_url = _normalize_gsheet_url(payload.role, payload.gsheet_url)
+    gsheet_sheet_name = payload.gsheet_sheet_name if payload.role == "ptl" else None
     password_hash = pwd_context.hash(payload.password)
 
     user = User(
@@ -74,6 +75,7 @@ async def create_user(
         nama_lengkap=payload.nama_lengkap,
         role=payload.role,
         gsheet_url=gsheet_url,
+        gsheet_sheet_name=gsheet_sheet_name,
         is_active=True,
         created_by=actor_username,
     )
@@ -125,6 +127,7 @@ async def update_user(
     user.nama_lengkap = payload.nama_lengkap
     user.role = payload.role
     user.gsheet_url = _normalize_gsheet_url(payload.role, payload.gsheet_url)
+    user.gsheet_sheet_name = payload.gsheet_sheet_name if payload.role == "ptl" else None
     user.is_active = payload.is_active
 
     if not payload.is_active:

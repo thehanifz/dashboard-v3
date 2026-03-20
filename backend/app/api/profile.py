@@ -1,0 +1,157 @@
+"""
+api/profile.py
+Endpoint profil user yang sedang login.
+Superuser tidak ada di DB — data diambil dari token JWT langsung.
+
+GET  /api/profile/me           → info profil (semua role termasuk superuser)
+PUT  /api/profile/password     → ganti password (verifikasi lama dulu) — non-superuser only
+PUT  /api/profile/gsheet       → edit gsheet_url + gsheet_sheet_name — PTL only
+"""
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError
+from pydantic import BaseModel, Field
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import SUPERUSER_USERNAME
+from app.core.deps import get_current_user, _get_token
+from app.core.security import verify_password, hash_password, decode_access_token
+from app.db.database import get_db
+from app.db.models import RefreshToken, User, RoleEnum
+
+router = APIRouter(tags=["Profile"])
+
+
+# ── Schemas ───────────────────────────────────────────────────────────────────
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password:     str = Field(..., min_length=8, max_length=128)
+    confirm_password: str = Field(..., min_length=8, max_length=128)
+
+
+class UpdateGSheetRequest(BaseModel):
+    gsheet_url:        str | None = Field(default=None, max_length=500)
+    gsheet_sheet_name: str | None = Field(default=None, max_length=100)
+
+
+# ── GET /me — support semua role termasuk superuser ───────────────────────────
+bearer_scheme = HTTPBearer(auto_error=False)
+
+@router.get("/me")
+async def get_profile(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Ambil data profil.
+    - Superuser: data dari token JWT (tidak ada di DB)
+    - User biasa: data dari DB
+    """
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Token tidak ditemukan")
+
+    try:
+        payload = decode_access_token(credentials.credentials)
+        username: str = payload.get("sub", "")
+        role: str = payload.get("role", "")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token tidak valid")
+
+    # Superuser — return dari token, tidak query DB
+    if username == SUPERUSER_USERNAME or role == "superuser":
+        return {
+            "username":          username,
+            "nama_lengkap":      "Super Admin",
+            "role":              "superuser",
+            "is_active":         True,
+            "gsheet_url":        None,
+            "gsheet_sheet_name": None,
+            "created_at":        None,
+            "created_by":        None,
+        }
+
+    # User biasa — query DB
+    result = await db.execute(select(User).where(User.username == username))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
+
+    return {
+        "username":          user.username,
+        "nama_lengkap":      user.nama_lengkap,
+        "role":              user.role.value,
+        "is_active":         user.is_active,
+        "gsheet_url":        user.gsheet_url,
+        "gsheet_sheet_name": user.gsheet_sheet_name,
+        "created_at":        user.created_at.isoformat() if user.created_at else None,
+        "created_by":        user.created_by,
+    }
+
+
+# ── PUT /password — non-superuser only ───────────────────────────────────────
+@router.put("/password")
+async def change_password(
+    payload: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password lama tidak sesuai",
+        )
+
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Konfirmasi password tidak cocok",
+        )
+
+    if verify_password(payload.new_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password baru tidak boleh sama dengan password lama",
+        )
+
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one()
+    user.password_hash = hash_password(payload.new_password)
+
+    # Revoke semua refresh token
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == current_user.id)
+        .where(RefreshToken.is_revoked == False)
+        .values(is_revoked=True)
+    )
+
+    await db.commit()
+    return {"ok": True, "message": "Password berhasil diubah. Silakan login ulang."}
+
+
+# ── PUT /gsheet — PTL only ────────────────────────────────────────────────────
+@router.put("/gsheet")
+async def update_gsheet(
+    payload: UpdateGSheetRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != RoleEnum.ptl:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Hanya PTL yang bisa update GSheet info",
+        )
+
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one()
+    user.gsheet_url        = payload.gsheet_url.strip() if payload.gsheet_url else None
+    user.gsheet_sheet_name = payload.gsheet_sheet_name.strip() if payload.gsheet_sheet_name else None
+
+    await db.commit()
+    return {
+        "ok":                True,
+        "gsheet_url":        user.gsheet_url,
+        "gsheet_sheet_name": user.gsheet_sheet_name,
+    }
