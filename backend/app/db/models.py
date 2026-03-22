@@ -59,6 +59,8 @@ class User(Base):
     sync_logs              : Mapped[list["SyncLog"]]             = relationship(back_populates="ptl_user", foreign_keys="SyncLog.ptl_user_id")
     sync_mismatches        : Mapped[list["SyncMismatch"]]        = relationship(back_populates="ptl_user")
     password_reset_requests: Mapped[list["PasswordResetRequest"]]= relationship(back_populates="user", cascade="all, delete-orphan")
+    presets                : Mapped[list["UserPreset"]]          = relationship(back_populates="user", cascade="all, delete-orphan")
+    column_config          : Mapped[Optional["UserColumnConfig"]] = relationship(back_populates="user", uselist=False, cascade="all, delete-orphan")
 
 
 # ── refresh_tokens ────────────────────────────────────────────────────────────
@@ -149,3 +151,39 @@ class PasswordResetRequest(Base):
     completed_by : Mapped[Optional[str]]        = mapped_column(String(50), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="password_reset_requests")
+
+# ── user_presets ──────────────────────────────────────────────────────────────
+class UserPreset(Base):
+    """
+    Preset kolom tabel per user.
+    scope: 'engineer' | 'ptl'
+    activePresetId tetap di localStorage.
+    """
+    __tablename__ = "user_presets"
+
+    id         : Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id    : Mapped[uuid.UUID]     = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    scope      : Mapped[str]           = mapped_column(String(20), nullable=False)
+    name       : Mapped[str]           = mapped_column(String(100), nullable=False)
+    columns    : Mapped[list]          = mapped_column(JSON, nullable=False, default=list)
+    widths     : Mapped[dict]          = mapped_column(JSON, nullable=True, default=dict)
+    created_at : Mapped[datetime]      = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at : Mapped[datetime]      = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user: Mapped["User"] = relationship(back_populates="presets")
+
+
+# ── user_column_config ────────────────────────────────────────────────────────
+class UserColumnConfig(Base):
+    """
+    Konfigurasi kolom editable per user (Engineer).
+    Satu baris per user — upsert saat update.
+    """
+    __tablename__ = "user_column_config"
+
+    id               : Mapped[int]       = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id          : Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
+    editable_columns : Mapped[list]      = mapped_column(JSON, nullable=False, default=list)
+    updated_at       : Mapped[datetime]  = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user: Mapped["User"] = relationship(back_populates="column_config")
