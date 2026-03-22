@@ -4,9 +4,11 @@ Phase 2 + Phase 4 + Phase 7 (bugfix) + PTL GSheet own data:
 - Engineer: semua data
 - PTL: baca dari GSheet sendiri (/ptl-sheet), update tulis ke GSheet PTL
 - Mitra: filter by MITRA_COLUMN_NAME, update dengan validasi role_table_config DB
+- Auto update Status PA + Kategori PA saat Status Pekerjaan diupdate
 """
 import json
 import re
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +26,9 @@ from app.services.sheet_writer import update_cells, update_cells_external
 from app.services.status_reader import read_status_master
 from app.services.role_config_service import get_config
 from app.services.sync_engine import read_ptl_sheet
+from app.services.opsi_reader import get_opsi_mapping
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["records"])
 
@@ -40,6 +45,32 @@ def _sanitize(value: str) -> str:
 def _extract_spreadsheet_id(url: str):
     match = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", url)
     return match.group(1) if match else None
+
+
+def _enrich_updates_with_opsi(updates: dict, status: str) -> dict:
+    """
+    Lookup sheet Opsi berdasarkan Status Pekerjaan,
+    tambahkan Status PA dan Kategori PA ke updates jika ditemukan.
+    Jika gagal baca Opsi, log warning dan lanjut tanpa error
+    agar update Status Pekerjaan tetap berhasil.
+    """
+    try:
+        mapping = get_opsi_mapping()
+        if status in mapping:
+            opsi = mapping[status]
+            if opsi.get("Status PA"):
+                updates["Status PA"] = opsi["Status PA"]
+            if opsi.get("Kategori PA"):
+                updates["Kategori PA"] = opsi["Kategori PA"]
+            logger.info(
+                f"[opsi] '{status}' → Status PA='{opsi.get('Status PA')}', "
+                f"Kategori PA='{opsi.get('Kategori PA')}'"
+            )
+        else:
+            logger.warning(f"[opsi] Status Pekerjaan '{status}' tidak ditemukan di sheet Opsi")
+    except Exception as e:
+        logger.warning(f"[opsi] Gagal baca sheet Opsi: {e} — Status PA & Kategori PA tidak diupdate")
+    return updates
 
 
 class StatusUpdatePayload(BaseModel):
@@ -235,6 +266,9 @@ def update_record_status_by_id(
     if detail:
         updates[master["detail_column"]] = detail
 
+    # Auto-update Status PA + Kategori PA dari sheet Opsi
+    updates = _enrich_updates_with_opsi(updates, status)
+
     update_cells(row_id=row_id, updates=updates)
     return {"ok": True, "record_id": record_id, "row_id": row_id, "status": status, "detail": detail or "-"}
 
@@ -271,10 +305,6 @@ def update_record_status(
     status = payload.status.strip()
     detail = (payload.detail or "").strip()
 
-    print(f"[update_record_status] master={master}")
-    print(f"[update_record_status] status_column={master['status_column']}, detail_column={master['detail_column']}")
-    print(f"[update_record_status] updates akan dikirim: status={status}, detail={detail}")
-
     if status not in master["mapping"]:
         raise HTTPException(status_code=400, detail=f"Status '{status}' tidak valid")
     if detail and detail not in master["mapping"][status]:
@@ -284,7 +314,9 @@ def update_record_status(
     if detail:
         updates[master["detail_column"]] = detail
 
-    print(f"[update_record_status] updates dict: {updates}")
+    # Auto-update Status PA + Kategori PA dari sheet Opsi
+    updates = _enrich_updates_with_opsi(updates, status)
+
     update_cells(row_id=row_id, updates=updates)
     return {"ok": True, "row_id": row_id, "status": status, "detail": detail or "-"}
 

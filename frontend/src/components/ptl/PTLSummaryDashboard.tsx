@@ -1,15 +1,30 @@
 /**
  * PTLSummaryDashboard.tsx
- * Dashboard statistik khusus PTL — fetch dari /records/ptl-sheet.
- * Chart primitives direplikasi lokal (sama seperti SummaryDashboard engineer).
+ * Dashboard statistik PTL — tampilan sama dengan Engineer.
+ * Data dari GSheet PTL sendiri (props records dari PTLDashboardPanel).
+ * Threshold aging dibaca dari backend (read-only untuk PTL).
  */
-import { useMemo } from "react";
-import { calcAging, AGING_TIER_STYLES } from "../../utils/aging";
+import { useMemo, useState, useEffect } from "react";
+import { calcAging, getAgingTierStyles, DEFAULT_THRESHOLDS } from "../../utils/aging";
+import type { AgingThresholds } from "../../utils/aging";
+import { settingsApi } from "../../services/settingsApi";
 
-// ─── KPI Card ────────────────────────────────────────────────────────────────
+const AGING_COLORS = { safe: "#10b981", warning: "#f59e0b", danger: "#f97316", critical: "#ef4444" } as const;
+const CHART_COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#ec4899","#84cc16","#14b8a6"];
+
+interface SheetRecord {
+  id:     string;
+  row_id: number;
+  data:   Record<string, string>;
+}
+
+interface Props {
+  records: SheetRecord[];
+}
+
+// ─── KPI Card ─────────────────────────────────────────────────────────────────
 function KpiCard({ label, value, sub, accent, icon }: {
-  label: string; value: number | string; sub?: string;
-  accent: string; icon: React.ReactNode;
+  label: string; value: number | string; sub?: string; accent: string; icon: React.ReactNode;
 }) {
   return (
     <div className="kpi-card">
@@ -25,57 +40,14 @@ function KpiCard({ label, value, sub, accent, icon }: {
   );
 }
 
-// ─── Donut Chart ──────────────────────────────────────────────────────────────
-function DonutChart({ data }: { data: { label: string; value: number; color: string }[] }) {
-  const total = data.reduce((s, d) => s + d.value, 0);
-  if (total === 0) return <div className="text-center py-8 text-sm" style={{ color: "var(--text-muted)" }}>Tidak ada data</div>;
-
-  const R = 42; const C = 2 * Math.PI * R;
-  let cum = 0;
-  const segs = data.filter(d => d.value > 0).map(d => {
-    const pct = d.value / total * 100;
-    const off = cum; cum += pct;
-    return { ...d, pct, off };
-  });
-
-  return (
-    <div className="flex items-center gap-5">
-      <div className="relative shrink-0">
-        <svg width="110" height="110" viewBox="0 0 110 110" className="-rotate-90">
-          <circle cx="55" cy="55" r={R} fill="none" stroke="var(--border)" strokeWidth="14" />
-          {segs.map((s, i) => (
-            <circle key={i} cx="55" cy="55" r={R} fill="none" stroke={s.color}
-              strokeWidth="14"
-              strokeDasharray={`${(s.pct / 100) * C} ${C}`}
-              strokeDashoffset={-((s.off / 100) * C)}
-            />
-          ))}
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-lg font-extrabold" style={{ color: "var(--text-primary)" }}>{total}</span>
-          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>total</span>
-        </div>
-      </div>
-      <div className="flex flex-col gap-2 flex-1 min-w-0">
-        {segs.map((s, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: s.color }} />
-            <span className="text-xs flex-1 truncate" style={{ color: "var(--text-secondary)" }} title={s.label}>{s.label}</span>
-            <span className="text-xs font-bold ml-1 font-mono-data" style={{ color: "var(--text-primary)" }}>{s.value}</span>
-            <span className="text-[10px] w-8 text-right" style={{ color: "var(--text-muted)" }}>{s.pct.toFixed(0)}%</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ─── Horizontal Bar ───────────────────────────────────────────────────────────
-function HBar({ label, value, max, color, pct }: { label: string; value: number; max: number; color: string; pct?: string }) {
+function HBar({ label, value, max, color, pct }: {
+  label: string; value: number; max: number; color: string; pct?: string;
+}) {
   const w = max > 0 ? (value / max) * 100 : 0;
   return (
     <div className="flex items-center gap-3">
-      <span className="text-xs w-32 truncate shrink-0" style={{ color: "var(--text-secondary)" }} title={label}>{label}</span>
+      <span className="text-xs w-36 truncate shrink-0" style={{ color: "var(--text-secondary)" }} title={label}>{label}</span>
       <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: "var(--border)" }}>
         <div className="h-full rounded-full transition-all" style={{ width: `${w}%`, background: color }} />
       </div>
@@ -86,7 +58,9 @@ function HBar({ label, value, max, color, pct }: { label: string; value: number;
 }
 
 // ─── Section Card ─────────────────────────────────────────────────────────────
-function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+function SectionCard({ title, subtitle, children }: {
+  title: string; subtitle?: string; children: React.ReactNode;
+}) {
   return (
     <div className="rounded-2xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
       <div className="mb-4">
@@ -98,97 +72,92 @@ function SectionCard({ title, subtitle, children }: { title: string; subtitle?: 
   );
 }
 
-const AGING_COLORS = { safe: "#10b981", warning: "#f59e0b", danger: "#f97316", critical: "#ef4444" } as const;
-const CHART_COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#ec4899","#84cc16","#14b8a6"];
-
-// ─── Props ─────────────────────────────────────────────────────────────────────
-interface SheetRecord {
-  id:     string;
-  row_id: number;
-  data:   Record<string, string>;
-}
-
-interface Props {
-  records: SheetRecord[];
-  loading: boolean;
-}
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
-export default function PTLSummaryDashboard({ records, loading }: Props) {
+export default function PTLSummaryDashboard({ records }: Props) {
+  const [thresholds, setThresholds] = useState<AgingThresholds>(DEFAULT_THRESHOLDS);
+  const tglCol = "TGL TERBIT PA";
 
+  // Fetch threshold dari backend saat mount (read-only untuk PTL)
+  useEffect(() => {
+    settingsApi.getAgingThresholds()
+      .then(setThresholds)
+      .catch(() => {});
+  }, []);
+
+  const tierStyles = useMemo(() => getAgingTierStyles(thresholds), [thresholds]);
+
+  // ─── Stats ───────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
-    const byStatus:  Record<string, number> = {};
-    const byLayanan: Record<string, number> = {};
-    const byRegional: Record<string, number> = {};
+    const byStatusPekerjaan: Record<string, number> = {};
+    const byLayanan:         Record<string, number> = {};
+    const byJenisMutasi:     Record<string, number> = {};
+    const byStatusPA:        Record<string, number> = {};
     const agingTiers = { safe: 0, warning: 0, danger: 0, critical: 0 };
 
     records.forEach(r => {
-      // Cari kolom status (fleksibel — PTL sheet mungkin pakai nama berbeda)
-      const statusVal = r.data["StatusPekerjaan"] || r.data["Status"] || r.data["STATUS"] || "Tidak Diketahui";
-      const layanan   = (r.data["LAYANAN"] || r.data["Layanan"] || "Lainnya").split(" - ")[0].trim();
-      const regional  = r.data["REGIONAL"] || r.data["Regional"] || "Lainnya";
-      const tglCol    = r.data["TGL TERBIT PA"] || r.data["Tgl Terbit PA"] || r.data["TGL PA"] || "";
+      // Status Pekerjaan — hanya yang Status PA = On Progress
+      if ((r.data["Status PA"] || "") === "On Progress") {
+        const sp = r.data["Status Pekerjaan"] || "Tidak Diketahui";
+        byStatusPekerjaan[sp] = (byStatusPekerjaan[sp] || 0) + 1;
+      }
 
-      byStatus[statusVal]   = (byStatus[statusVal] || 0) + 1;
-      byLayanan[layanan]    = (byLayanan[layanan] || 0) + 1;
-      byRegional[regional]  = (byRegional[regional] || 0) + 1;
+      const spa = r.data["Status PA"] || "Tidak Diketahui";
+      byStatusPA[spa] = (byStatusPA[spa] || 0) + 1;
 
-      const aging = calcAging(tglCol);
+      const layanan = (r.data["LAYANAN"] || "Lainnya").split(" - ")[0].trim();
+      byLayanan[layanan] = (byLayanan[layanan] || 0) + 1;
+
+      const mutasi = r.data["JENIS MUTASI"] || "Lainnya";
+      byJenisMutasi[mutasi] = (byJenisMutasi[mutasi] || 0) + 1;
+
+      const aging = calcAging(r.data[tglCol], thresholds);
       if (aging) agingTiers[aging.tier]++;
     });
 
-    const total   = records.length;
-    const done    = byStatus["Done BAI"] || 0;
-    const onProg  = total - done;
-    const donePct = total > 0 ? Math.round((done / total) * 100) : 0;
+    const total      = records.length;
+    const doneBai    = byStatusPA["Done BAI"]    || 0;
+    const onProgress = byStatusPA["On Progress"] || 0;
+    const paCancel   = byStatusPA["PA Cancel"]   || 0;
+    const donePct    = total > 0 ? Math.round((doneBai / total) * 100) : 0;
 
-    return { byStatus, byLayanan, byRegional, agingTiers, total, done, onProg, donePct };
-  }, [records]);
+    return {
+      byStatusPekerjaan, byLayanan, byJenisMutasi, byStatusPA,
+      agingTiers, total, doneBai, onProgress, paCancel, donePct,
+    };
+  }, [records, thresholds]);
 
-  const statusChartData = useMemo(() =>
-    Object.entries(stats.byStatus)
-      .sort((a, b) => b[1] - a[1])
-      .map(([label, value], i) => ({ label, value, color: CHART_COLORS[i % CHART_COLORS.length] }))
-  , [stats.byStatus]);
-
-  const maxLayanan  = Math.max(...Object.values(stats.byLayanan), 1);
-  const maxRegional = Math.max(...Object.values(stats.byRegional), 1);
-  const totalLayanan  = Object.values(stats.byLayanan).reduce((a, b) => a + b, 0);
-  const totalRegional = Object.values(stats.byRegional).reduce((a, b) => a + b, 0);
-
-  if (loading) {
-    return (
-      <div className="p-6 flex items-center justify-center h-full">
-        <span className="text-sm" style={{ color: "var(--text-muted)" }}>Memuat data GSheet PTL...</span>
-      </div>
-    );
-  }
+  const maxSP      = Math.max(...Object.values(stats.byStatusPekerjaan), 1);
+  const maxLayanan = Math.max(...Object.values(stats.byLayanan), 1);
+  const maxMutasi  = Math.max(...Object.values(stats.byJenisMutasi), 1);
+  const totalSP    = Object.values(stats.byStatusPekerjaan).reduce((a, b) => a + b, 0);
+  const totalLay   = Object.values(stats.byLayanan).reduce((a, b) => a + b, 0);
+  const totalMut   = Object.values(stats.byJenisMutasi).reduce((a, b) => a + b, 0);
 
   return (
     <div className="p-4 md:p-5 space-y-4 overflow-auto h-full custom-scrollbar view-enter pb-20 md:pb-5">
 
-      {/* KPI Cards */}
+      {/* ── KPI Cards — by Status PA ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <KpiCard label="Total PA" value={stats.total} sub="Semua record aktif" accent="#3b82f6"
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
         />
-        <KpiCard label="Done BAI" value={stats.done} sub={`${stats.donePct}% selesai`} accent="#10b981"
+        <KpiCard label="Done BAI" value={stats.doneBai} sub={`${stats.donePct}% selesai`} accent="#10b981"
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
         />
-        <KpiCard label="On Progress" value={stats.onProg} sub="Selain Done BAI" accent="#f59e0b"
+        <KpiCard label="On Progress" value={stats.onProgress} sub="Status PA = On Progress" accent="#f59e0b"
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
         />
-        <KpiCard label="Aging Kritis" value={stats.agingTiers.critical} sub=">90 hari berjalan" accent="#ef4444"
-          icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>}
+        <KpiCard label="PA Cancel" value={stats.paCancel} sub="Status PA = PA Cancel" accent="#ef4444"
+          icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
         />
       </div>
 
-      {/* Progress Bar */}
+      {/* ── Progress Bar ── */}
       <div className="rounded-2xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Progress Penyelesaian</h3>
-            <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Done BAI dari total PA milik saya</p>
+            <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Status PA: Done BAI dari total PA</p>
           </div>
           <span className="text-2xl font-extrabold"
             style={{ color: stats.donePct >= 70 ? "#10b981" : stats.donePct >= 40 ? "#f59e0b" : "#ef4444" }}>
@@ -199,22 +168,34 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
           <div className="h-full rounded-full transition-all duration-700"
             style={{
               width: `${stats.donePct}%`,
-              background: stats.donePct >= 70 ? "linear-gradient(90deg, #10b981, #34d399)"
-                : stats.donePct >= 40 ? "linear-gradient(90deg, #f59e0b, #fbbf24)"
-                : "linear-gradient(90deg, #ef4444, #f87171)"
+              background: stats.donePct >= 70
+                ? "linear-gradient(90deg, #10b981, #34d399)"
+                : stats.donePct >= 40
+                ? "linear-gradient(90deg, #f59e0b, #fbbf24)"
+                : "linear-gradient(90deg, #ef4444, #f87171)",
             }}
           />
         </div>
         <div className="flex justify-between mt-2">
-          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{stats.done} Done BAI</span>
-          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{stats.onProg} On Progress</span>
+          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{stats.doneBai} Done BAI</span>
+          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{stats.onProgress} On Progress · {stats.paCancel} PA Cancel</span>
         </div>
       </div>
 
-      {/* Charts Row */}
+      {/* ── Chart Row — 3 Bar Horizontal ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
-        <SectionCard title="Distribusi Status" subtitle="Berdasarkan status pekerjaan">
-          <DonutChart data={statusChartData} />
+
+        <SectionCard title="Per Status Pekerjaan On Progress" subtitle="Filter: Status PA = On Progress">
+          <div className="space-y-2.5">
+            {Object.entries(stats.byStatusPekerjaan)
+              .sort((a, b) => b[1] - a[1])
+              .map(([sp, count], i) => (
+                <HBar key={sp} label={sp} value={count} max={maxSP}
+                  color={CHART_COLORS[i % CHART_COLORS.length]}
+                  pct={`${Math.round(count / totalSP * 100)}%`}
+                />
+              ))}
+          </div>
         </SectionCard>
 
         <SectionCard title="Per Layanan" subtitle="Jenis layanan">
@@ -223,33 +204,40 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
               .sort((a, b) => b[1] - a[1])
               .map(([lay, count], i) => (
                 <HBar key={lay} label={lay} value={count} max={maxLayanan}
-                  color={CHART_COLORS[i % CHART_COLORS.length]}
-                  pct={`${Math.round(count / totalLayanan * 100)}%`}
+                  color={CHART_COLORS[(i + 3) % CHART_COLORS.length]}
+                  pct={`${Math.round(count / totalLay * 100)}%`}
                 />
               ))}
           </div>
         </SectionCard>
 
-        <SectionCard title="Per Regional" subtitle="Distribusi wilayah">
+        <SectionCard title="Per Jenis Mutasi" subtitle="Kolom JENIS MUTASI">
           <div className="space-y-2.5">
-            {Object.entries(stats.byRegional)
+            {Object.entries(stats.byJenisMutasi)
               .sort((a, b) => b[1] - a[1])
-              .map(([reg, count], i) => (
-                <HBar key={reg} label={reg} value={count} max={maxRegional}
-                  color={CHART_COLORS[(i + 3) % CHART_COLORS.length]}
-                  pct={`${Math.round(count / totalRegional * 100)}%`}
+              .map(([mut, count], i) => (
+                <HBar key={mut} label={mut} value={count} max={maxMutasi}
+                  color={CHART_COLORS[(i + 6) % CHART_COLORS.length]}
+                  pct={`${Math.round(count / totalMut * 100)}%`}
                 />
               ))}
           </div>
         </SectionCard>
       </div>
 
-      {/* Aging Distribution */}
-      <SectionCard title="Distribusi Aging PA" subtitle="Durasi dari Tgl Terbit PA hingga hari ini">
+      {/* ── Distribusi Aging — read-only untuk PTL ── */}
+      <div className="rounded-2xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+        <div className="mb-4">
+          <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Distribusi Aging PA</h3>
+          <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+            {`Tier: ≤${thresholds.tier1}h · ≤${thresholds.tier2}h · ≤${thresholds.tier3}h · >${thresholds.tier3}h`}
+          </p>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {(Object.entries(stats.agingTiers) as [keyof typeof AGING_TIER_STYLES, number][]).map(([tier, count]) => {
-            const s   = AGING_TIER_STYLES[tier];
-            const pct = stats.total > 0 ? Math.round(count / stats.total * 100) : 0;
+          {(["safe", "warning", "danger", "critical"] as const).map(tier => {
+            const count = stats.agingTiers[tier];
+            const s     = tierStyles[tier];
+            const pct   = stats.total > 0 ? Math.round(count / stats.total * 100) : 0;
             return (
               <div key={tier} className="rounded-xl p-4 text-center"
                 style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}>
@@ -261,7 +249,7 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
             );
           })}
         </div>
-      </SectionCard>
+      </div>
 
     </div>
   );

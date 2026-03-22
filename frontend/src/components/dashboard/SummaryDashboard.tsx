@@ -1,13 +1,16 @@
-import { useMemo } from "react";
-import { useTaskStore } from "../../state/taskStore";
-import { useAppearanceStore } from "../../state/appearanceStore";
-import { getColorTheme } from "../../utils/colorPalette";
-import { calcAging, AGING_TIER_STYLES } from "../../utils/aging";
+import { useMemo, useState, useEffect, useCallback } from "react";
+import { useTaskStore }      from "../../state/taskStore";
+import { useAuthStore }      from "../../state/authStore";
+import { calcAging, getAgingTierStyles, DEFAULT_THRESHOLDS } from "../../utils/aging";
+import type { AgingThresholds }  from "../../utils/aging";
+import { settingsApi }           from "../../services/settingsApi";
 
-// ─── KPI Card ────────────────────────────────────────────────────────────────
+const AGING_COLORS = { safe: "#10b981", warning: "#f59e0b", danger: "#f97316", critical: "#ef4444" } as const;
+const CHART_COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#ec4899","#84cc16","#14b8a6"];
+
+// ─── KPI Card ─────────────────────────────────────────────────────────────────
 function KpiCard({ label, value, sub, accent, icon }: {
-  label: string; value: number | string; sub?: string;
-  accent: string; icon: React.ReactNode;
+  label: string; value: number | string; sub?: string; accent: string; icon: React.ReactNode;
 }) {
   return (
     <div className="kpi-card">
@@ -23,57 +26,14 @@ function KpiCard({ label, value, sub, accent, icon }: {
   );
 }
 
-// ─── Donut Chart ──────────────────────────────────────────────────────────────
-function DonutChart({ data }: { data: { label: string; value: number; color: string }[] }) {
-  const total = data.reduce((s, d) => s + d.value, 0);
-  if (total === 0) return <div className="text-center py-8 text-sm" style={{ color: "var(--text-muted)" }}>Tidak ada data</div>;
-
-  const R = 42; const C = 2 * Math.PI * R;
-  let cum = 0;
-  const segs = data.filter(d => d.value > 0).map(d => {
-    const pct = d.value / total * 100;
-    const off = cum; cum += pct;
-    return { ...d, pct, off };
-  });
-
-  return (
-    <div className="flex items-center gap-5">
-      <div className="relative shrink-0">
-        <svg width="110" height="110" viewBox="0 0 110 110" className="-rotate-90">
-          <circle cx="55" cy="55" r={R} fill="none" stroke="var(--border)" strokeWidth="14" />
-          {segs.map((s, i) => (
-            <circle key={i} cx="55" cy="55" r={R} fill="none" stroke={s.color}
-              strokeWidth="14"
-              strokeDasharray={`${(s.pct / 100) * C} ${C}`}
-              strokeDashoffset={-((s.off / 100) * C)}
-            />
-          ))}
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-lg font-extrabold" style={{ color: "var(--text-primary)" }}>{total}</span>
-          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>total</span>
-        </div>
-      </div>
-      <div className="flex flex-col gap-2 flex-1 min-w-0">
-        {segs.map((s, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: s.color }} />
-            <span className="text-xs flex-1 truncate" style={{ color: "var(--text-secondary)" }} title={s.label}>{s.label}</span>
-            <span className="text-xs font-bold ml-1 font-mono-data" style={{ color: "var(--text-primary)" }}>{s.value}</span>
-            <span className="text-[10px] w-8 text-right" style={{ color: "var(--text-muted)" }}>{s.pct.toFixed(0)}%</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ─── Horizontal Bar ───────────────────────────────────────────────────────────
-function HBar({ label, value, max, color, pct }: { label: string; value: number; max: number; color: string; pct?: string }) {
+function HBar({ label, value, max, color, pct }: {
+  label: string; value: number; max: number; color: string; pct?: string;
+}) {
   const w = max > 0 ? (value / max) * 100 : 0;
   return (
     <div className="flex items-center gap-3">
-      <span className="text-xs w-32 truncate shrink-0" style={{ color: "var(--text-secondary)" }} title={label}>{label}</span>
+      <span className="text-xs w-36 truncate shrink-0" style={{ color: "var(--text-secondary)" }} title={label}>{label}</span>
       <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: "var(--border)" }}>
         <div className="h-full rounded-full transition-all" style={{ width: `${w}%`, background: color }} />
       </div>
@@ -83,149 +43,259 @@ function HBar({ label, value, max, color, pct }: { label: string; value: number;
   );
 }
 
-// ─── Aging Tier Row ───────────────────────────────────────────────────────────
-const AGING_COLORS = { safe: "#10b981", warning: "#f59e0b", danger: "#f97316", critical: "#ef4444" } as const;
-
 // ─── Section Card ─────────────────────────────────────────────────────────────
-function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+function SectionCard({ title, subtitle, action, children }: {
+  title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode;
+}) {
   return (
     <div className="rounded-2xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
-      <div className="mb-4">
-        <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{title}</h3>
-        {subtitle && <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{subtitle}</p>}
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{title}</h3>
+          {subtitle && <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{subtitle}</p>}
+        </div>
+        {action}
       </div>
       {children}
     </div>
   );
 }
 
+// ─── Aging Threshold Modal ─────────────────────────────────────────────────────
+function AgingSettingsModal({ thresholds, onSave, onClose }: {
+  thresholds: AgingThresholds;
+  onSave: (t: AgingThresholds) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [t1, setT1] = useState(String(thresholds.tier1));
+  const [t2, setT2] = useState(String(thresholds.tier2));
+  const [t3, setT3] = useState(String(thresholds.tier3));
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState("");
+
+  const handleSave = async () => {
+    const n1 = parseInt(t1), n2 = parseInt(t2), n3 = parseInt(t3);
+    if (!n1 || !n2 || !n3 || n1 <= 0 || n2 <= n1 || n3 <= n2) {
+      setError("Harus: Tier 1 < Tier 2 < Tier 3 dan semua > 0");
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave({ tier1: n1, tier2: n2, tier3: n3 });
+      onClose();
+    } catch {
+      setError("Gagal menyimpan");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputStyle = {
+    background: "var(--input-bg)", border: "1px solid var(--input-border)",
+    color: "var(--text-primary)", borderRadius: 8, padding: "6px 10px",
+    fontSize: 13, outline: "none", width: "80px", textAlign: "center" as const,
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.5)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4"
+        style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h3 className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>Pengaturan Aging</h3>
+            <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Batas hari per tier</p>
+          </div>
+          <button onClick={onClose} style={{ color: "var(--text-muted)" }}>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {[
+            { label: "Tier 1 — Safe s.d.", color: AGING_COLORS.safe, val: t1, set: setT1, hint: "hari" },
+            { label: "Tier 2 — Warning s.d.", color: AGING_COLORS.warning, val: t2, set: setT2, hint: "hari" },
+            { label: "Tier 3 — Danger s.d.", color: AGING_COLORS.danger, val: t3, set: setT3, hint: "hari" },
+          ].map(({ label, color, val, set, hint }) => (
+            <div key={label} className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
+                <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{label}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <input type="number" min="1" value={val} onChange={e => set(e.target.value)} style={inputStyle} />
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>{hint}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-3 text-[11px] px-1" style={{ color: "var(--text-muted)" }}>
+          Critical = lebih dari Tier 3 hari
+        </div>
+
+        {error && (
+          <div className="mt-3 rounded-lg px-3 py-2 text-xs" style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444" }}>
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-2 mt-5">
+          <button onClick={onClose}
+            className="flex-1 px-4 py-2.5 rounded-xl text-sm"
+            style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
+            Batal
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white"
+            style={{ background: "var(--accent)", opacity: saving ? 0.6 : 1 }}>
+            {saving ? "Menyimpan..." : "Simpan"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function SummaryDashboard() {
-  const records      = useTaskStore(s => s.records);
-  const statusMaster = useTaskStore(s => s.statusMaster);
-  const columnColors = useAppearanceStore(s => s.columnColors);
+  const records  = useTaskStore(s => s.records);
+  const { user } = useAuthStore();
 
-  const statusCol = statusMaster?.status_column ?? "StatusPekerjaan";
-  const tglCol    = "TGL TERBIT PA";
+  const [thresholds, setThresholds]         = useState<AgingThresholds>(DEFAULT_THRESHOLDS);
+  const [showAgingSettings, setShowAging]   = useState(false);
+  const tglCol = "TGL TERBIT PA";
 
-  // ─── Stats ─────────────────────────────────────────────────────────────
+  // Fetch threshold dari backend saat mount
+  useEffect(() => {
+    settingsApi.getAgingThresholds()
+      .then(setThresholds)
+      .catch(() => {}); // fallback ke default
+  }, []);
+
+  const handleSaveThresholds = async (t: AgingThresholds) => {
+    await settingsApi.updateAgingThresholds(t);
+    setThresholds(t);
+  };
+
+  const tierStyles = useMemo(() => getAgingTierStyles(thresholds), [thresholds]);
+
+  // ─── Stats ───────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
-    const byStatus: Record<string, number> = {};
-    const byRegional: Record<string, number> = {};
-    const byLayanan: Record<string, number> = {};
+    const byStatusPekerjaan: Record<string, number> = {};
+    const byLayanan:         Record<string, number> = {};
+    const byJenisMutasi:     Record<string, number> = {};
+    const byStatusPA:        Record<string, number> = {};
     const agingTiers = { safe: 0, warning: 0, danger: 0, critical: 0 };
 
     records.forEach(r => {
-      const status   = r.data[statusCol] || "Tidak Diketahui";
-      const regional = r.data["REGIONAL"] || "Lainnya";
-      const layanan  = (r.data["LAYANAN"] || "Lainnya").split(" - ")[0].trim();
+      // Status Pekerjaan — hanya yang Status PA = On Progress
+      if ((r.data["Status PA"] || "") === "On Progress") {
+        const sp = r.data["Status Pekerjaan"] || "Tidak Diketahui";
+        byStatusPekerjaan[sp] = (byStatusPekerjaan[sp] || 0) + 1;
+      }
 
-      byStatus[status]     = (byStatus[status] || 0) + 1;
-      byRegional[regional] = (byRegional[regional] || 0) + 1;
-      byLayanan[layanan]   = (byLayanan[layanan] || 0) + 1;
+      // STATUS PA
+      const spa = r.data["STATUS PA"] || "Tidak Diketahui";
+      byStatusPA[spa] = (byStatusPA[spa] || 0) + 1;
 
-      const aging = calcAging(r.data[tglCol]);
+      // Layanan — ambil bagian pertama sebelum " - "
+      const layanan = (r.data["LAYANAN"] || "Lainnya").split(" - ")[0].trim();
+      byLayanan[layanan] = (byLayanan[layanan] || 0) + 1;
+
+      // Jenis Mutasi
+      const mutasi = r.data["JENIS MUTASI"] || "Lainnya";
+      byJenisMutasi[mutasi] = (byJenisMutasi[mutasi] || 0) + 1;
+
+      // Aging
+      const aging = calcAging(r.data[tglCol], thresholds);
       if (aging) agingTiers[aging.tier]++;
     });
 
-    const total    = records.length;
-    const done     = byStatus["Done BAI"] || 0;
-    const onProg   = total - done; // Semua kecuali Done BAI
-    const donePct  = total > 0 ? Math.round((done / total) * 100) : 0;
+    const total      = records.length;
+    const doneBai    = byStatusPA["Done BAI"]    || 0;
+    const onProgress = byStatusPA["On Progress"] || 0;
+    const paCancel   = byStatusPA["PA Cancel"]   || 0;
+    const donePct    = total > 0 ? Math.round((doneBai / total) * 100) : 0;
 
-    return { byStatus, byRegional, byLayanan, agingTiers, total, done, onProg, donePct };
-  }, [records, statusCol]);
+    return {
+      byStatusPekerjaan, byLayanan, byJenisMutasi, byStatusPA,
+      agingTiers, total, doneBai, onProgress, paCancel, donePct,
+    };
+  }, [records, thresholds]);
 
-  // ─── Chart data: urutan ikut statusMaster.primary ─────────────────────
-  const CHART_COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#ec4899","#84cc16","#14b8a6"];
+  const maxSP     = Math.max(...Object.values(stats.byStatusPekerjaan), 1);
+  const maxLayanan = Math.max(...Object.values(stats.byLayanan), 1);
+  const maxMutasi  = Math.max(...Object.values(stats.byJenisMutasi), 1);
+  const totalSP    = Object.values(stats.byStatusPekerjaan).reduce((a, b) => a + b, 0);
+  const totalLay   = Object.values(stats.byLayanan).reduce((a, b) => a + b, 0);
+  const totalMut   = Object.values(stats.byJenisMutasi).reduce((a, b) => a + b, 0);
 
-  const statusChartData = useMemo(() => {
-    const orderedStatuses = statusMaster?.primary ?? Object.keys(stats.byStatus);
-    return orderedStatuses
-      .filter(s => stats.byStatus[s] > 0)
-      .map((s, i) => ({
-        label: s,
-        value: stats.byStatus[s],
-        color: (() => { const theme = getColorTheme(columnColors[s]); return theme.id !== "gray" ? CHART_COLORS[i % CHART_COLORS.length] : CHART_COLORS[i % CHART_COLORS.length]; })(),
-      }));
-  }, [stats.byStatus, statusMaster, columnColors]);
-
-  const maxRegional = Math.max(...Object.values(stats.byRegional), 1);
-  const maxLayanan  = Math.max(...Object.values(stats.byLayanan), 1);
-  const totalRegional = Object.values(stats.byRegional).reduce((a, b) => a + b, 0);
-  const totalLayanan  = Object.values(stats.byLayanan).reduce((a, b) => a + b, 0);
-
-  const agingChartData = (Object.entries(stats.agingTiers) as [keyof typeof AGING_TIER_STYLES, number][])
-    .map(([tier, value]) => ({
-      label: AGING_TIER_STYLES[tier].label, value, color: AGING_COLORS[tier],
-    }));
-
-  // ─── Progress bar ─────────────────────────────────────────────────────
-  const progressPct = stats.donePct;
+  const isEngineer = user?.role === "engineer";
 
   return (
     <div className="p-4 md:p-5 space-y-4 overflow-auto h-full custom-scrollbar view-enter pb-20 md:pb-5">
 
-      {/* KPI Cards */}
+      {/* ── KPI Cards — by STATUS PA ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <KpiCard label="Total PA" value={stats.total} sub="Semua record aktif" accent="#3b82f6"
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
         />
-        <KpiCard label="Done BAI" value={stats.done} sub={`${stats.donePct}% selesai`} accent="#10b981"
+        <KpiCard label="Done BAI" value={stats.doneBai} sub={`${stats.donePct}% selesai`} accent="#10b981"
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
         />
-        <KpiCard label="On Progress" value={stats.onProg} sub="Semua selain Done BAI" accent="#f59e0b"
+        <KpiCard label="On Progress" value={stats.onProgress} sub="Status PA = On Progress" accent="#f59e0b"
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
         />
-        <KpiCard label="Aging Kritis" value={stats.agingTiers.critical} sub=">90 hari berjalan" accent="#ef4444"
-          icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>}
+        <KpiCard label="PA Cancel" value={stats.paCancel} sub="Status PA = PA Cancel" accent="#ef4444"
+          icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
         />
       </div>
 
-      {/* Progress Bar Completion */}
+      {/* ── Progress Bar — by STATUS PA Done BAI ── */}
       <div className="rounded-2xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Progress Penyelesaian</h3>
-            <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Done BAI dari total PA</p>
+            <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Status PA: Done BAI dari total PA</p>
           </div>
-          <span className="text-2xl font-extrabold" style={{ color: progressPct >= 70 ? "#10b981" : progressPct >= 40 ? "#f59e0b" : "#ef4444" }}>
-            {progressPct}%
+          <span className="text-2xl font-extrabold"
+            style={{ color: stats.donePct >= 70 ? "#10b981" : stats.donePct >= 40 ? "#f59e0b" : "#ef4444" }}>
+            {stats.donePct}%
           </span>
         </div>
         <div className="relative h-3 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
           <div className="h-full rounded-full transition-all duration-700"
             style={{
-              width: `${progressPct}%`,
-              background: progressPct >= 70 ? "linear-gradient(90deg, #10b981, #34d399)"
-                : progressPct >= 40 ? "linear-gradient(90deg, #f59e0b, #fbbf24)"
-                : "linear-gradient(90deg, #ef4444, #f87171)"
+              width: `${stats.donePct}%`,
+              background: stats.donePct >= 70
+                ? "linear-gradient(90deg, #10b981, #34d399)"
+                : stats.donePct >= 40
+                ? "linear-gradient(90deg, #f59e0b, #fbbf24)"
+                : "linear-gradient(90deg, #ef4444, #f87171)",
             }}
           />
         </div>
         <div className="flex justify-between mt-2">
-          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{stats.done} Done BAI</span>
-          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{stats.onProg} On Progress</span>
+          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{stats.doneBai} Done BAI</span>
+          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{stats.onProgress} On Progress · {stats.paCancel} PA Cancel</span>
         </div>
       </div>
 
-      {/* Charts Row */}
+      {/* ── Chart Row — 3 Bar Horizontal ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
 
-        {/* Distribusi Status — urutan dari statusMaster.primary */}
-        <SectionCard title="Distribusi Status" subtitle="Urutan sesuai pipeline">
-          <DonutChart data={statusChartData} />
-        </SectionCard>
-
-        {/* Per Regional */}
-        <SectionCard title="Per Regional" subtitle="Distribusi wilayah">
+        {/* Per Status Pekerjaan */}
+        <SectionCard title="Per Status Pekerjaan On Progress" subtitle="Filter: Status PA = On Progress">
           <div className="space-y-2.5">
-            {Object.entries(stats.byRegional)
+            {Object.entries(stats.byStatusPekerjaan)
               .sort((a, b) => b[1] - a[1])
-              .map(([reg, count], i) => (
-                <HBar key={reg} label={reg} value={count} max={maxRegional}
+              .map(([sp, count], i) => (
+                <HBar key={sp} label={sp} value={count} max={maxSP}
                   color={CHART_COLORS[i % CHART_COLORS.length]}
-                  pct={`${Math.round(count / totalRegional * 100)}%`}
+                  pct={`${Math.round(count / totalSP * 100)}%`}
                 />
               ))}
           </div>
@@ -239,21 +309,58 @@ export default function SummaryDashboard() {
               .map(([lay, count], i) => (
                 <HBar key={lay} label={lay} value={count} max={maxLayanan}
                   color={CHART_COLORS[(i + 3) % CHART_COLORS.length]}
-                  pct={`${Math.round(count / totalLayanan * 100)}%`}
+                  pct={`${Math.round(count / totalLay * 100)}%`}
+                />
+              ))}
+          </div>
+        </SectionCard>
+
+        {/* Per Jenis Mutasi */}
+        <SectionCard title="Per Jenis Mutasi" subtitle="Kolom JENIS MUTASI">
+          <div className="space-y-2.5">
+            {Object.entries(stats.byJenisMutasi)
+              .sort((a, b) => b[1] - a[1])
+              .map(([mut, count], i) => (
+                <HBar key={mut} label={mut} value={count} max={maxMutasi}
+                  color={CHART_COLORS[(i + 6) % CHART_COLORS.length]}
+                  pct={`${Math.round(count / totalMut * 100)}%`}
                 />
               ))}
           </div>
         </SectionCard>
       </div>
 
-      {/* Aging Distribution */}
-      <SectionCard title="Distribusi Aging PA" subtitle="Berdasarkan durasi dari Tgl Terbit PA hingga hari ini">
+      {/* ── Distribusi Aging — dengan tombol pengaturan ── */}
+      <SectionCard
+        title="Distribusi Aging PA"
+        subtitle={`Tier: ≤${thresholds.tier1}h · ≤${thresholds.tier2}h · ≤${thresholds.tier3}h · >${thresholds.tier3}h`}
+        action={
+          isEngineer ? (
+            <button
+              onClick={() => setShowAging(true)}
+              title="Atur threshold aging"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
+              style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLElement).style.color = "var(--accent)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)"; }}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Atur Tier
+            </button>
+          ) : null
+        }
+      >
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {(Object.entries(stats.agingTiers) as [keyof typeof AGING_TIER_STYLES, number][]).map(([tier, count]) => {
-            const s = AGING_TIER_STYLES[tier];
-            const pct = stats.total > 0 ? Math.round(count / stats.total * 100) : 0;
+          {(["safe", "warning", "danger", "critical"] as const).map(tier => {
+            const count = stats.agingTiers[tier];
+            const s     = tierStyles[tier];
+            const pct   = stats.total > 0 ? Math.round(count / stats.total * 100) : 0;
             return (
-              <div key={tier} className="rounded-xl p-4 text-center" style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}>
+              <div key={tier} className="rounded-xl p-4 text-center"
+                style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}>
                 <div className="w-2.5 h-2.5 rounded-full mx-auto mb-2" style={{ background: AGING_COLORS[tier] }} />
                 <p className="text-2xl font-extrabold" style={{ color: "var(--text-primary)" }}>{count}</p>
                 <p className="text-[11px] font-semibold mt-1" style={{ color: "var(--text-secondary)" }}>{s.label}</p>
@@ -264,6 +371,14 @@ export default function SummaryDashboard() {
         </div>
       </SectionCard>
 
+      {/* Modal pengaturan aging */}
+      {showAgingSettings && (
+        <AgingSettingsModal
+          thresholds={thresholds}
+          onSave={handleSaveThresholds}
+          onClose={() => setShowAging(false)}
+        />
+      )}
     </div>
   );
 }

@@ -17,7 +17,8 @@ from app.api.auth     import router as auth_router
 from app.api.admin import router as admin_router
 from app.api.role_config import router as role_config_router
 from app.api.sync    import router as sync_router
-from app.api.profile import router as profile_router
+from app.api.profile  import router as profile_router
+from app.api.settings import router as settings_router
 
 # ── Rate Limiter ──────────────────────────────────────────────────────────────
 # Default limit: 200/menit untuk semua endpoint
@@ -58,7 +59,8 @@ app.include_router(bai_router,     prefix="/api/bai")
 app.include_router(admin_router, prefix="/api/admin")
 app.include_router(role_config_router, prefix="/api/role-config")
 app.include_router(sync_router,    prefix="/api/sync")
-app.include_router(profile_router, prefix="/api/profile")
+app.include_router(profile_router,  prefix="/api/profile")
+app.include_router(settings_router, prefix="/api/settings")
 
 
 @app.get("/health")
