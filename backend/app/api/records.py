@@ -271,6 +271,10 @@ def update_record_status(
     status = payload.status.strip()
     detail = (payload.detail or "").strip()
 
+    print(f"[update_record_status] master={master}")
+    print(f"[update_record_status] status_column={master['status_column']}, detail_column={master['detail_column']}")
+    print(f"[update_record_status] updates akan dikirim: status={status}, detail={detail}")
+
     if status not in master["mapping"]:
         raise HTTPException(status_code=400, detail=f"Status '{status}' tidak valid")
     if detail and detail not in master["mapping"][status]:
@@ -280,6 +284,7 @@ def update_record_status(
     if detail:
         updates[master["detail_column"]] = detail
 
+    print(f"[update_record_status] updates dict: {updates}")
     update_cells(row_id=row_id, updates=updates)
     return {"ok": True, "row_id": row_id, "status": status, "detail": detail or "-"}
 
