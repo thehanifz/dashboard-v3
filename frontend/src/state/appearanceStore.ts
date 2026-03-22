@@ -1,15 +1,16 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import presetApi from "../services/presetApi";
 
 interface AppearanceState {
   // --- WARNA & TAMPILAN ---
-  columnColors: Record<string, string>;
-  labelColors: Record<string, string>;
-  cardFields: string[];
+  columnColors:   Record<string, string>;
+  labelColors:    Record<string, string>;
+  cardFields:     string[];
   hiddenStatuses: string[];
 
-  // --- UKURAN (BARU) ---
-  columnWidth: number; // Dalam pixel
+  // --- UKURAN ---
+  columnWidth: number;
 
   // --- FILTER ---
   activeFilters: Record<string, string[]>;
@@ -17,113 +18,109 @@ interface AppearanceState {
   // --- EDITABLE COLUMNS ---
   editableColumns: string[];
 
-  setColumnColor: (statusName: string, colorId: string) => void;
-  setLabelColor: (labelName: string, colorId: string) => void;
-  setCardFields: (fields: string[]) => void;
-  toggleStatusVisibility: (statusName: string) => void;
+  setColumnColor:        (statusName: string, colorId: string) => void;
+  setLabelColor:         (labelName: string, colorId: string) => void;
+  setCardFields:         (fields: string[]) => void;
+  toggleStatusVisibility:(statusName: string) => void;
+  setColumnWidth:        (width: number) => void;
+  toggleFilter:          (key: string, value: string) => void;
+  clearFilters:          () => void;
+  toggleEditableColumn:  (columnName: string) => void;
+  setEditableColumns:    (columnNames: string[]) => void;
+  resetDefaults:         () => void;
 
-  // Action Ukuran
-  setColumnWidth: (width: number) => void;
-
-  // Action Filter
-  toggleFilter: (key: string, value: string) => void;
-  clearFilters: () => void;
-
-  // Action Editable Columns
-  toggleEditableColumn: (columnName: string) => void;
-  setEditableColumns: (columnNames: string[]) => void;
-
-  resetDefaults: () => void;
+  // Baru: load editableColumns dari DB saat login
+  loadEditableColumnsFromDB: () => Promise<void>;
 }
 
 export const useAppearanceStore = create<AppearanceState>()(
   persist(
-    (set) => ({
-      columnColors: {},
-      labelColors: {},
-      cardFields: ["ID PA"],
+    (set, get) => ({
+      columnColors:   {},
+      labelColors:    {},
+      cardFields:     ["ID PA"],
       hiddenStatuses: [],
-
-      // Default lebar kolom standar (320px)
-      columnWidth: 320,
-
-      activeFilters: {},
-
-      // Editable columns
-      editableColumns: [],
+      columnWidth:    320,
+      activeFilters:  {},
+      editableColumns:[],
 
       setColumnColor: (statusName, colorId) =>
-        set((state) => ({
-          columnColors: { ...state.columnColors, [statusName]: colorId },
-        })),
+        set(state => ({ columnColors: { ...state.columnColors, [statusName]: colorId } })),
 
       setLabelColor: (labelName, colorId) =>
-        set((state) => ({
-          labelColors: { ...state.labelColors, [labelName]: colorId },
-        })),
+        set(state => ({ labelColors: { ...state.labelColors, [labelName]: colorId } })),
 
-      setCardFields: (fields) =>
-        set(() => ({ cardFields: fields })),
+      setCardFields: (fields) => set({ cardFields: fields }),
 
       toggleStatusVisibility: (statusName) =>
-        set((state) => {
-          const isHidden = state.hiddenStatuses.includes(statusName);
-          return {
-            hiddenStatuses: isHidden
-              ? state.hiddenStatuses.filter((s) => s !== statusName)
-              : [...state.hiddenStatuses, statusName],
-          };
-        }),
+        set(state => ({
+          hiddenStatuses: state.hiddenStatuses.includes(statusName)
+            ? state.hiddenStatuses.filter(s => s !== statusName)
+            : [...state.hiddenStatuses, statusName],
+        })),
 
-      // Set Ukuran
       setColumnWidth: (width) => set({ columnWidth: width }),
 
       toggleFilter: (key, value) =>
-        set((state) => {
-          const currentValues = state.activeFilters[key] || [];
-          let newValues;
-          if (currentValues.includes(value)) {
-            newValues = currentValues.filter((v) => v !== value);
-          } else {
-            newValues = [...currentValues, value];
-          }
+        set(state => {
+          const cur = state.activeFilters[key] || [];
+          const next = cur.includes(value) ? cur.filter(v => v !== value) : [...cur, value];
           const newFilters = { ...state.activeFilters };
-          if (newValues.length > 0) {
-            newFilters[key] = newValues;
-          } else {
-            delete newFilters[key];
-          }
+          if (next.length > 0) newFilters[key] = next; else delete newFilters[key];
           return { activeFilters: newFilters };
         }),
 
       clearFilters: () => set({ activeFilters: {} }),
 
-      // Editable columns actions
-      toggleEditableColumn: (columnName) =>
-        set((state) => {
-          const isCurrentlyEditable = state.editableColumns.includes(columnName);
-          const newEditableColumns = isCurrentlyEditable
-            ? state.editableColumns.filter(col => col !== columnName)
+      // ── toggleEditableColumn — sync ke DB ─────────────────────────────────
+      toggleEditableColumn: (columnName) => {
+        set(state => {
+          const isEditable = state.editableColumns.includes(columnName);
+          const newCols = isEditable
+            ? state.editableColumns.filter(c => c !== columnName)
             : [...state.editableColumns, columnName];
+          // Fire-and-forget sync
+          presetApi.saveEditableColumns(newCols).catch(() => {});
+          return { editableColumns: newCols };
+        });
+      },
 
-          return { editableColumns: newEditableColumns };
-        }),
-
-      setEditableColumns: (columnNames) =>
-        set(() => ({ editableColumns: columnNames })),
+      // ── setEditableColumns — sync ke DB ───────────────────────────────────
+      setEditableColumns: (columnNames) => {
+        set({ editableColumns: columnNames });
+        presetApi.saveEditableColumns(columnNames).catch(() => {});
+      },
 
       resetDefaults: () => set({
-        columnColors: {},
-        labelColors: {},
-        cardFields: [],
-        hiddenStatuses: [],
-        activeFilters: {},
-        columnWidth: 320,
-        editableColumns: []
+        columnColors:    {},
+        labelColors:     {},
+        cardFields:      [],
+        hiddenStatuses:  [],
+        activeFilters:   {},
+        columnWidth:     320,
+        editableColumns: [],
       }),
+
+      // ── Load dari DB saat login ───────────────────────────────────────────
+      loadEditableColumnsFromDB: async () => {
+        try {
+          const cols = await presetApi.getEditableColumns();
+          if (cols.length > 0) set({ editableColumns: cols });
+        } catch {}
+      },
     }),
     {
       name: "appearance-storage",
+      // editableColumns tidak di-persist ke localStorage — selalu load dari DB
+      partialize: (state) => ({
+        columnColors:   state.columnColors,
+        labelColors:    state.labelColors,
+        cardFields:     state.cardFields,
+        hiddenStatuses: state.hiddenStatuses,
+        columnWidth:    state.columnWidth,
+        activeFilters:  state.activeFilters,
+        // editableColumns sengaja TIDAK disimpan ke localStorage
+      }),
     }
   )
 );

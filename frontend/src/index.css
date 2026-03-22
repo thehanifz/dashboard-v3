@@ -76,8 +76,8 @@
   --border-strong: #484f58;
 
   --text-primary:  #e6edf3;
-  --text-secondary:#8b949e;
-  --text-muted:    #6e7681;
+  --text-secondary:#adbac7;
+  --text-muted:    #8b949e;
   --text-sidebar:  #8b949e;
   --text-sidebar-active: #ffffff;
 
@@ -296,3 +296,18 @@ body {
 .toggle-track { width: 36px; height: 20px; border-radius: 99px; position: relative; cursor: pointer; transition: background 0.2s; }
 .toggle-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: white; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.3); transition: transform 0.2s; }
 .toggle-track.on .toggle-thumb { transform: translateX(16px); }
+/* ─── Dark mode: select option & dropdown ─────────────────────────────────── */
+[data-theme="dark"] select option {
+  background: #21262d;
+  color: #e6edf3;
+}
+
+/* Preset dropdown pakai CSS var bukan bg-white hardcoded */
+[data-theme="dark"] .preset-dropdown {
+  background: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+}
+[data-theme="dark"] .preset-dropdown button:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}

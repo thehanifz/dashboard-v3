@@ -17,56 +17,78 @@ export default function EditableColumnsModal({ onClose }: Props) {
 
   const columns = activePreset?.columns || [];
 
-  const handleToggleColumn = (column: string) => {
-    toggleEditableColumn(column);
-  };
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div 
-        className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[80vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+    <div className="fixed inset-0 flex items-center justify-center z-50"
+      style={{ background: "rgba(0,0,0,0.5)" }}>
+      <div
+        className="rounded-xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col"
+        style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
+        onClick={e => e.stopPropagation()}
       >
-        <div className="p-4 border-b flex justify-between items-center">
-          <h3 className="font-semibold text-gray-800">Kolom Editable</h3>
-          <button 
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
-          >
+        {/* Header */}
+        <div className="p-4 flex justify-between items-center shrink-0"
+          style={{ borderBottom: "1px solid var(--border)" }}>
+          <h3 className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
+            Kolom Editable
+          </h3>
+          <button onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-lg leading-none transition-colors"
+            style={{ color: "var(--text-muted)" }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)"}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "transparent"}>
             &times;
           </button>
         </div>
 
-        <div className="p-4 overflow-y-auto flex-1">
-          <p className="text-sm text-gray-600 mb-3">
+        {/* Body */}
+        <div className="p-4 overflow-y-auto flex-1 custom-scrollbar">
+          <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
             Pilih kolom yang ingin dapat diedit langsung di tabel:
           </p>
-          
-          <div className="space-y-2">
-            {columns.map((column) => (
-              <div 
-                key={column} 
-                className="flex items-center justify-between p-2 hover:bg-gray-50 rounded"
-              >
-                <span className="text-sm text-gray-700">{column}</span>
-                <label className="inline-flex items-center cursor-pointer">
+
+          {columns.length === 0 && (
+            <p className="text-xs text-center py-6" style={{ color: "var(--text-muted)" }}>
+              Tidak ada kolom di preset aktif.
+            </p>
+          )}
+
+          <div className="space-y-1">
+            {columns.map(column => {
+              const isChecked = editableColumns.includes(column);
+              return (
+                <label key={column}
+                  className="flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors"
+                  style={{ background: isChecked ? "var(--accent-soft)" : "transparent" }}
+                  onMouseEnter={e => { if (!isChecked) (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)"; }}
+                  onMouseLeave={e => { if (!isChecked) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  <span className="text-xs font-medium" style={{ color: isChecked ? "var(--accent)" : "var(--text-secondary)" }}>
+                    {column}
+                  </span>
                   <input
                     type="checkbox"
-                    checked={editableColumns.includes(column)}
-                    onChange={() => handleToggleColumn(column)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    checked={isChecked}
+                    onChange={() => toggleEditableColumn(column)}
+                    className="rounded cursor-pointer"
+                    style={{ accentColor: "var(--accent)" }}
                   />
                 </label>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
-        <div className="p-4 border-t flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-          >
+        {/* Footer */}
+        <div className="p-4 shrink-0 flex justify-between items-center"
+          style={{ borderTop: "1px solid var(--border)" }}>
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+            {editableColumns.filter(c => columns.includes(c)).length} dari {columns.length} kolom dipilih
+          </span>
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-lg text-xs font-semibold text-white transition-colors"
+            style={{ background: "var(--accent)" }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--accent-hover)"}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "var(--accent)"}>
             Tutup
           </button>
         </div>

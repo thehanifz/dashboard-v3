@@ -3,16 +3,21 @@ import { CSS } from "@dnd-kit/utilities";
 import { useTaskStore } from "../../state/taskStore";
 import { useAppearanceStore } from "../../state/appearanceStore";
 import { getColorTheme } from "../../utils/colorPalette";
-import { calcAging, AGING_TIER_STYLES } from "../../utils/aging";
+import { calcAging } from "../../utils/aging";
 
-const AGING_LEFT_BORDER: Record<string, string> = {
+const AGING_COLORS: Record<string, string> = {
   safe:     "#10b981",
   warning:  "#f59e0b",
   danger:   "#f97316",
   critical: "#ef4444",
 };
 
-export default function TaskCard({ record }: { record: { row_id: number; data: Record<string, string> } }) {
+interface Props {
+  record: { row_id: number; data: Record<string, string> };
+  columnColor: string; // hex warna dari kolom induk
+}
+
+export default function TaskCard({ record, columnColor }: Props) {
   const statusMaster = useTaskStore(s => s.statusMaster);
   const updateStatus = useTaskStore(s => s.updateStatus);
   const { cardFields, labelColors } = useAppearanceStore();
@@ -36,30 +41,37 @@ export default function TaskCard({ record }: { record: { row_id: number; data: R
   const visibleKeys = Object.keys(record.data).filter(k => cardFields.includes(k));
   const finalKeys   = visibleKeys.length > 0 ? visibleKeys : ["ID PA"];
 
+  // Aging — hanya untuk badge di kartu
   const aging      = calcAging(record.data["TGL TERBIT PA"]);
   const agingTier  = aging?.tier ?? "safe";
-  const agingStyle = AGING_TIER_STYLES[agingTier];
-  const borderColor = AGING_LEFT_BORDER[agingTier];
+  const agingColor = AGING_COLORS[agingTier];
 
   return (
     <div
       ref={setNodeRef}
-      style={{ ...style, borderLeft: `3px solid ${borderColor}` } as any}
+      style={{
+        ...style,
+        borderLeft: `3px solid ${columnColor}`,  // warna ikut kolom
+      } as any}
       className="task-card p-3 text-xs cursor-grab active:cursor-grabbing"
       {...listeners}
       {...attributes}
     >
-      {/* Header: ID + aging */}
+      {/* Header: ID + aging badge */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <span className="font-extrabold text-sm font-mono-data leading-tight" style={{ color: "var(--text-primary)" }}>
           {record.data["ID PA"] || `#${record.row_id}`}
         </span>
-        {aging && (
-          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 whitespace-nowrap"
-            style={{ background: agingStyle.bg.replace("bg-", ""), color: AGING_LEFT_BORDER[agingTier], border: `1px solid ${AGING_LEFT_BORDER[agingTier]}33` }}>
-            {aging.days}h
-          </span>
-        )}
+        <span
+          className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 whitespace-nowrap"
+          style={{
+            color: aging ? agingColor : "var(--text-muted)",
+            background: aging ? agingColor + "18" : "var(--bg-surface2)",
+            border: `1px solid ${aging ? agingColor + "33" : "var(--border)"}`,
+          }}
+        >
+          {aging ? `${aging.days}h` : "—"}
+        </span>
       </div>
 
       {/* Fields */}

@@ -198,7 +198,7 @@ export default function SummaryDashboard() {
       }
 
       // STATUS PA
-      const spa = r.data["STATUS PA"] || "Tidak Diketahui";
+      const spa = r.data["Status PA"] || "Tidak Diketahui";
       byStatusPA[spa] = (byStatusPA[spa] || 0) + 1;
 
       // Layanan — ambil bagian pertama sebelum " - "

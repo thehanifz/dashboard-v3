@@ -49,7 +49,7 @@ export function StatusCell({ row, col }: any) {
     >
       <option value="-">-</option>
       {options.map((o) => (
-        <option key={o} className="bg-white text-gray-800">{o}</option>
+        <option key={o} >{o}</option>
       ))}
     </select>
   );

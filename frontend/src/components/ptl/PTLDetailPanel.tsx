@@ -1,30 +1,26 @@
 /**
  * PTLDetailPanel.tsx
  * Panel "Detail Pekerjaan" untuk PTL — setara dengan Engineer.
- * Fitur:
- * - Tab Kanban + Tabel
- * - Kanban: kolom dari Status Pekerjaan, drag → update GSheet PTL
- * - Tabel: preset kolom (Zustand), filter, resize, drag reorder
- * - Edit sel inline → simpan ke GSheet PTL
- * - Search + pagination
- * - Tombol BAI + Teskom
+ * Preset kolom sekarang disimpan di DB via usePresets("ptl").
+ * activePresetId tetap di localStorage (useActivePresetStore).
  */
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
-import { useThemeStore }      from "../../state/themeStore";
-import { useAuthStore }       from "../../state/authStore";
-import { useToast }           from "../../utils/useToast";
-import { usePTLPresetStore }  from "../../state/ptlPresetStore";
-import Sidebar                from "../layout/Sidebar";
-import Topbar                 from "../layout/Topbar";
-import ToastContainer         from "../ui/ToastContainer";
-import PTLKanbanBoard         from "./PTLKanbanBoard";
-import { TableHeaderCell }    from "../table/TableHeaderCell";
-import PTLColumnFilter        from "./PTLColumnFilter";
-import api                    from "../../services/api";
-import baiApi                 from "../../services/baiApi";
-import { useAppStore }        from "../../state/appStore";
+import { useThemeStore }     from "../../state/themeStore";
+import { useAuthStore }      from "../../state/authStore";
+import { useToast }          from "../../utils/useToast";
+import { usePresets }        from "../../hooks/usePresets";
+import Sidebar               from "../layout/Sidebar";
+import Topbar                from "../layout/Topbar";
+import ToastContainer        from "../ui/ToastContainer";
+import PTLKanbanBoard        from "./PTLKanbanBoard";
+import PTLColumnFilter       from "./PTLColumnFilter";
+import PresetEditorModal     from "../preset/PresetEditorModal";
+import { TableHeaderCell }   from "../table/TableHeaderCell";
+import api                   from "../../services/api";
+import baiApi                from "../../services/baiApi";
+import { useAppStore }       from "../../state/appStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface SheetRecord {
@@ -50,8 +46,8 @@ function PtlBaiButton({ rowId, idPa, namaPerusahaan, onToast }: {
 }) {
   const [showModal, setShowModal] = useState(false);
   const today = new Date().toISOString().split("T")[0];
-  const [tanggal, setTanggal]     = useState(today);
-  const [loading, setLoading]     = useState(false);
+  const [tanggal, setTanggal] = useState(today);
+  const [loading, setLoading] = useState(false);
 
   const handleGenerate = async () => {
     setLoading(true);
@@ -66,7 +62,8 @@ function PtlBaiButton({ rowId, idPa, namaPerusahaan, onToast }: {
     } catch (err: any) {
       if (err?.response?.data instanceof Blob) {
         const text = await err.response.data.text();
-        try { onToast(JSON.parse(text).detail || "Gagal generate BAI", "error"); } catch { onToast("Gagal generate BAI", "error"); }
+        try { onToast(JSON.parse(text).detail || "Gagal generate BAI", "error"); }
+        catch { onToast("Gagal generate BAI", "error"); }
       } else {
         onToast(err?.response?.data?.detail || "Gagal generate BAI", "error");
       }
@@ -75,20 +72,20 @@ function PtlBaiButton({ rowId, idPa, namaPerusahaan, onToast }: {
 
   return (
     <>
-      <button onClick={(e) => { e.stopPropagation(); setShowModal(true); }}
+      <button onClick={e => { e.stopPropagation(); setShowModal(true); }}
         title={`Generate BAI — ${idPa}`}
         className="flex items-center justify-center w-6 h-6 rounded-md transition-all"
         style={{ color: "var(--text-muted)" }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--accent-soft)"; (e.currentTarget as HTMLElement).style.color = "var(--accent)"; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
-      >
+        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--accent-soft)"; (e.currentTarget as HTMLElement).style.color = "var(--accent)"; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}>
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
       </button>
+
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.5)" }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}>
+          onClick={e => { if (e.target === e.currentTarget) setShowModal(false); }}>
           <div className="rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4"
             style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
             <div className="flex items-center gap-3 mb-4">
@@ -105,7 +102,9 @@ function PtlBaiButton({ rowId, idPa, namaPerusahaan, onToast }: {
                 style={{ color: "var(--text-muted)" }}
                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--bg-surface2)"}
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "transparent"}>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
             <div className="px-3 py-2.5 rounded-lg mb-4 text-xs" style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}>
@@ -116,16 +115,18 @@ function PtlBaiButton({ rowId, idPa, namaPerusahaan, onToast }: {
               <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>
                 Tanggal BAI <span className="font-normal" style={{ color: "var(--text-muted)" }}>(default hari ini)</span>
               </label>
-              <input type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)}
+              <input type="date" value={tanggal} onChange={e => setTanggal(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg text-sm border"
                 style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-primary)", outline: "none" }}
-                onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
-                onBlur={(e) => (e.target.style.borderColor = "var(--border)")} />
+                onFocus={e => e.target.style.borderColor = "var(--accent)"}
+                onBlur={e => e.target.style.borderColor = "var(--border)"} />
             </div>
             <div className="flex gap-2">
               <button onClick={() => setShowModal(false)} disabled={loading}
                 className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium"
-                style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>Batal</button>
+                style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
+                Batal
+              </button>
               <button onClick={handleGenerate} disabled={loading}
                 className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2"
                 style={{ background: "var(--accent)", opacity: loading ? 0.7 : 1 }}>
@@ -141,15 +142,15 @@ function PtlBaiButton({ rowId, idPa, namaPerusahaan, onToast }: {
 
 // ─── Teskom Button ────────────────────────────────────────────────────────────
 function PtlTeskomButton({ idPa }: { idPa: string }) {
-  const setPage           = useAppStore(s => s.setPage);
+  const setNavPage        = useAppStore(s => s.setPage);
   const setTeskomAutofill = useAppStore(s => s.setTeskomAutofill);
   return (
-    <button onClick={(e) => { e.stopPropagation(); if (!idPa) return; setTeskomAutofill(idPa); setPage("teskom"); }}
+    <button onClick={e => { e.stopPropagation(); if (!idPa) return; setTeskomAutofill(idPa); setNavPage("teskom"); }}
       title={`Buka Teskom — ${idPa}`}
       className="flex items-center justify-center w-6 h-6 rounded-md transition-all"
       style={{ color: "var(--text-muted)" }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--accent-soft)"; (e.currentTarget as HTMLElement).style.color = "var(--accent)"; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}>
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--accent-soft)"; (e.currentTarget as HTMLElement).style.color = "var(--accent)"; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}>
       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
       </svg>
@@ -157,113 +158,92 @@ function PtlTeskomButton({ idPa }: { idPa: string }) {
   );
 }
 
-// ─── Preset Editor Modal ──────────────────────────────────────────────────────
-function PTLPresetModal({ allCols, records, onClose }: {
-  allCols: string[]; records: SheetRecord[]; onClose: () => void;
+// ─── Preset Create Modal ──────────────────────────────────────────────────────
+function PTLPresetCreateModal({ allCols, onCreate, onClose }: {
+  allCols: string[];
+  onCreate: (name: string, columns: string[]) => Promise<void>;
+  onClose: () => void;
 }) {
-  const { presets, addPreset, deletePreset, setActivePreset, updatePresetColumns, renamePreset } = usePTLPresetStore();
-  const [tab, setTab]         = useState<"manage" | "create">("manage");
-  const [newName, setNewName] = useState("");
+  const [name,     setName]     = useState("");
   const [selected, setSelected] = useState<string[]>(allCols);
+  const [saving,   setSaving]   = useState(false);
 
   const toggleCol = (col: string) =>
     setSelected(prev => prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]);
 
-  const handleSave = () => {
-    if (!newName.trim() || selected.length === 0) return;
-    addPreset(newName.trim(), selected);
-    setNewName("");
-    setTab("manage");
+  const handleSave = async () => {
+    if (!name.trim() || selected.length === 0) return;
+    setSaving(true);
+    try { await onCreate(name.trim(), selected); onClose(); }
+    finally { setSaving(false); }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.5)" }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden"
-        style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden flex flex-col"
+        style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", maxHeight: "85vh" }}>
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 shrink-0"
           style={{ borderBottom: "1px solid var(--border)" }}>
-          <h3 className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>Preset Kolom</h3>
+          <h3 className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>Buat Preset Baru</h3>
           <button onClick={onClose} className="p-1 rounded-lg" style={{ color: "var(--text-muted)" }}
             onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--bg-surface2)"}
             onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "transparent"}>
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
-        <div className="flex gap-1 px-5 pt-3 shrink-0">
-          {(["manage", "create"] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-              style={{ background: tab === t ? "var(--accent)" : "var(--bg-surface2)", color: tab === t ? "#fff" : "var(--text-secondary)" }}>
-              {t === "manage" ? "Kelola Preset" : "Buat Preset"}
-            </button>
-          ))}
-        </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 custom-scrollbar">
-          {tab === "manage" ? (
-            <div className="space-y-2">
-              {presets.length === 0 && (
-                <p className="text-xs text-center py-6" style={{ color: "var(--text-muted)" }}>Belum ada preset.</p>
-              )}
-              {presets.map(p => (
-                <div key={p.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
-                  style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold truncate" style={{ color: "var(--text-primary)" }}>{p.name}</p>
-                    <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{p.columns.length} kolom</p>
-                  </div>
-                  <button onClick={() => { setActivePreset(p.id); onClose(); }}
-                    className="px-3 py-1 rounded-lg text-xs font-semibold text-white shrink-0"
-                    style={{ background: "var(--accent)" }}>Pakai</button>
-                  <button onClick={() => deletePreset(p.id)}
-                    className="p-1.5 rounded-lg shrink-0 transition-colors"
-                    style={{ color: "var(--text-muted)" }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#ef4444"; (e.currentTarget as HTMLElement).style.background = "#ef444422"; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                  </button>
-                </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 custom-scrollbar space-y-4">
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>Nama Preset</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="mis. Preset Utama"
+              className="w-full px-3 py-2 rounded-lg text-sm border"
+              style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-primary)", outline: "none" }}
+              onFocus={e => e.target.style.borderColor = "var(--accent)"}
+              onBlur={e => e.target.style.borderColor = "var(--border)"} />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+                Pilih Kolom ({selected.length}/{allCols.length})
+              </label>
+              <div className="flex gap-1.5">
+                <button onClick={() => setSelected([...allCols])}
+                  className="text-[10px] px-2 py-0.5 rounded" style={{ color: "var(--accent)", background: "var(--accent-soft)" }}>Semua</button>
+                <button onClick={() => setSelected([])}
+                  className="text-[10px] px-2 py-0.5 rounded" style={{ color: "var(--text-muted)", background: "var(--bg-surface2)" }}>Hapus</button>
+              </div>
+            </div>
+            <div className="space-y-1 max-h-64 overflow-y-auto custom-scrollbar">
+              {allCols.map(col => (
+                <label key={col} className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer"
+                  style={{ background: selected.includes(col) ? "var(--accent-soft)" : "transparent" }}>
+                  <input type="checkbox" checked={selected.includes(col)} onChange={() => toggleCol(col)}
+                    className="rounded" style={{ accentColor: "var(--accent)" }} />
+                  <span className="text-xs truncate" style={{ color: "var(--text-primary)" }}>{col}</span>
+                </label>
               ))}
             </div>
-          ) : (
-            <>
-              <div className="mb-4">
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>Nama Preset</label>
-                <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="mis. Preset Utama"
-                  className="w-full px-3 py-2 rounded-lg text-sm border"
-                  style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-primary)", outline: "none" }}
-                  onFocus={e => e.target.style.borderColor = "var(--accent)"}
-                  onBlur={e => e.target.style.borderColor = "var(--border)"} />
-              </div>
-              <div className="mb-3">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-                    Pilih Kolom ({selected.length}/{allCols.length})
-                  </label>
-                  <div className="flex gap-1.5">
-                    <button onClick={() => setSelected([...allCols])}
-                      className="text-[10px] px-2 py-0.5 rounded" style={{ color: "var(--accent)", background: "var(--accent-soft)" }}>Semua</button>
-                    <button onClick={() => setSelected([])}
-                      className="text-[10px] px-2 py-0.5 rounded" style={{ color: "var(--text-muted)", background: "var(--bg-surface2)" }}>Hapus</button>
-                  </div>
-                </div>
-                <div className="space-y-1 max-h-52 overflow-y-auto custom-scrollbar">
-                  {allCols.map(col => (
-                    <label key={col} className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer"
-                      style={{ background: selected.includes(col) ? "var(--accent-soft)" : "transparent" }}>
-                      <input type="checkbox" checked={selected.includes(col)} onChange={() => toggleCol(col)} className="rounded" />
-                      <span className="text-xs truncate" style={{ color: "var(--text-primary)" }}>{col}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <button onClick={handleSave} disabled={!newName.trim() || selected.length === 0}
-                className="w-full px-4 py-2.5 rounded-xl text-sm font-semibold text-white"
-                style={{ background: "var(--accent)", opacity: !newName.trim() || selected.length === 0 ? 0.5 : 1 }}>
-                Simpan Preset
-              </button>
-            </>
-          )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-2 px-5 py-4 shrink-0" style={{ borderTop: "1px solid var(--border)" }}>
+          <button onClick={onClose} disabled={saving}
+            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium"
+            style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
+            Batal
+          </button>
+          <button onClick={handleSave} disabled={saving || !name.trim() || selected.length === 0}
+            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2"
+            style={{ background: "var(--accent)", opacity: saving || !name.trim() || selected.length === 0 ? 0.5 : 1 }}>
+            {saving && <span className="spinner w-3 h-3" />}
+            Simpan
+          </button>
         </div>
       </div>
     </div>
@@ -281,20 +261,30 @@ export default function PTLDetailPanel() {
   const [editingCell, setEditingCell]           = useState<{ rowId: number; col: string } | null>(null);
   const [editingValue, setEditingValue]         = useState("");
   const [saving, setSaving]                     = useState(false);
-  const [showPreset, setShowPreset]             = useState(false);
   const [activeFilters, setActiveFilters]       = useState<Record<string, string[]>>({});
   const [activeFilterCol, setActiveFilterCol]   = useState<string | null>(null);
   const [filterPos, setFilterPos]               = useState({ top: 0, left: 0 });
   const [presetDropdownOpen, setPresetDropdown] = useState(false);
+  const [showCreatePreset, setShowCreatePreset] = useState(false);
+  const [editingPresetId, setEditingPresetId]   = useState<number | null>(null);
 
-  const { theme }             = useThemeStore();
-  const { user }              = useAuthStore();
+  const { theme }                   = useThemeStore();
+  const { user }                    = useAuthStore();
   const { toasts, show: showToast } = useToast();
 
+  // ── Preset dari DB ──
   const {
-    presets, activePresetId, setActivePreset, addPreset, reorderColumns, updatePreset,
-  } = usePTLPresetStore();
-  const activePreset = presets.find(p => p.id === activePresetId);
+    presets,
+    activePreset,
+    activePresetId,
+    setActivePresetId,
+    createPreset,
+    updatePreset,
+    loading: presetLoading,
+  } = usePresets("ptl");
+
+  const columns = activePreset?.columns ?? [];
+  const widths  = activePreset?.widths  ?? {};
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -314,14 +304,12 @@ export default function PTLDetailPanel() {
 
   useEffect(() => { fetchSheet(); }, []);
 
-  const allColumns  = sheetData?.columns ?? [];
-  const records     = sheetData?.records ?? [];
-  const columns     = activePreset?.columns ?? allColumns;
-  const widths      = activePreset?.widths ?? {};
-  const idPaCol     = allColumns.find(c => c === "ID PA") ?? "ID PA";
-  const namaCol     = allColumns.find(c => c.toLowerCase().includes("perusahaan")) ?? "";
+  const allColumns = sheetData?.columns ?? [];
+  const records    = sheetData?.records ?? [];
+  const idPaCol    = allColumns.find(c => c === "ID PA") ?? "ID PA";
+  const namaCol    = allColumns.find(c => c.toLowerCase().includes("perusahaan")) ?? "";
 
-  // Update cell → GSheet PTL
+  // ── Update cell ──
   const handleUpdateCell = useCallback(async (rowId: number, col: string, value: string) => {
     setSaving(true);
     try {
@@ -355,7 +343,7 @@ export default function PTLDetailPanel() {
 
   const handleRefresh = async () => { await fetchSheet(); showToast("Data diperbarui", "success"); };
 
-  // Filter + search
+  // ── Filter + search ──
   const filteredRecords = useMemo(() => {
     let result = [...records];
     if (Object.keys(activeFilters).length > 0) {
@@ -374,30 +362,30 @@ export default function PTLDetailPanel() {
   const pagedRecords = filteredRecords.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE);
   const filterCount  = Object.keys(activeFilters).length;
 
-  // Toggle filter
   const toggleFilter = (key: string, val: string) => {
     setActiveFilters(prev => {
-      const cur = prev[key] || [];
+      const cur  = prev[key] || [];
       const next = cur.includes(val) ? cur.filter(v => v !== val) : [...cur, val];
-      const updated = { ...prev };
-      if (next.length === 0) delete updated[key]; else updated[key] = next;
-      return updated;
+      const upd  = { ...prev };
+      if (next.length === 0) delete upd[key]; else upd[key] = next;
+      return upd;
     });
   };
 
-  // Drag reorder kolom (tabel)
+  // ── Drag reorder kolom ──
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    if (activePresetId && over && active.id !== over.id) {
-      const oi = columns.indexOf(active.id as string);
-      const ni = columns.indexOf(over.id as string);
-      reorderColumns(activePresetId, arrayMove(columns, oi, ni));
+    if (activePreset && over && active.id !== over.id) {
+      const oi      = columns.indexOf(active.id as string);
+      const ni      = columns.indexOf(over.id as string);
+      const newCols = arrayMove(columns, oi, ni);
+      updatePreset(activePreset.id, { columns: newCols });
     }
   };
 
-  // Resize kolom
-  const draggingRef = { current: null as any };
+  // ── Resize kolom ──
   const onColResize = (e: React.MouseEvent, col: string) => {
     e.preventDefault(); e.stopPropagation();
     const startX = e.clientX;
@@ -409,7 +397,7 @@ export default function PTLDetailPanel() {
     const onUp   = (ev: MouseEvent) => {
       document.body.removeChild(ghost);
       const newW = Math.max(MIN_COL_WIDTH, startW + (ev.clientX - startX));
-      if (activePresetId) updatePreset(activePresetId, { widths: { ...widths, [col]: newW } });
+      if (activePreset) updatePreset(activePreset.id, { widths: { ...widths, [col]: newW } });
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
@@ -419,20 +407,30 @@ export default function PTLDetailPanel() {
 
   const onColAutoFit = (e: React.MouseEvent, col: string) => {
     e.stopPropagation();
-    if (!activePresetId) return;
+    if (!activePreset) return;
     const canvas = document.createElement("canvas");
     const ctx    = canvas.getContext("2d")!;
     ctx.font     = "bold 12px sans-serif";
     let max      = ctx.measureText(col).width + 40;
     ctx.font     = "12px sans-serif";
     records.forEach(r => { const w = ctx.measureText(String(r.data[col] || "")).width; if (w > max) max = w; });
-    updatePreset(activePresetId, { widths: { ...widths, [col]: Math.min(600, max + 24) } });
+    updatePreset(activePreset.id, { widths: { ...widths, [col]: Math.min(600, max + 24) } });
   };
 
   const handleOpenFilter = (e: React.MouseEvent, col: string) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     setFilterPos({ top: rect.bottom + 5, left: rect.left });
     setActiveFilterCol(prev => prev === col ? null : col);
+  };
+
+  // ── Create preset ──
+  const handleCreatePreset = async (name: string, cols: string[]) => {
+    try {
+      await createPreset({ name, columns: cols });
+      showToast("Preset berhasil dibuat", "success");
+    } catch {
+      showToast("Gagal membuat preset", "error");
+    }
   };
 
   return (
@@ -460,8 +458,8 @@ export default function PTLDetailPanel() {
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
                   style={{
                     background: view === v ? "var(--accent)" : "var(--bg-surface)",
-                    color: view === v ? "#fff" : "var(--text-secondary)",
-                    border: view === v ? "none" : "1px solid var(--border)",
+                    color:      view === v ? "#fff" : "var(--text-secondary)",
+                    border:     view === v ? "none" : "1px solid var(--border)",
                   }}>
                   {v === "table" ? "Tabel" : "Kanban"}
                 </button>
@@ -472,11 +470,10 @@ export default function PTLDetailPanel() {
           {/* ── KANBAN VIEW ── */}
           {view === "kanban" && (
             <div className="flex-1 overflow-hidden">
-              {loading ? (
-                <div className="p-6 text-xs" style={{ color: "var(--text-muted)" }}>Memuat data...</div>
-              ) : (
-                <PTLKanbanBoard records={records} onUpdateCell={handleUpdateCell} />
-              )}
+              {loading
+                ? <div className="p-6 text-xs" style={{ color: "var(--text-muted)" }}>Memuat data...</div>
+                : <PTLKanbanBoard records={records} onUpdateCell={handleUpdateCell} />
+              }
             </div>
           )}
 
@@ -484,9 +481,8 @@ export default function PTLDetailPanel() {
           {view === "table" && (
             <div className="flex-1 overflow-hidden flex flex-col p-4 gap-3">
 
-              {/* Toolbar tabel */}
+              {/* Toolbar */}
               <div className="flex flex-wrap items-center gap-2 shrink-0">
-                {/* Search */}
                 <div className="relative">
                   <svg className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
                     fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ color: "var(--text-muted)" }}>
@@ -497,7 +493,6 @@ export default function PTLDetailPanel() {
                     className="th-input pl-8 pr-3 py-1.5 text-xs w-48" />
                 </div>
 
-                {/* Filter badge */}
                 {filterCount > 0 && (
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs px-2.5 py-1.5 rounded-lg font-medium flex items-center gap-1.5"
@@ -517,44 +512,68 @@ export default function PTLDetailPanel() {
                 </div>
               </div>
 
-              {/* Preset dropdown */}
-              <div className="flex items-center gap-2 shrink-0 relative">
+              {/* Preset selector */}
+              <div className="flex items-center gap-2 shrink-0">
                 <div className="relative">
                   <button onClick={() => setPresetDropdown(v => !v)}
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border"
-                    style={{ background: "var(--bg-surface)", color: "var(--text-primary)", borderColor: "var(--border)", minWidth: "180px", justifyContent: "space-between" }}>
-                    <span className="truncate max-w-[150px]">{activePreset ? activePreset.name : "Pilih Preset"}</span>
-                    <svg className={`w-4 h-4 transition-transform ${presetDropdownOpen ? "rotate-180" : ""}`}
+                    style={{ background: "var(--bg-surface)", color: "var(--text-primary)", borderColor: "var(--border)", minWidth: 180, justifyContent: "space-between" }}>
+                    <span className="truncate max-w-[140px]">
+                      {presetLoading ? "Memuat..." : activePreset ? activePreset.name : "Pilih Preset"}
+                    </span>
+                    <svg className={`w-4 h-4 shrink-0 transition-transform ${presetDropdownOpen ? "rotate-180" : ""}`}
                       fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
+
                   {presetDropdownOpen && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setPresetDropdown(false)} />
-                      <div className="absolute top-full left-0 mt-1 w-full rounded-lg shadow-xl border z-20 overflow-hidden"
-                        style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+                      <div className="absolute top-full left-0 mt-1 rounded-lg shadow-xl border z-20 overflow-hidden"
+                        style={{ background: "var(--bg-surface)", borderColor: "var(--border)", minWidth: 200 }}>
                         <div className="max-h-48 overflow-y-auto custom-scrollbar py-1">
+                          {presets.length === 0 && (
+                            <p className="text-xs text-center py-3" style={{ color: "var(--text-muted)" }}>Belum ada preset</p>
+                          )}
                           {presets.map(p => (
-                            <button key={p.id} onClick={() => { setActivePreset(p.id); setPresetDropdown(false); }}
-                              className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2">
-                              {p.id === activePresetId && (
-                                <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20" style={{ color: "var(--accent)" }}>
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            <div key={p.id} className="flex items-center gap-1 px-1">
+                              <button onClick={() => { setActivePresetId(p.id); setPresetDropdown(false); }}
+                                className="flex-1 text-left px-2 py-2 text-xs flex items-center gap-2 rounded-lg"
+                                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--bg-surface2)"}
+                                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "transparent"}>
+                                {p.id === activePresetId && (
+                                  <svg className="w-3.5 h-3.5 shrink-0" fill="currentColor" viewBox="0 0 20 20" style={{ color: "var(--accent)" }}>
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                  </svg>
+                                )}
+                                <span className={p.id === activePresetId ? "font-semibold" : ""}
+                                  style={{ color: "var(--text-primary)" }}>{p.name}</span>
+                              </button>
+                              {/* Edit preset button */}
+                              <button onClick={() => { setEditingPresetId(p.id); setPresetDropdown(false); }}
+                                className="p-1.5 rounded-lg shrink-0"
+                                style={{ color: "var(--text-muted)" }}
+                                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--accent-soft)"; (e.currentTarget as HTMLElement).style.color = "var(--accent)"; }}
+                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
+                                title="Edit preset">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                 </svg>
-                              )}
-                              <span className={p.id === activePresetId ? "font-semibold" : ""} style={{ color: "var(--text-primary)" }}>{p.name}</span>
-                            </button>
+                              </button>
+                            </div>
                           ))}
                         </div>
                         <div className="border-t py-1" style={{ borderColor: "var(--border)" }}>
-                          <button onClick={() => { setPresetDropdown(false); setShowPreset(true); }}
-                            className="w-full text-left px-3 py-2 text-xs flex items-center gap-2"
-                            style={{ color: "var(--text-secondary)" }}>
+                          <button onClick={() => { setPresetDropdown(false); setShowCreatePreset(true); }}
+                            className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 rounded-lg mx-1"
+                            style={{ color: "var(--text-secondary)", width: "calc(100% - 8px)" }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--bg-surface2)"}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "transparent"}>
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                             </svg>
-                            Kelola Preset
+                            Buat Preset Baru
                           </button>
                         </div>
                       </div>
@@ -563,14 +582,20 @@ export default function PTLDetailPanel() {
                 </div>
               </div>
 
-              {/* Tabel */}
+              {/* Tabel / empty state */}
               {!activePreset ? (
                 <div className="flex-1 flex flex-col items-center justify-center rounded-2xl"
                   style={{ background: "var(--bg-surface)", border: "2px dashed var(--border)" }}>
-                  <p className="text-sm font-medium mb-3" style={{ color: "var(--text-secondary)" }}>Belum ada preset kolom</p>
-                  <button onClick={() => setShowPreset(true)}
-                    className="px-4 py-2 rounded-xl text-sm font-semibold text-white"
-                    style={{ background: "var(--accent)" }}>+ Buat Preset</button>
+                  <p className="text-sm font-medium mb-3" style={{ color: "var(--text-secondary)" }}>
+                    {presetLoading ? "Memuat preset..." : "Belum ada preset kolom"}
+                  </p>
+                  {!presetLoading && (
+                    <button onClick={() => setShowCreatePreset(true)}
+                      className="px-4 py-2 rounded-xl text-sm font-semibold text-white"
+                      style={{ background: "var(--accent)" }}>
+                      + Buat Preset
+                    </button>
+                  )}
                 </div>
               ) : (
                 <>
@@ -612,12 +637,12 @@ export default function PTLDetailPanel() {
                                   </div>
                                 </td>
                                 {columns.map(col => {
-                                  const colWidth  = widths[col] ?? DEFAULT_COL_WIDTH;
+                                  const colW      = widths[col] ?? DEFAULT_COL_WIDTH;
                                   const isEditing = editingCell?.rowId === r.row_id && editingCell?.col === col;
                                   const editable  = col !== idPaCol;
                                   return (
                                     <td key={col} className="px-3 py-2 border-r overflow-hidden"
-                                      style={{ borderColor: "var(--border)", maxWidth: colWidth, cursor: editable ? "pointer" : "default" }}
+                                      style={{ borderColor: "var(--border)", maxWidth: colW, cursor: editable ? "pointer" : "default" }}
                                       title={isEditing ? undefined : r.data[col]}
                                       onClick={() => !isEditing && editable && handleCellClick(r.row_id, col, r.data[col] ?? "")}>
                                       {isEditing ? (
@@ -629,10 +654,10 @@ export default function PTLDetailPanel() {
                                             if (e.key === "Escape") setEditingCell(null);
                                           }}
                                           className="w-full text-xs px-1 py-0.5 rounded border outline-none"
-                                          style={{ background: "var(--bg-app)", color: "var(--text-primary)", borderColor: "var(--accent)", width: `${colWidth - 24}px` }}
+                                          style={{ background: "var(--bg-app)", color: "var(--text-primary)", borderColor: "var(--accent)", width: `${colW - 24}px` }}
                                         />
                                       ) : (
-                                        <div className="truncate w-full block" style={{ maxWidth: `${colWidth - 24}px` }}
+                                        <div className="truncate w-full block" style={{ maxWidth: `${colW - 24}px` }}
                                           onMouseEnter={e => { if (editable) (e.currentTarget as HTMLElement).style.outline = "1px dashed var(--accent)"; }}
                                           onMouseLeave={e => { if (editable) (e.currentTarget as HTMLElement).style.outline = "none"; }}>
                                           {r.data[col] ?? ""}
@@ -653,8 +678,9 @@ export default function PTLDetailPanel() {
                   <div className="flex items-center justify-between px-3 py-2 rounded-xl shrink-0"
                     style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
                     <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                      <b style={{ color: "var(--text-primary)" }}>{(tablePage - 1) * PAGE_SIZE + 1}–{Math.min(tablePage * PAGE_SIZE, filteredRecords.length)}</b>
-                      {" "}dari <b style={{ color: "var(--text-primary)" }}>{filteredRecords.length}</b>
+                      <b style={{ color: "var(--text-primary)" }}>
+                        {(tablePage - 1) * PAGE_SIZE + 1}–{Math.min(tablePage * PAGE_SIZE, filteredRecords.length)}
+                      </b>{" "}dari <b style={{ color: "var(--text-primary)" }}>{filteredRecords.length}</b>
                     </span>
                     <div className="flex gap-1">
                       <button disabled={tablePage === 1} onClick={() => setTablePage(1)} className="btn-ghost px-2 py-1 text-xs disabled:opacity-30">«</button>
@@ -685,9 +711,23 @@ export default function PTLDetailPanel() {
         />
       )}
 
-      {/* Preset modal */}
-      {showPreset && (
-        <PTLPresetModal allCols={allColumns} records={records} onClose={() => setShowPreset(false)} />
+      {/* Buat preset baru */}
+      {showCreatePreset && (
+        <PTLPresetCreateModal
+          allCols={allColumns}
+          onCreate={handleCreatePreset}
+          onClose={() => setShowCreatePreset(false)}
+        />
+      )}
+
+      {/* Edit preset (PresetEditorModal sama dengan Engineer) */}
+      {editingPresetId !== null && (
+        <PresetEditorModal
+          presetId={editingPresetId}
+          scope="ptl"
+          allCols={allColumns}
+          onClose={() => setEditingPresetId(null)}
+        />
       )}
     </div>
   );

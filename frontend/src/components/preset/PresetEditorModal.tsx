@@ -9,8 +9,8 @@ type Props = {
 };
 
 export default function PresetEditorModal({ presetId, onClose }: Props) {
-  const records = useTaskStore((s) => s.records);
-  const presets = usePresetStore((s) => s.presets);
+  const records = useTaskStore((s) => s.records) ?? [];       // ← fix: ?? []
+  const presets = usePresetStore((s) => s.presets) ?? [];     // ← fix: ?? []
   const updatePresetColumns = usePresetStore((s) => s.updatePresetColumns);
   const renamePreset = usePresetStore((s) => s.renamePreset);
   const deletePreset = usePresetStore((s) => s.deletePreset);
@@ -21,22 +21,15 @@ export default function PresetEditorModal({ presetId, onClose }: Props) {
   const [localName, setLocalName] = useState("");
   const [selectedCols, setSelectedCols] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-
-  // --- SNAPSHOT STATE (KUNCI FITUR INI) ---
-  // Kita simpan daftar awal saat modal dibuka untuk acuan sorting.
-  // Agar saat user centang baru, item tidak lompat.
   const [initialSnapshot, setInitialSnapshot] = useState<Set<string>>(new Set());
 
   // 1. SCAN SEMUA KEY
   const availableColumns = useMemo(() => {
     const keys = new Set<string>();
-    // Default wajib
     keys.add("ID PA");
-
-    records.forEach((r) => {
-      Object.keys(r.data).forEach((k) => keys.add(k));
+    (records ?? []).forEach((r) => {
+      Object.keys(r.data ?? {}).forEach((k) => keys.add(k));
     });
-
     return Array.from(keys);
   }, [records]);
 
@@ -44,35 +37,25 @@ export default function PresetEditorModal({ presetId, onClose }: Props) {
   useEffect(() => {
     if (preset) {
       setLocalName(preset.name);
-      setSelectedCols(preset.columns);
-      // Buat Snapshot: "Ini lho daftar VIP saat pertama kali buka"
-      setInitialSnapshot(new Set(preset.columns));
+      setSelectedCols(preset.columns ?? []);
+      setInitialSnapshot(new Set(preset.columns ?? []));
     }
   }, [preset]);
 
-  // 2. LOGIKA SORTING STABIL (Based on Snapshot)
+  // 2. LOGIKA SORTING STABIL
   const sortedAndFilteredColumns = useMemo(() => {
-    // A. Filter search
     let cols = availableColumns.filter((col) =>
         col.toLowerCase().includes(searchTerm.toLowerCase())
     );
-
-    // B. Sortir: Prioritaskan yang ada di SNAPSHOT, bukan yang sedang dicentang live
     cols.sort((a, b) => {
         const isAInit = initialSnapshot.has(a);
         const isBInit = initialSnapshot.has(b);
-
-        // Jika A dulunya aktif & B tidak, A tetap di atas
         if (isAInit && !isBInit) return -1;
-        // Jika B dulunya aktif & A tidak, B tetap di atas
         if (!isAInit && isBInit) return 1;
-        
-        // Sisanya urut Abjad
         return a.localeCompare(b);
     });
-
     return cols;
-  }, [availableColumns, searchTerm, initialSnapshot]); // Dependency selectedCols DIHAPUS agar tidak re-render sort
+  }, [availableColumns, searchTerm, initialSnapshot]);
 
   const handleSave = () => {
     if (localName.trim()) renamePreset(presetId, localName);
@@ -82,8 +65,6 @@ export default function PresetEditorModal({ presetId, onClose }: Props) {
 
   const handleDelete = () => {
     if (!preset) return;
-    
-    // Konfirmasi sebelum hapus
     const confirmed = window.confirm(`Apakah Anda yakin ingin menghapus preset "${preset.name}"?`);
     if (confirmed) {
       deletePreset(presetId);
@@ -120,13 +101,11 @@ export default function PresetEditorModal({ presetId, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Modal Container */}
       <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
         
-        {/* ================= HEADER AREA (STATIS) ================= */}
+        {/* HEADER */}
         <div className="bg-gray-50 border-b shrink-0 z-20">
             <div className="p-4 flex justify-between items-center border-b border-gray-200">
                 <div>
@@ -185,14 +164,12 @@ export default function PresetEditorModal({ presetId, onClose }: Props) {
             <div className="h-1 bg-gradient-to-b from-gray-100 to-transparent opacity-50"></div>
         </div>
 
-        {/* ================= BODY AREA (SCROLLABLE) ================= */}
+        {/* BODY */}
         <div className="flex-1 overflow-y-auto p-5 custom-scrollbar bg-gray-50/30">
-          
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
              {sortedAndFilteredColumns.map((col) => {
                const isSelected = selectedCols.includes(col);
                const isInitiallySelected = initialSnapshot.has(col);
-               
                return (
                  <label 
                     key={col} 
@@ -212,13 +189,12 @@ export default function PresetEditorModal({ presetId, onClose }: Props) {
                         <span className={`text-xs break-words leading-tight ${isSelected ? "font-bold text-gray-800" : "text-gray-600"}`}>
                             {col}
                         </span>
-                        {/* Indikator Baru (Opsional: Memberi tahu user ini item baru) */}
                         {isSelected && !isInitiallySelected && (
                             <span className="text-[9px] text-green-600 font-bold italic mt-0.5">Baru</span>
                         )}
                     </div>
                  </label>
-               )
+               );
              })}
           </div>
           
@@ -232,7 +208,7 @@ export default function PresetEditorModal({ presetId, onClose }: Props) {
           )}
         </div>
 
-        {/* ================= FOOTER AREA (STATIS) ================= */}
+        {/* FOOTER */}
         <div className="p-4 border-t bg-white shrink-0 flex justify-between items-center gap-3 rounded-b-xl z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
            <button
              onClick={handleDelete}
@@ -247,10 +223,7 @@ export default function PresetEditorModal({ presetId, onClose }: Props) {
            </button>
            
            <div className="flex gap-2">
-             <button
-               onClick={onClose}
-               className="px-5 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded transition-colors"
-             >
+             <button onClick={onClose} className="px-5 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded transition-colors">
                Batal
              </button>
              <button

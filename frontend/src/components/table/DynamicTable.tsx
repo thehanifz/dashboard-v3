@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 
@@ -44,6 +44,12 @@ export default function DynamicTable() {
   const updateCell                          = useTaskStore(s => s.updateCell);
   const [editingCell, setEditingCell]       = useState<{ rowId: number; col: string } | null>(null);
   const [editingValue, setEditingValue]     = useState("");
+
+  // ── Load preset dan editable columns dari DB saat mount ──────────────────
+  useEffect(() => {
+    usePresetStore.getState().loadFromDB();
+    useAppearanceStore.getState().loadEditableColumnsFromDB();
+  }, []);
 
   const PTL_EDITABLE   = new Set(["STATUS", "DETAIL", "KETERANGAN"]);
   const role           = user?.role ?? "engineer";
@@ -128,7 +134,7 @@ export default function DynamicTable() {
   const filterCount = Object.keys(activeFilters).length;
 
   return (
-    <div className="flex flex-col h-full" style={{ height: "calc(100vh - 56px - 32px)" }}>
+    <div className="flex flex-col h-full" >
 
       {/* ── Toolbar ── */}
       <div className="shrink-0 flex flex-wrap items-center gap-2 px-1 pb-3">
@@ -192,8 +198,8 @@ export default function DynamicTable() {
                 onClick={() => setPresetDropdownOpen(false)}
               />
               <div
-                className="absolute top-full left-0 mt-1 w-full bg-white rounded-lg shadow-xl border z-20 overflow-hidden"
-                style={{ borderColor: "var(--border)" }}
+                className="absolute top-full left-0 mt-1 w-full rounded-lg shadow-xl border z-20 overflow-hidden"
+                style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
               >
                 <div className="max-h-64 overflow-y-auto custom-scrollbar py-1">
                   {presets.map(p => (
@@ -203,14 +209,14 @@ export default function DynamicTable() {
                         setActivePreset(p.id);
                         setPresetDropdownOpen(false);
                       }}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2"
+                      className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors" style={{ color: "var(--text-primary)" }} onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)"} onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "transparent"}
                     >
                       {p.id === activePresetId && (
                         <svg className="w-4 h-4 text-blue-600 shrink-0" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                         </svg>
                       )}
-                      <span className={p.id === activePresetId ? "font-semibold text-blue-600" : "text-gray-700"}>
+                      <span style={{ color: p.id === activePresetId ? "var(--accent)" : "var(--text-primary)", fontWeight: p.id === activePresetId ? 600 : 400 }}>
                         {p.name}
                       </span>
                     </button>
@@ -224,7 +230,7 @@ export default function DynamicTable() {
                       setPresetDropdownOpen(false);
                       setShowEditor(true);
                     }}
-                    className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                    className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors" style={{ color: "var(--text-secondary)" }}
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -237,7 +243,7 @@ export default function DynamicTable() {
                         setPresetDropdownOpen(false);
                         setShowEditor(true);
                       }}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                      className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors" style={{ color: "var(--text-secondary)" }}
                     >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />

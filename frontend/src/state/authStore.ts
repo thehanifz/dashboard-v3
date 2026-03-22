@@ -2,15 +2,20 @@
  * authStore.ts
  * Access token disimpan di sessionStorage — survive page reload,
  * hilang saat tab/browser ditutup. Refresh token di httpOnly cookie.
+ *
+ * Setelah login (setAuth), otomatis load preset & editableColumns dari DB.
  */
 import { create } from "zustand";
+import { usePresetStore } from "./presetStore";
+import { usePTLPresetStore } from "./ptlPresetStore";
+import { useAppearanceStore } from "./appearanceStore";
 
 export type UserRole = "engineer" | "ptl" | "mitra" | "superuser";
 
 export interface AuthUser {
-  username: string;
+  username:     string;
   nama_lengkap: string;
-  role: UserRole;
+  role:         UserRole;
 }
 
 const TOKEN_KEY = "dash_v3_at";
@@ -25,14 +30,14 @@ const storedUser  = (() => {
 })();
 
 interface AuthState {
-  user: AuthUser | null;
+  user:        AuthUser | null;
   accessToken: string | null;
 
-  setAuth: (user: AuthUser, token: string) => void;
-  setToken: (token: string) => void;
-  clearAuth: () => void;
+  setAuth:    (user: AuthUser, token: string) => void;
+  setToken:   (token: string) => void;
+  clearAuth:  () => void;
   isLoggedIn: () => boolean;
-  hasRole: (...roles: UserRole[]) => boolean;
+  hasRole:    (...roles: UserRole[]) => boolean;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -43,6 +48,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     sessionStorage.setItem(TOKEN_KEY, accessToken);
     sessionStorage.setItem(USER_KEY, JSON.stringify(user));
     set({ user, accessToken });
+
+    // Load preset & editable columns dari DB setelah login
+    setTimeout(() => {
+      const role = user.role;
+      usePresetStore.getState().loadFromDB();
+
+      if (role === "ptl") {
+        usePTLPresetStore.getState().loadFromDB();
+      }
+
+      if (role === "engineer") {
+        useAppearanceStore.getState().loadEditableColumnsFromDB();
+      }
+    }, 100);
   },
 
   setToken: (accessToken) => {

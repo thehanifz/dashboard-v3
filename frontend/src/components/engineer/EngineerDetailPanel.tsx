@@ -61,7 +61,7 @@ export default function EngineerDetailPanel() {
           ))}
         </div>
 
-        <main className="flex-1 overflow-hidden pb-16 md:pb-0">
+        <main className="flex-1 overflow-hidden">
           {view === "kanban" && <div className="h-full overflow-hidden"><KanbanBoard /></div>}
           {view === "table"  && <div className="h-full p-4 overflow-hidden"><DynamicTable /></div>}
         </main>
