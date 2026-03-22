@@ -37,36 +37,50 @@ export default function DynamicTable() {
   const activePreset = presets.find(p => p.id === activePresetId);
 
   const { show: showToast } = useToast();
+  const editableColumns     = useAppearanceStore(s => s.editableColumns);
+
   // ── Inline edit state (Phase 4) ───────────────────────────────────────────
-const { user }                            = useAuthStore();
-const updateCell                          = useTaskStore(s => s.updateCell);
-const [editingCell, setEditingCell]       = useState<{ rowId: number; col: string } | null>(null);
-const [editingValue, setEditingValue]     = useState("");
+  const { user }                            = useAuthStore();
+  const updateCell                          = useTaskStore(s => s.updateCell);
+  const [editingCell, setEditingCell]       = useState<{ rowId: number; col: string } | null>(null);
+  const [editingValue, setEditingValue]     = useState("");
 
-const PTL_EDITABLE   = new Set(["STATUS", "DETAIL", "KETERANGAN"]);
-const role           = user?.role ?? "engineer";
+  const PTL_EDITABLE   = new Set(["STATUS", "DETAIL", "KETERANGAN"]);
+  const role           = user?.role ?? "engineer";
 
-function canEditCell(col: string): boolean {
-  if (role === "engineer") return true;
-  if (role === "ptl") return PTL_EDITABLE.has(col);
-  return false;
-}
+  // Kolom status dan detail tidak boleh diedit via inline edit (sudah pakai dropdown)
+  const statusColumn   = statusMaster?.status_column ?? "StatusPekerjaan";
+  const detailColumn   = statusMaster?.detail_column ?? "Detail Progres";
 
-function handleCellClick(rowId: number, col: string, currentValue: string) {
-  if (!canEditCell(col)) return;
-  setEditingCell({ rowId, col });
-  setEditingValue(currentValue ?? "");
-}
+  function canEditCell(col: string): boolean {
+    // Status dan Detail kolom selalu false — gunakan dropdown
+    if (col === statusColumn || col === detailColumn) return false;
 
-async function handleCellCommit(rowId: number, col: string) {
-  setEditingCell(null);
-  await updateCell(rowId, col, editingValue);
-}
+    // Engineer: hanya kolom yang terdaftar di editableColumns
+    if (role === "engineer") return editableColumns.includes(col);
 
-function handleCellKeyDown(e: React.KeyboardEvent, rowId: number, col: string) {
-  if (e.key === "Enter") handleCellCommit(rowId, col);
-  if (e.key === "Escape") setEditingCell(null);
-}
+    // PTL: hanya kolom yang diizinkan
+    if (role === "ptl") return PTL_EDITABLE.has(col);
+
+    // Mitra: tidak boleh edit via inline (pakai whitelist sendiri)
+    return false;
+  }
+
+  function handleCellClick(rowId: number, col: string, currentValue: string) {
+    if (!canEditCell(col)) return;
+    setEditingCell({ rowId, col });
+    setEditingValue(currentValue ?? "");
+  }
+
+  async function handleCellCommit(rowId: number, col: string) {
+    setEditingCell(null);
+    await updateCell(rowId, col, editingValue);
+  }
+
+  function handleCellKeyDown(e: React.KeyboardEvent, rowId: number, col: string) {
+    if (e.key === "Enter") handleCellCommit(rowId, col);
+    if (e.key === "Escape") setEditingCell(null);
+  }
 
   const [search,              setSearch]             = useState("");
   const [showEditor,          setShowEditor]          = useState(false);
