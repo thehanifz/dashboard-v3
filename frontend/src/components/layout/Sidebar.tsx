@@ -1,25 +1,21 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useThemeStore } from "../../state/themeStore";
 import { useAppStore, AppPage, AsBuiltView } from "../../state/appStore";
 import { useAuthStore } from "../../state/authStore";
 import { syncApi } from "../../services/syncApi";
 
-type DashView = "summary" | "kanban" | "table";
-
 interface SidebarProps {
-  view: DashView;
-  onViewChange: (v: DashView) => void;
   collapsed: boolean;
   onToast: (msg: string, type?: "success" | "error") => void;
 }
 
 // ── Icons ──────────────────────────────────────────────────────────────────
 const IconChart    = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>;
-const IconKanban   = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" /></svg>;
 const IconTable    = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 14h18M10 3v18M6 3h12a3 3 0 013 3v12a3 3 0 01-3 3H6a3 3 0 01-3-3V6a3 3 0 013-3z" /></svg>;
 const IconNetwork  = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" /></svg>;
 const IconDoc      = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>;
 const IconDash     = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 7a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V7zm0 6a1 1 0 011-1h8a1 1 0 011 1v4a1 1 0 01-1 1H4a1 1 0 01-1-1v-4zm12 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg>;
+const IconDetail   = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 14l2 2 4-4" /></svg>;
 const SunIcon      = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" /></svg>;
 const MoonIcon     = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>;
 const IconLibrary  = () => <svg className="w-[15px] h-[15px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>;
@@ -40,8 +36,8 @@ const ROLE_LABEL: Record<string, string> = { engineer: "Engineer", ptl: "PTL", m
 const ROLE_COLOR: Record<string, string> = { engineer: "#2563eb", ptl: "#7c3aed", mitra: "#059669", superuser: "#d97706" };
 
 const ROLE_PAGES: Record<string, AppPage[]> = {
-  engineer:  ["dashboard", "asbuilt", "teskom", "mitra-config", "sync"],
-  ptl:       ["dashboard"],
+  engineer:  ["dashboard", "detail", "asbuilt", "teskom", "mitra-config", "sync"],
+  ptl:       ["dashboard", "detail", "asbuilt", "teskom"],
   mitra:     ["dashboard"],
   superuser: [],
 };
@@ -92,7 +88,7 @@ function SubMenuBtn({ onClick, icon, label, active }: { onClick: () => void; ico
 }
 
 // ── Main Sidebar ──────────────────────────────────────────────────────────────
-export default function Sidebar({ view, onViewChange, collapsed, onToast }: SidebarProps) {
+export default function Sidebar({ collapsed, onToast }: SidebarProps) {
   const { theme, toggleTheme } = useThemeStore();
   const { currentPage, setPage, asbuiltView, setAsBuiltView } = useAppStore();
   const { user } = useAuthStore();
@@ -122,7 +118,8 @@ export default function Sidebar({ view, onViewChange, collapsed, onToast }: Side
   }, [role]);
 
   const ALL_PAGES: { id: AppPage; label: string; icon: JSX.Element; badge?: number }[] = [
-    { id: "dashboard",    label: "Dashboard PA",           icon: <IconDash /> },
+    { id: "dashboard",    label: "Dashboard",              icon: <IconDash /> },
+    { id: "detail",       label: "Detail Pekerjaan",       icon: <IconDetail /> },
     { id: "asbuilt",      label: "As-Built",               icon: <IconNetwork /> },
     { id: "teskom",       label: "Teskom",                 icon: <IconDoc /> },
     { id: "mitra-config", label: "Pengaturan Tabel Mitra", icon: <IconTable /> },
@@ -130,12 +127,6 @@ export default function Sidebar({ view, onViewChange, collapsed, onToast }: Side
   ];
 
   const visiblePages = ALL_PAGES.filter(p => allowedPages.includes(p.id));
-
-  const DASH_VIEWS: { id: DashView; label: string; icon: JSX.Element }[] = [
-    { id: "summary", label: "Summary", icon: <IconChart /> },
-    { id: "kanban",  label: "Kanban",  icon: <IconKanban /> },
-    { id: "table",   label: "Tabel",   icon: <IconTable /> },
-  ];
 
   const ASBUILT_VIEWS: { id: AsBuiltView; label: string; icon: JSX.Element }[] = [
     { id: "library",  label: "Library",  icon: <IconLibrary /> },
@@ -179,7 +170,6 @@ export default function Sidebar({ view, onViewChange, collapsed, onToast }: Side
             title={collapsed ? `${user.nama_lengkap} — Profil` : undefined}
           >
             {collapsed ? (
-              // Mode collapsed: hanya avatar
               <div className="flex justify-center">
                 <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
                   style={{ background: roleColor }}>
@@ -236,22 +226,21 @@ export default function Sidebar({ view, onViewChange, collapsed, onToast }: Side
                   )}
                 </div>
               ) : (
-                <div>
-                  <SidebarBtn onClick={() => setPage(p.id)} icon={p.icon} label={p.label} title={p.label} collapsed={collapsed} active={currentPage === p.id} badge={p.badge ?? 0} />
-                  {p.id === "dashboard" && currentPage === "dashboard" && !collapsed && (
-                    <div className="mt-0.5 space-y-0.5">
-                      {DASH_VIEWS.map(v => (
-                        <SidebarBtn key={v.id} onClick={() => onViewChange(v.id)} icon={v.icon} label={v.label} title={v.label} collapsed={collapsed} active={view === v.id} indent={true} />
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <SidebarBtn
+                  onClick={() => setPage(p.id)}
+                  icon={p.icon}
+                  label={p.label}
+                  title={p.label}
+                  collapsed={collapsed}
+                  active={currentPage === p.id}
+                  badge={p.badge ?? 0}
+                />
               )}
             </div>
           ))}
         </nav>
 
-        {/* Footer — hanya toggle theme + versi */}
+        {/* Footer — toggle theme + versi */}
         <div style={{ height: 1, background: "var(--sidebar-border, var(--border))", margin: "0 12px" }} />
         <div className="shrink-0 px-2 py-3">
           <button onClick={toggleTheme}

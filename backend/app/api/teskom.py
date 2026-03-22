@@ -10,9 +10,13 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
 
+from fastapi import Depends
 from app.core.config import MAX_UPLOAD_BYTES
-from app.services.renderer_registry import is_supported, all_kategori   # ← dari registry
+from app.core.deps import require_role
+from app.db.models import User
+from app.services.renderer_registry import is_supported, all_kategori
 from app.services.sheet_reader import find_record_by_id_pa
+from app.services.sync_engine import read_ptl_sheet
 from app.services.doc_renderer import render_doc
 from app.utils.file_helper import create_tmp_dir, cleanup_tmp_dir, validate_image_file
 
@@ -58,15 +62,12 @@ def check_file_opt(upload: Optional[UploadFile], field_name: str):
         raise HTTPException(status_code=422, detail=f"[{field_name}] {err}")
 
 
-@router.get("/autofill/{id_pa}")
-def autofill_from_gsheet(id_pa: str):
-    record = find_record_by_id_pa(id_pa)
-    if not record:
-        raise HTTPException(status_code=404, detail=f"ID PA '{id_pa}' tidak ditemukan")
+def _build_autofill_response(record: dict) -> dict:
+    """Shared mapping record → autofill payload."""
     data = record["data"]
-    return JSONResponse(content={
+    return {
         "ok": True,
-        "id_pa": id_pa,
+        "id_pa": data.get("ID PA", ""),
         "row_id": record["row_id"],
         "autofill": {
             "no_pa":              data.get("ID PA", ""),
@@ -83,7 +84,48 @@ def autofill_from_gsheet(id_pa: str):
             "alamat_kantor_user": data.get("ALAMAT TERMINATING", ""),
             "tgl_terbit_pa":      data.get("TGL TERBIT PA", ""),
         },
-    })
+    }
+
+
+@router.get("/autofill/{id_pa}")
+def autofill_from_gsheet(id_pa: str):
+    record = find_record_by_id_pa(id_pa)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"ID PA '{id_pa}' tidak ditemukan")
+    return JSONResponse(content=_build_autofill_response(record))
+
+
+# ── GET /teskom/autofill-ptl/{id_pa} — autofill dari GSheet PTL ────────────
+@router.get("/autofill-ptl/{id_pa}")
+def autofill_from_ptl_gsheet(
+    id_pa: str,
+    current_user: User = Depends(require_role("ptl")),
+):
+    """
+    Autofill Teskom dari GSheet milik PTL yang sedang login.
+    Mencari record berdasarkan ID PA di GSheet PTL.
+    """
+    if not current_user.gsheet_url:
+        raise HTTPException(status_code=400, detail="GSheet PTL belum dikonfigurasi")
+
+    try:
+        ptl_data = read_ptl_sheet(
+            current_user.gsheet_url,
+            current_user.gsheet_sheet_name,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal baca GSheet PTL: {e}")
+
+    target = id_pa.strip().lower()
+    record = next(
+        (r for r in ptl_data["records"]
+         if r["data"].get("ID PA", "").strip().lower() == target),
+        None,
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail=f"ID PA '{id_pa}' tidak ditemukan di GSheet PTL")
+
+    return JSONResponse(content=_build_autofill_response(record))
 
 
 @router.post("/generate")

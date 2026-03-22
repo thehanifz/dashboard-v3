@@ -10,7 +10,6 @@ from app.core.config import (
     SPREADSHEET_ID,
     SHEET_NAME,
 )
-from app.services.sheet_reader import read_sheet
 
 
 def col_index_to_letter(idx: int) -> str:
@@ -30,6 +29,35 @@ def find_col_index(headers: list[str], target: str) -> int | None:
     return None
 
 
+def _get_raw_headers() -> list[str]:
+    """
+    Baca headers LANGSUNG dari GSheet tanpa modifikasi.
+    Tidak membuang kolom DURASI, tidak menambah AGING.
+    Ini penting agar index kolom sesuai dengan posisi asli di GSheet.
+    """
+    creds = Credentials.from_service_account_file(
+        GOOGLE_APPLICATION_CREDENTIALS,
+        scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    )
+    service = build("sheets", "v4", credentials=creds)
+
+    # Baca baris 1 (header) dari sheet
+    result = (
+        service.spreadsheets()
+        .values()
+        .get(spreadsheetId=SPREADSHEET_ID, range=f"{SHEET_NAME}!1:1")
+        .execute()
+    )
+
+    values = result.get("values", [])
+    if not values:
+        return []
+
+    headers = values[0]
+    print(f"[_get_raw_headers] Headers dari GSheet '{SHEET_NAME}': {headers}")
+    return headers
+
+
 def update_cells(row_id: int, updates: dict):
     """
     Update satu atau lebih cell pada baris tertentu di RAW sheet.
@@ -38,14 +66,19 @@ def update_cells(row_id: int, updates: dict):
         row_id  : nomor baris di sheet (baris 1 = header, data mulai baris 2)
         updates : dict {nama_kolom: nilai_baru}
     """
-    sheet   = read_sheet()
-    headers = sheet["columns"]
+    # Baca headers LANGSUNG dari GSheet (tanpa modifikasi)
+    headers = _get_raw_headers()
+
+    # Debug logging
+    print(f"[update_cells] row_id={row_id}, updates={updates}")
+    print(f"[update_cells] headers dari GSheet: {headers}")
 
     # Hapus kolom virtual (AGING, AGING_HARI) — tidak ada di GSheet
     virtual_cols = {"AGING", "AGING_HARI"}
     filtered_updates = {k: v for k, v in updates.items() if k not in virtual_cols}
 
     if not filtered_updates:
+        print(f"[update_cells] Tidak ada update yang difilter")
         return
 
     creds = Credentials.from_service_account_file(
@@ -57,6 +90,7 @@ def update_cells(row_id: int, updates: dict):
     data = []
     for col_name, value in filtered_updates.items():
         col_idx = find_col_index(headers, col_name)
+        print(f"[update_cells] Mencari kolom '{col_name}' -> index={col_idx}")
         if col_idx is None:
             raise RuntimeError(
                 f"Kolom '{col_name}' tidak ditemukan di RAW sheet. "
@@ -65,13 +99,16 @@ def update_cells(row_id: int, updates: dict):
 
         col_letter = col_index_to_letter(col_idx)
         cell_range = f"{SHEET_NAME}!{col_letter}{row_id}"
+        print(f"[update_cells] Kolom '{col_name}' -> {col_letter}{row_id} (index {col_idx})")
         data.append({"range": cell_range, "values": [[value]]})
 
     body = {"valueInputOption": "USER_ENTERED", "data": data}
+    print(f"[update_cells] Request body: {body}")
     service.spreadsheets().values().batchUpdate(
         spreadsheetId=SPREADSHEET_ID,
         body=body,
     ).execute()
+    print(f"[update_cells] Update berhasil")
 
 
 def update_cells_external(
