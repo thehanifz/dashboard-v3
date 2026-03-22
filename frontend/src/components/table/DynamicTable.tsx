@@ -417,7 +417,7 @@ export default function DynamicTable() {
         </>
       )}
 
-      {showEditor && activePreset && <PresetEditorModal presetId={activePreset.id} onClose={() => setShowEditor(false)} />}
+      {showEditor && activePreset && <PresetEditorModal presetId={activePreset.id} scope="engineer" onClose={() => setShowEditor(false)} />}
       {showEditableColumns && <EditableColumnsModal onClose={() => setShowEditableColumns(false)} />}
       {activeFilterCol && <ColumnFilter column={activeFilterCol} onClose={() => setActiveFilterCol(null)} position={filterPos} />}
     </div>

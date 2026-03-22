@@ -156,3 +156,90 @@ def update_cells_external(
         spreadsheetId=spreadsheet_id,
         body=body,
     ).execute()
+
+
+def check_write_permission_external(spreadsheet_id: str, sheet_name: str) -> bool:
+    """
+    Cek apakah service account punya akses WRITE ke spreadsheet external.
+    Caranya: coba tulis ke cell Z1 (pojok kanan atas header) lalu kembalikan nilai semula.
+    Return True kalau berhasil, False kalau 403/permission error.
+    """
+    try:
+        creds = Credentials.from_service_account_file(
+            GOOGLE_APPLICATION_CREDENTIALS,
+            scopes=["https://www.googleapis.com/auth/spreadsheets"],
+        )
+        service = build("sheets", "v4", credentials=creds)
+
+        # Baca nilai Z1 dulu
+        test_range = f"{sheet_name}!A1"
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=test_range,
+        ).execute()
+        original = result.get("values", [[""]])[0][0] if result.get("values") else ""
+
+        # Coba tulis nilai yang sama (no-op tapi test permission)
+        service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=test_range,
+            valueInputOption="RAW",
+            body={"values": [[original]]},
+        ).execute()
+
+        return True
+    except Exception as e:
+        err_str = str(e).lower()
+        if "403" in err_str or "permission" in err_str or "forbidden" in err_str:
+            return False
+        # Error lain (network, dll) — anggap permission ok tapi ada masalah lain
+        return True
+
+
+def ensure_columns_exist_external(
+    spreadsheet_id: str,
+    sheet_name: str,
+    required_columns: list[str],
+) -> list[str]:
+    """
+    Pastikan kolom-kolom wajib ada di baris header (baris 1) sheet external.
+    Kolom yang belum ada akan di-append di akhir header.
+
+    Returns:
+        list kolom yang baru dibuat (kosong kalau semua sudah ada)
+    """
+    creds = Credentials.from_service_account_file(
+        GOOGLE_APPLICATION_CREDENTIALS,
+        scopes=["https://www.googleapis.com/auth/spreadsheets"],
+    )
+    service = build("sheets", "v4", credentials=creds)
+
+    # Baca header row saat ini
+    result = service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=f"{sheet_name}!1:1",
+    ).execute()
+
+    existing_headers = result.get("values", [[]])[0] if result.get("values") else []
+    existing_lower   = {h.strip().lower() for h in existing_headers}
+
+    # Cari kolom yang belum ada
+    missing = [c for c in required_columns if c.strip().lower() not in existing_lower]
+    if not missing:
+        return []
+
+    # Append kolom baru di akhir header
+    start_col_idx = len(existing_headers)
+    data = []
+    for i, col_name in enumerate(missing):
+        col_letter = col_index_to_letter(start_col_idx + i)
+        cell_range = f"{sheet_name}!{col_letter}1"
+        data.append({"range": cell_range, "values": [[col_name]]})
+
+    body = {"valueInputOption": "RAW", "data": data}
+    service.spreadsheets().values().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body=body,
+    ).execute()
+
+    return missing

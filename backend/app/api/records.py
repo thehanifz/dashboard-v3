@@ -15,9 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user, require_role
 from app.core.config import (
-    PTL_COL_TERMINATING, PTL_COL_ORIGINATING,
     MITRA_COLUMN_NAME,
-    PTL_EDITABLE_COLUMNS, MITRA_EDITABLE_WHITELIST,
+    MITRA_EDITABLE_WHITELIST,
 )
 from app.db.models import User, SyncLog
 from app.db.database import get_db
@@ -167,15 +166,6 @@ async def update_ptl_own_sheet(
     if not spreadsheet_id:
         raise HTTPException(status_code=400, detail="URL GSheet PTL tidak valid")
 
-    # Validasi whitelist kolom
-    invalid_cols = [c for c in payload.updates if c not in PTL_EDITABLE_COLUMNS]
-    if invalid_cols:
-        raise HTTPException(
-            status_code=403,
-            detail=f"PTL tidak diizinkan edit kolom: {invalid_cols}. "
-                   f"Kolom yang boleh: {list(PTL_EDITABLE_COLUMNS)}",
-        )
-
     # Baca sheet PTL untuk dapat headers + data existing
     try:
         ptl_data = read_ptl_sheet(
@@ -190,14 +180,19 @@ async def update_ptl_own_sheet(
         ptl_data.get("sheet_name", "Sheet1")
     )
 
-    # Validasi kolom exist di sheet
-    if headers:
-        invalid = [c for c in payload.updates if c not in headers]
-        if invalid:
-            raise HTTPException(status_code=400, detail=f"Kolom tidak ada di GSheet PTL: {invalid}")
-
     # Sanitasi nilai
     sanitized = {k: _sanitize(str(v)) for k, v in payload.updates.items()}
+
+    # Auto-enrich Status PA + Kategori PA jika Status Pekerjaan diupdate
+    status_pekerjaan_col = "Status Pekerjaan"
+    if status_pekerjaan_col in sanitized:
+        sanitized = _enrich_updates_with_opsi(sanitized, sanitized[status_pekerjaan_col])
+
+    # Filter hanya kolom yang ada di header sheet PTL (skip kolom baru yang belum ada)
+    if headers:
+        sanitized = {k: v for k, v in sanitized.items() if k in headers}
+        if not sanitized:
+            return {"ok": True, "row_id": row_id, "updated": []}
 
     # Tulis ke GSheet PTL
     try:

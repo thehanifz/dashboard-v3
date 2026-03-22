@@ -16,7 +16,8 @@ interface AppearanceState {
   activeFilters: Record<string, string[]>;
 
   // --- EDITABLE COLUMNS ---
-  editableColumns: string[];
+  editableColumns:    string[];
+  ptlEditableColumns: string[];
 
   setColumnColor:        (statusName: string, colorId: string) => void;
   setLabelColor:         (labelName: string, colorId: string) => void;
@@ -25,12 +26,14 @@ interface AppearanceState {
   setColumnWidth:        (width: number) => void;
   toggleFilter:          (key: string, value: string) => void;
   clearFilters:          () => void;
-  toggleEditableColumn:  (columnName: string) => void;
-  setEditableColumns:    (columnNames: string[]) => void;
+  toggleEditableColumn:     (columnName: string) => void;
+  setEditableColumns:       (columnNames: string[]) => void;
+  togglePtlEditableColumn:  (columnName: string) => void;
+  setPtlEditableColumns:    (columnNames: string[]) => void;
   resetDefaults:         () => void;
 
-  // Baru: load editableColumns dari DB saat login
-  loadEditableColumnsFromDB: () => Promise<void>;
+  loadEditableColumnsFromDB:    () => Promise<void>;
+  loadPtlEditableColumnsFromDB: () => Promise<void>;
 }
 
 export const useAppearanceStore = create<AppearanceState>()(
@@ -42,7 +45,8 @@ export const useAppearanceStore = create<AppearanceState>()(
       hiddenStatuses: [],
       columnWidth:    320,
       activeFilters:  {},
-      editableColumns:[],
+      editableColumns:    [],
+      ptlEditableColumns: [],
 
       setColumnColor: (statusName, colorId) =>
         set(state => ({ columnColors: { ...state.columnColors, [statusName]: colorId } })),
@@ -79,8 +83,7 @@ export const useAppearanceStore = create<AppearanceState>()(
           const newCols = isEditable
             ? state.editableColumns.filter(c => c !== columnName)
             : [...state.editableColumns, columnName];
-          // Fire-and-forget sync
-          presetApi.saveEditableColumns(newCols).catch(() => {});
+          presetApi.saveEditableColumns(newCols, "engineer").catch(() => {});
           return { editableColumns: newCols };
         });
       },
@@ -88,24 +91,50 @@ export const useAppearanceStore = create<AppearanceState>()(
       // ── setEditableColumns — sync ke DB ───────────────────────────────────
       setEditableColumns: (columnNames) => {
         set({ editableColumns: columnNames });
-        presetApi.saveEditableColumns(columnNames).catch(() => {});
+        presetApi.saveEditableColumns(columnNames, "engineer").catch(() => {});
+      },
+
+      // ── togglePtlEditableColumn — sync ke DB ──────────────────────────────
+      togglePtlEditableColumn: (columnName) => {
+        set(state => {
+          const isEditable = state.ptlEditableColumns.includes(columnName);
+          const newCols = isEditable
+            ? state.ptlEditableColumns.filter(c => c !== columnName)
+            : [...state.ptlEditableColumns, columnName];
+          presetApi.saveEditableColumns(newCols, "ptl").catch(() => {});
+          return { ptlEditableColumns: newCols };
+        });
+      },
+
+      // ── setPtlEditableColumns — sync ke DB ────────────────────────────────
+      setPtlEditableColumns: (columnNames) => {
+        set({ ptlEditableColumns: columnNames });
+        presetApi.saveEditableColumns(columnNames, "ptl").catch(() => {});
       },
 
       resetDefaults: () => set({
-        columnColors:    {},
-        labelColors:     {},
-        cardFields:      [],
-        hiddenStatuses:  [],
-        activeFilters:   {},
-        columnWidth:     320,
-        editableColumns: [],
+        columnColors:       {},
+        labelColors:        {},
+        cardFields:         [],
+        hiddenStatuses:     [],
+        activeFilters:      {},
+        columnWidth:        320,
+        editableColumns:    [],
+        ptlEditableColumns: [],
       }),
 
       // ── Load dari DB saat login ───────────────────────────────────────────
       loadEditableColumnsFromDB: async () => {
         try {
-          const cols = await presetApi.getEditableColumns();
+          const cols = await presetApi.getEditableColumns("engineer");
           if (cols.length > 0) set({ editableColumns: cols });
+        } catch {}
+      },
+
+      loadPtlEditableColumnsFromDB: async () => {
+        try {
+          const cols = await presetApi.getEditableColumns("ptl");
+          if (cols.length > 0) set({ ptlEditableColumns: cols });
         } catch {}
       },
     }),

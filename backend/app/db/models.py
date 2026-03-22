@@ -25,6 +25,7 @@ class SyncTypeEnum(str, enum.Enum):
     manual       = "manual"
     dashboard    = "dashboard"
     mitra_update = "mitra_update"
+    ptl_own_sheet = "ptl_own_sheet"
 
 class MismatchTypeEnum(str, enum.Enum):
     missing_in_engineer = "missing_in_engineer"
@@ -181,9 +182,10 @@ class UserColumnConfig(Base):
     """
     __tablename__ = "user_column_config"
 
-    id               : Mapped[int]       = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id          : Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
-    editable_columns : Mapped[list]      = mapped_column(JSON, nullable=False, default=list)
-    updated_at       : Mapped[datetime]  = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    id                   : Mapped[int]       = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id              : Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
+    editable_columns     : Mapped[list]      = mapped_column(JSON, nullable=False, default=list)
+    ptl_editable_columns : Mapped[list]      = mapped_column(JSON, nullable=False, default=list, server_default="[]")
+    updated_at           : Mapped[datetime]  = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     user: Mapped["User"] = relationship(back_populates="column_config")

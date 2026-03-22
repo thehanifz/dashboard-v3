@@ -39,11 +39,14 @@ export default function ProfilePage() {
   const [pwdSuccess, setPwdSuccess] = useState("");
 
   // GSheet form (PTL only)
-  const [gsheetUrl, setGsheetUrl]     = useState("");
-  const [gsheetSheet, setGsheetSheet] = useState("");
-  const [gsLoading, setGsLoading]     = useState(false);
-  const [gsError, setGsError]         = useState("");
-  const [gsSuccess, setGsSuccess]     = useState("");
+  const [gsheetUrl, setGsheetUrl]         = useState("");
+  const [gsheetSheet, setGsheetSheet]     = useState("");
+  const [gsLoading, setGsLoading]         = useState(false);
+  const [gsError, setGsError]             = useState("");
+  const [gsSuccess, setGsSuccess]         = useState("");
+  const [gsNeedShare, setGsNeedShare]     = useState(false);
+  const [gsServiceEmail, setGsServiceEmail] = useState("");
+  const [gsCreatedCols, setGsCreatedCols] = useState<string[]>([]);
 
   useEffect(() => {
     profileApi.getMe()
@@ -99,14 +102,20 @@ export default function ProfilePage() {
 
   const handleUpdateGSheet = async (e: React.FormEvent) => {
     e.preventDefault();
-    setGsError(""); setGsSuccess("");
+    setGsError(""); setGsSuccess(""); setGsNeedShare(false); setGsCreatedCols([]);
     setGsLoading(true);
     try {
-      await profileApi.updateGSheet({
+      const res = await profileApi.updateGSheet({
         gsheet_url:        gsheetUrl.trim() || null,
         gsheet_sheet_name: gsheetSheet.trim() || null,
       });
-      setGsSuccess("GSheet info berhasil disimpan");
+      setGsServiceEmail(res.service_email ?? "");
+      if (res.need_share) {
+        setGsNeedShare(true);
+      } else {
+        setGsCreatedCols(res.created_columns ?? []);
+        setGsSuccess("GSheet info berhasil disimpan");
+      }
     } catch (err: any) {
       setGsError(err?.response?.data?.detail ?? "Gagal menyimpan");
     } finally {
@@ -196,8 +205,74 @@ export default function ProfilePage() {
         {role === "ptl" && (
           <div className="rounded-2xl border p-6" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
             <h2 className="text-sm font-bold mb-4" style={{ color: "var(--text-primary)" }}>Google Sheet</h2>
+
             {gsError && <Alert type="error" msg={gsError} />}
             {gsSuccess && <Alert type="success" msg={gsSuccess} />}
+
+            {/* Kolom yang baru dibuat */}
+            {gsCreatedCols.length > 0 && (
+              <div className="mb-4 rounded-xl p-4" style={{ background: "#f0fdf4", border: "1px solid #86efac" }}>
+                <div className="flex items-start gap-2">
+                  <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ color: "#16a34a" }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div>
+                    <p className="text-xs font-semibold" style={{ color: "#15803d" }}>
+                      Kolom berikut berhasil dibuat otomatis:
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {gsCreatedCols.map(col => (
+                        <span key={col} className="text-[11px] font-medium px-2 py-0.5 rounded-md"
+                          style={{ background: "#dcfce7", color: "#15803d", border: "1px solid #86efac" }}>
+                          {col}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Warning: perlu share ke service account */}
+            {gsNeedShare && (
+              <div className="mb-4 rounded-xl p-4" style={{ background: "#fffbeb", border: "1px solid #fcd34d" }}>
+                <div className="flex items-start gap-2">
+                  <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ color: "#d97706" }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.962-.833-2.732 0L4.07 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold mb-1" style={{ color: "#b45309" }}>
+                      GSheet belum bisa diakses oleh sistem
+                    </p>
+                    <p className="text-xs mb-2" style={{ color: "#92400e" }}>
+                      Share spreadsheet kamu ke email berikut dengan akses <strong>Editor</strong>, lalu simpan ulang:
+                    </p>
+                    {gsServiceEmail && (
+                      <div className="flex items-center gap-2 rounded-lg px-3 py-2"
+                        style={{ background: "#fef3c7", border: "1px solid #fcd34d" }}>
+                        <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ color: "#d97706" }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        <code className="text-xs font-mono break-all" style={{ color: "#92400e" }}>
+                          {gsServiceEmail}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => navigator.clipboard.writeText(gsServiceEmail)}
+                          className="ml-auto shrink-0 text-[10px] font-medium px-2 py-0.5 rounded"
+                          style={{ background: "#fcd34d", color: "#92400e" }}>
+                          Salin
+                        </button>
+                      </div>
+                    )}
+                    <p className="text-[11px] mt-2" style={{ color: "#92400e" }}>
+                      Cara share: Buka spreadsheet → klik <strong>Share</strong> → masukkan email di atas → pilih <strong>Editor</strong> → klik <strong>Send</strong>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleUpdateGSheet} className="space-y-4">
               <Field label="URL Google Sheet">
                 <input type="url" value={gsheetUrl} onChange={e => setGsheetUrl(e.target.value)}

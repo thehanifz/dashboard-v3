@@ -33,7 +33,14 @@ export const profileApi = {
   updateGSheet: async (payload: {
     gsheet_url:        string | null;
     gsheet_sheet_name: string | null;
-  }): Promise<{ ok: boolean }> => {
+  }): Promise<{
+    ok:                boolean;
+    gsheet_url:        string | null;
+    gsheet_sheet_name: string | null;
+    created_columns:   string[];
+    need_share:        boolean;
+    service_email:     string;
+  }> => {
     const res = await api.put("/profile/gsheet", payload);
     return res.data;
   },

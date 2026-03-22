@@ -4,19 +4,21 @@
  * Preset kolom sekarang disimpan di DB via usePresets("ptl").
  * activePresetId tetap di localStorage (useActivePresetStore).
  */
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { useThemeStore }     from "../../state/themeStore";
 import { useAuthStore }      from "../../state/authStore";
 import { useToast }          from "../../utils/useToast";
 import { usePresets }        from "../../hooks/usePresets";
+import { useAppearanceStore } from "../../state/appearanceStore";
 import Sidebar               from "../layout/Sidebar";
 import Topbar                from "../layout/Topbar";
 import ToastContainer        from "../ui/ToastContainer";
 import PTLKanbanBoard        from "./PTLKanbanBoard";
 import PTLColumnFilter       from "./PTLColumnFilter";
 import PresetEditorModal     from "../preset/PresetEditorModal";
+import EditableColumnsModal  from "../table/EditableColumnsModal";
 import { TableHeaderCell }   from "../table/TableHeaderCell";
 import api                   from "../../services/api";
 import baiApi                from "../../services/baiApi";
@@ -32,6 +34,12 @@ interface PTLSheetData {
   no_gsheet: boolean;
   columns:   string[];
   records:   SheetRecord[];
+}
+interface StatusMaster {
+  primary:       string[];
+  mapping:       Record<string, string[]>;
+  status_column: string;
+  detail_column: string;
 }
 
 type DetailView = "kanban" | "table";
@@ -250,16 +258,67 @@ function PTLPresetCreateModal({ allCols, onCreate, onClose }: {
   );
 }
 
+// ─── PTL Editable Cell ────────────────────────────────────────────────────────
+function PTLEditableCell({ value, colW, onCommit }: {
+  value:    string;
+  colW:     number;
+  onCommit: (val: string) => void;
+}) {
+  const [localVal, setLocalVal] = useState(value);
+  const [editing,  setEditing]  = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Sync dari luar (saat optimistic update selesai)
+  useEffect(() => { setLocalVal(value); }, [value]);
+
+  const commit = () => {
+    setEditing(false);
+    if (localVal !== value) onCommit(localVal);
+  };
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      value={localVal}
+      onChange={e => setLocalVal(e.target.value)}
+      onFocus={() => setEditing(true)}
+      onBlur={commit}
+      onKeyDown={e => {
+        if (e.key === "Enter")  { inputRef.current?.blur(); }
+        if (e.key === "Escape") { setLocalVal(value); setEditing(false); inputRef.current?.blur(); }
+      }}
+      readOnly={!editing}
+      style={{
+        width: "100%",
+        padding: "4px 8px",
+        fontSize: 12,
+        borderRadius: 6,
+        outline: "none",
+        background:  editing ? "var(--input-bg, var(--bg-surface2))" : "var(--bg-surface2)",
+        color:       "var(--text-primary)",
+        border:      editing ? "1px solid var(--accent)" : "1px solid transparent",
+        cursor:      editing ? "text" : "pointer",
+        boxShadow:   editing ? "0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent)" : "none",
+        transition:  "border-color 0.15s, background 0.15s",
+        maxWidth:    `${colW - 8}px`,
+      }}
+      onMouseEnter={e => { if (!editing) (e.currentTarget as HTMLElement).style.borderColor = "var(--border-strong, var(--border))"; }}
+      onMouseLeave={e => { if (!editing) (e.currentTarget as HTMLElement).style.borderColor = "transparent"; }}
+    />
+  );
+}
+
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 export default function PTLDetailPanel() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [view, setView]                         = useState<DetailView>("table");
   const [sheetData, setSheetData]               = useState<PTLSheetData | null>(null);
+  const [localRecords, setLocalRecords]         = useState<SheetRecord[]>([]);
+  const [statusMaster, setStatusMaster]         = useState<StatusMaster | null>(null);
   const [loading, setLoading]                   = useState(true);
   const [search, setSearch]                     = useState("");
   const [tablePage, setTablePage]               = useState(1);
-  const [editingCell, setEditingCell]           = useState<{ rowId: number; col: string } | null>(null);
-  const [editingValue, setEditingValue]         = useState("");
   const [saving, setSaving]                     = useState(false);
   const [activeFilters, setActiveFilters]       = useState<Record<string, string[]>>({});
   const [activeFilterCol, setActiveFilterCol]   = useState<string | null>(null);
@@ -267,10 +326,13 @@ export default function PTLDetailPanel() {
   const [presetDropdownOpen, setPresetDropdown] = useState(false);
   const [showCreatePreset, setShowCreatePreset] = useState(false);
   const [editingPresetId, setEditingPresetId]   = useState<number | null>(null);
+  const [showEditableColumns, setShowEditableColumns] = useState(false);
 
   const { theme }                   = useThemeStore();
   const { user }                    = useAuthStore();
   const { toasts, show: showToast } = useToast();
+
+  const { ptlEditableColumns, loadPtlEditableColumnsFromDB } = useAppearanceStore();
 
   // ── Preset dari DB ──
   const {
@@ -281,6 +343,7 @@ export default function PTLDetailPanel() {
     createPreset,
     updatePreset,
     loading: presetLoading,
+    refetch: refetchPresets,
   } = usePresets("ptl");
 
   const columns = activePreset?.columns ?? [];
@@ -295,6 +358,7 @@ export default function PTLDetailPanel() {
       setLoading(true);
       const res = await api.get<PTLSheetData>("/records/ptl-sheet");
       setSheetData(res.data);
+      setLocalRecords(res.data.records ?? []);
     } catch {
       showToast("Gagal memuat data GSheet", "error");
     } finally {
@@ -302,46 +366,98 @@ export default function PTLDetailPanel() {
     }
   }, [showToast]);
 
+  const fetchStatusMaster = useCallback(async () => {
+    try {
+      const res = await api.get<StatusMaster>("/status");
+      setStatusMaster(res.data);
+    } catch {
+      // status master optional — tidak error kalau gagal
+    }
+  }, []);
+
   useEffect(() => { fetchSheet(); }, []);
+  useEffect(() => { fetchStatusMaster(); }, []);
+  useEffect(() => { loadPtlEditableColumnsFromDB(); }, []);
 
   const allColumns = sheetData?.columns ?? [];
-  const records    = sheetData?.records ?? [];
+  const records    = localRecords;
   const idPaCol    = allColumns.find(c => c === "ID PA") ?? "ID PA";
   const namaCol    = allColumns.find(c => c.toLowerCase().includes("perusahaan")) ?? "";
 
-  // ── Update cell ──
+  const statusCol = statusMaster?.status_column ?? "Status Pekerjaan";
+  const detailCol = statusMaster?.detail_column ?? "Detail Progres";
+
+  // ── Optimistic update cell ─────────────────────────────────────────────────
   const handleUpdateCell = useCallback(async (rowId: number, col: string, value: string) => {
+    // 1. Update local state dulu (optimistic)
+    setLocalRecords(prev =>
+      prev.map(r => r.row_id === rowId ? { ...r, data: { ...r.data, [col]: value } } : r)
+    );
+    // 2. Kirim ke backend background
     setSaving(true);
     try {
       await api.post(`/records/ptl-sheet/${rowId}/cells`, { updates: { [col]: value } });
-      setSheetData(prev => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          records: prev.records.map(r =>
-            r.row_id === rowId ? { ...r, data: { ...r.data, [col]: value } } : r
-          ),
-        };
-      });
-      showToast("Tersimpan", "success");
+      // Backend mungkin auto-update Status PA & Kategori PA — refresh untuk sync
+      if (col === statusCol) {
+        const res = await api.get<PTLSheetData>("/records/ptl-sheet");
+        setSheetData(res.data);
+        setLocalRecords(res.data.records ?? []);
+      }
     } catch (err: any) {
+      // Rollback optimistic update
+      setLocalRecords(prev =>
+        prev.map(r => r.row_id === rowId ? { ...r, data: { ...r.data, [col]: sheetData?.records.find(s => s.row_id === rowId)?.data[col] ?? value } } : r)
+      );
       showToast(err?.response?.data?.detail ?? "Gagal menyimpan", "error");
     } finally {
       setSaving(false);
     }
-  }, [showToast]);
+  }, [showToast, statusCol, sheetData]);
 
-  const handleCellClick = (rowId: number, col: string, val: string) => {
-    setEditingCell({ rowId, col });
-    setEditingValue(val ?? "");
+  // ── Update status (pakai endpoint status khusus untuk Engineer-style dropdown) ─
+  const handleUpdateStatus = useCallback(async (rowId: number, status: string, detail?: string) => {
+    // Optimistic update dulu
+    setLocalRecords(prev =>
+      prev.map(r => {
+        if (r.row_id !== rowId) return r;
+        return {
+          ...r,
+          data: {
+            ...r.data,
+            [statusCol]: status,
+            ...(detail !== undefined ? { [detailCol]: detail } : {}),
+          },
+        };
+      })
+    );
+    setSaving(true);
+    try {
+      await api.post(`/records/ptl-sheet/${rowId}/cells`, {
+        updates: {
+          [statusCol]: status,
+          ...(detail !== undefined ? { [detailCol]: detail } : {}),
+        },
+      });
+      // Refresh untuk dapat Status PA & Kategori PA yang auto-update
+      const res = await api.get<PTLSheetData>("/records/ptl-sheet");
+      setSheetData(res.data);
+      setLocalRecords(res.data.records ?? []);
+    } catch (err: any) {
+      showToast(err?.response?.data?.detail ?? "Gagal menyimpan status", "error");
+      // Rollback
+      const res = await api.get<PTLSheetData>("/records/ptl-sheet");
+      setSheetData(res.data);
+      setLocalRecords(res.data.records ?? []);
+    } finally {
+      setSaving(false);
+    }
+  }, [statusCol, detailCol, showToast]);
+
+  const handleRefresh = async () => {
+    await fetchSheet();
+    await fetchStatusMaster();
+    showToast("Data diperbarui", "success");
   };
-
-  const handleCellCommit = async (rowId: number, col: string) => {
-    setEditingCell(null);
-    await handleUpdateCell(rowId, col, editingValue);
-  };
-
-  const handleRefresh = async () => { await fetchSheet(); showToast("Data diperbarui", "success"); };
 
   // ── Filter + search ──
   const filteredRecords = useMemo(() => {
@@ -443,25 +559,61 @@ export default function PTLDetailPanel() {
 
         <main className="flex-1 overflow-hidden flex flex-col">
 
-          {/* Header + Tab */}
-          <div className="px-4 pt-3 pb-0 shrink-0 flex items-center justify-between flex-wrap gap-2">
-            <div>
-              <h1 className="text-base font-bold" style={{ color: "var(--text-primary)" }}>Detail Pekerjaan</h1>
-              <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-                {records.length} record · {user?.nama_lengkap}
-                {saving && <span className="ml-2 text-amber-500">Menyimpan...</span>}
-              </p>
+          {/* ── PAGE HEADER ─────────────────────────────────────────── */}
+          <div className="px-5 pt-4 pb-3 shrink-0 flex items-center justify-between gap-4"
+            style={{ borderBottom: "1px solid var(--border)" }}>
+
+            {/* Kiri: icon + judul + meta */}
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: "var(--accent-soft)" }}>
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                  style={{ color: "var(--accent)", width: 18, height: 18 }}>
+                  <path strokeLinecap="round" strokeLinejoin="round"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-sm font-bold leading-tight" style={{ color: "var(--text-primary)" }}>
+                  Detail Pekerjaan
+                </h1>
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                    {records.length} record
+                  </span>
+                  <span className="w-1 h-1 rounded-full shrink-0" style={{ background: "var(--border)" }} />
+                  <span className="text-[11px] font-medium truncate" style={{ color: "var(--text-secondary)" }}>
+                    {user?.nama_lengkap}
+                  </span>
+                  {saving && (
+                    <span className="text-[11px] font-medium flex items-center gap-1" style={{ color: "var(--accent)" }}>
+                      <span className="w-1.5 h-1.5 rounded-full animate-pulse inline-block" style={{ background: "var(--accent)" }} />
+                      Menyimpan...
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-1">
-              {(["table", "kanban"] as DetailView[]).map(v => (
+
+            {/* Kanan: tab view switcher pill */}
+            <div className="flex items-center shrink-0 p-0.5 rounded-xl"
+              style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}>
+              {([
+                ["table",  "Tabel",  "M3 10h18M3 6h18M3 14h18M3 18h18"],
+                ["kanban", "Kanban", "M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7"],
+              ] as [DetailView, string, string][]).map(([v, label, path]) => (
                 <button key={v} onClick={() => setView(v)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
                   style={{
-                    background: view === v ? "var(--accent)" : "var(--bg-surface)",
-                    color:      view === v ? "#fff" : "var(--text-secondary)",
-                    border:     view === v ? "none" : "1px solid var(--border)",
+                    background: view === v ? "var(--accent)" : "transparent",
+                    color:      view === v ? "#fff" : "var(--text-muted)",
+                    boxShadow:  view === v ? "0 1px 4px rgba(0,0,0,0.15)" : "none",
                   }}>
-                  {v === "table" ? "Tabel" : "Kanban"}
+                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                    style={{ width: 13, height: 13 }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d={path} />
+                  </svg>
+                  {label}
                 </button>
               ))}
             </div>
@@ -479,98 +631,118 @@ export default function PTLDetailPanel() {
 
           {/* ── TABLE VIEW ── */}
           {view === "table" && (
-            <div className="flex-1 overflow-hidden flex flex-col p-4 gap-3">
+            <div className="flex-1 overflow-hidden flex flex-col px-4 pt-3 pb-4 gap-2.5">
 
-              {/* Toolbar */}
-              <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {/* ── TOOLBAR ── */}
+              <div className="flex items-center gap-2 shrink-0 flex-wrap">
+
+                {/* Search */}
                 <div className="relative">
                   <svg className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
-                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ color: "var(--text-muted)" }}>
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                    style={{ color: "var(--text-muted)" }}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                   <input type="text" placeholder="Cari data..." value={search}
                     onChange={e => { setSearch(e.target.value); setTablePage(1); }}
-                    className="th-input pl-8 pr-3 py-1.5 text-xs w-48" />
+                    className="th-input pl-8 pr-3 py-1.5 text-xs w-44" />
                 </div>
 
-                {filterCount > 0 && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs px-2.5 py-1.5 rounded-lg font-medium flex items-center gap-1.5"
-                      style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--accent)" }}>
-                      {filterCount} filter aktif
-                    </span>
-                    <button onClick={() => setActiveFilters({})}
-                      className="text-xs px-2 py-1.5 rounded-lg"
-                      style={{ color: "var(--text-muted)", background: "var(--bg-surface2)", border: "1px solid var(--border)" }}>
-                      Reset
-                    </button>
-                  </div>
-                )}
-
-                <div className="ml-auto text-[11px]" style={{ color: "var(--text-muted)" }}>
-                  {filteredRecords.length} / {records.length} baris
-                </div>
-              </div>
-
-              {/* Preset selector */}
-              <div className="flex items-center gap-2 shrink-0">
+                {/* Preset selector inline */}
                 <div className="relative">
-                  <button onClick={() => setPresetDropdown(v => !v)}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border"
-                    style={{ background: "var(--bg-surface)", color: "var(--text-primary)", borderColor: "var(--border)", minWidth: 180, justifyContent: "space-between" }}>
-                    <span className="truncate max-w-[140px]">
-                      {presetLoading ? "Memuat..." : activePreset ? activePreset.name : "Pilih Preset"}
-                    </span>
-                    <svg className={`w-4 h-4 shrink-0 transition-transform ${presetDropdownOpen ? "rotate-180" : ""}`}
-                      fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
+                  <div className="flex items-center rounded-lg overflow-hidden"
+                    style={{ border: "1px solid var(--border)", background: "var(--bg-surface)" }}>
+                    <button onClick={() => setPresetDropdown(v => !v)}
+                      className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium transition-colors"
+                      style={{ color: "var(--text-primary)", minWidth: 148 }}>
+                      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                        style={{ color: "var(--accent)", width: 14, height: 14, flexShrink: 0 }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h8" />
+                      </svg>
+                      <span className="truncate max-w-[108px]">
+                        {presetLoading ? "Memuat..." : activePreset ? activePreset.name : "Pilih Preset"}
+                      </span>
+                      <svg className={`shrink-0 ml-auto transition-transform ${presetDropdownOpen ? "rotate-180" : ""}`}
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                        style={{ color: "var(--text-muted)", width: 13, height: 13 }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {activePreset && (
+                      <>
+                        <div className="w-px h-5 shrink-0" style={{ background: "var(--border)" }} />
+                        <button onClick={() => setEditingPresetId(activePreset.id)}
+                          className="px-2 py-1.5 transition-colors shrink-0"
+                          title="Edit preset aktif"
+                          style={{ color: "var(--text-muted)" }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "var(--accent)"; (e.currentTarget as HTMLElement).style.background = "var(--accent-soft)"; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
+                          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                            style={{ width: 13, height: 13 }}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                      </>
+                    )}
+                  </div>
 
                   {presetDropdownOpen && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setPresetDropdown(false)} />
-                      <div className="absolute top-full left-0 mt-1 rounded-lg shadow-xl border z-20 overflow-hidden"
-                        style={{ background: "var(--bg-surface)", borderColor: "var(--border)", minWidth: 200 }}>
-                        <div className="max-h-48 overflow-y-auto custom-scrollbar py-1">
+                      <div className="absolute top-full left-0 mt-1.5 rounded-xl shadow-2xl border z-20 overflow-hidden"
+                        style={{ background: "var(--bg-surface)", borderColor: "var(--border)", minWidth: 220 }}>
+                        <div className="px-3 pt-2.5 pb-1">
+                          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                            Preset Tersimpan
+                          </p>
+                        </div>
+                        <div className="max-h-52 overflow-y-auto custom-scrollbar pb-1">
                           {presets.length === 0 && (
-                            <p className="text-xs text-center py-3" style={{ color: "var(--text-muted)" }}>Belum ada preset</p>
+                            <p className="text-xs text-center py-4" style={{ color: "var(--text-muted)" }}>Belum ada preset</p>
                           )}
                           {presets.map(p => (
-                            <div key={p.id} className="flex items-center gap-1 px-1">
+                            <div key={p.id} className="flex items-center gap-1 px-2 py-0.5">
                               <button onClick={() => { setActivePresetId(p.id); setPresetDropdown(false); }}
-                                className="flex-1 text-left px-2 py-2 text-xs flex items-center gap-2 rounded-lg"
-                                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--bg-surface2)"}
-                                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "transparent"}>
-                                {p.id === activePresetId && (
-                                  <svg className="w-3.5 h-3.5 shrink-0" fill="currentColor" viewBox="0 0 20 20" style={{ color: "var(--accent)" }}>
+                                className="flex-1 text-left px-2 py-1.5 text-xs flex items-center gap-2 rounded-lg transition-colors"
+                                style={{ background: p.id === activePresetId ? "var(--accent-soft)" : "transparent" }}
+                                onMouseEnter={e => { if (p.id !== activePresetId) (e.currentTarget as HTMLElement).style.background = "var(--bg-surface2)"; }}
+                                onMouseLeave={e => { if (p.id !== activePresetId) (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
+                                {p.id === activePresetId ? (
+                                  <svg fill="currentColor" viewBox="0 0 20 20"
+                                    style={{ color: "var(--accent)", width: 12, height: 12, flexShrink: 0 }}>
                                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                                   </svg>
+                                ) : (
+                                  <span style={{ width: 12, height: 12, flexShrink: 0, display: "inline-block" }} />
                                 )}
                                 <span className={p.id === activePresetId ? "font-semibold" : ""}
-                                  style={{ color: "var(--text-primary)" }}>{p.name}</span>
+                                  style={{ color: p.id === activePresetId ? "var(--accent)" : "var(--text-primary)" }}>
+                                  {p.name}
+                                </span>
                               </button>
-                              {/* Edit preset button */}
                               <button onClick={() => { setEditingPresetId(p.id); setPresetDropdown(false); }}
-                                className="p-1.5 rounded-lg shrink-0"
+                                className="p-1.5 rounded-lg shrink-0 transition-colors"
                                 style={{ color: "var(--text-muted)" }}
+                                title="Edit preset"
                                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--accent-soft)"; (e.currentTarget as HTMLElement).style.color = "var(--accent)"; }}
-                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
-                                title="Edit preset">
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}>
+                                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                                  style={{ width: 11, height: 11 }}>
                                   <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                 </svg>
                               </button>
                             </div>
                           ))}
                         </div>
-                        <div className="border-t py-1" style={{ borderColor: "var(--border)" }}>
+                        <div className="border-t mx-2 my-1" style={{ borderColor: "var(--border)" }} />
+                        <div className="px-2 pb-2">
                           <button onClick={() => { setPresetDropdown(false); setShowCreatePreset(true); }}
-                            className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 rounded-lg mx-1"
-                            style={{ color: "var(--text-secondary)", width: "calc(100% - 8px)" }}
-                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--bg-surface2)"}
+                            className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 rounded-lg transition-colors font-medium"
+                            style={{ color: "var(--accent)" }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--accent-soft)"}
                             onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "transparent"}>
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                              style={{ width: 13, height: 13 }}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                             </svg>
                             Buat Preset Baru
@@ -579,6 +751,44 @@ export default function PTLDetailPanel() {
                       </div>
                     </>
                   )}
+                </div>
+
+                {/* Filter badge */}
+                {filterCount > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs px-2.5 py-1.5 rounded-lg font-medium flex items-center gap-1.5"
+                      style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--accent)" }}>
+                      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                        style={{ width: 11, height: 11 }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4-2A1 1 0 018 17v-3.586L3.293 6.707A1 1 0 013 6V4z" />
+                      </svg>
+                      {filterCount} filter
+                    </span>
+                    <button onClick={() => setActiveFilters({})}
+                      className="text-xs px-2 py-1.5 rounded-lg transition-colors"
+                      style={{ color: "var(--text-muted)", background: "var(--bg-surface2)", border: "1px solid var(--border)" }}>
+                      Reset
+                    </button>
+                  </div>
+                )}
+
+                {/* Kolom Editable */}
+                <button onClick={() => setShowEditableColumns(true)}
+                  className="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-2.5 rounded-lg"
+                  title="Atur kolom yang dapat diedit">
+                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                    style={{ width: 13, height: 13 }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                  <span className="hidden sm:inline">Kolom Editable</span>
+                </button>
+
+                {/* Stats */}
+                <div className="ml-auto">
+                  <span className="text-[11px] font-medium tabular-nums px-2.5 py-1 rounded-lg"
+                    style={{ background: "var(--bg-surface2)", color: "var(--text-muted)", border: "1px solid var(--border)" }}>
+                    {filteredRecords.length} / {records.length} baris
+                  </span>
                 </div>
               </div>
 
@@ -637,30 +847,56 @@ export default function PTLDetailPanel() {
                                   </div>
                                 </td>
                                 {columns.map(col => {
-                                  const colW      = widths[col] ?? DEFAULT_COL_WIDTH;
-                                  const isEditing = editingCell?.rowId === r.row_id && editingCell?.col === col;
-                                  const editable  = col !== idPaCol;
+                                  const colW         = widths[col] ?? DEFAULT_COL_WIDTH;
+                                  const isStatusCol  = col === statusCol;
+                                  const isDetailCol  = col === detailCol;
+                                  const isEditable   = ptlEditableColumns.includes(col) && !isStatusCol && !isDetailCol;
+                                  const currentVal   = r.data[col] ?? "";
+
                                   return (
-                                    <td key={col} className="px-3 py-2 border-r overflow-hidden"
-                                      style={{ borderColor: "var(--border)", maxWidth: colW, cursor: editable ? "pointer" : "default" }}
-                                      title={isEditing ? undefined : r.data[col]}
-                                      onClick={() => !isEditing && editable && handleCellClick(r.row_id, col, r.data[col] ?? "")}>
-                                      {isEditing ? (
-                                        <input autoFocus value={editingValue}
-                                          onChange={e => setEditingValue(e.target.value)}
-                                          onBlur={() => handleCellCommit(r.row_id, col)}
-                                          onKeyDown={e => {
-                                            if (e.key === "Enter") handleCellCommit(r.row_id, col);
-                                            if (e.key === "Escape") setEditingCell(null);
-                                          }}
-                                          className="w-full text-xs px-1 py-0.5 rounded border outline-none"
-                                          style={{ background: "var(--bg-app)", color: "var(--text-primary)", borderColor: "var(--accent)", width: `${colW - 24}px` }}
+                                    <td key={col} className="border-r overflow-hidden"
+                                      style={{ borderColor: "var(--border)", maxWidth: colW, padding: "2px 4px" }}
+                                      title={currentVal}>
+
+                                      {/* Dropdown Status Pekerjaan */}
+                                      {isStatusCol && statusMaster && (
+                                        <select value={currentVal}
+                                          onChange={e => handleUpdateStatus(r.row_id, e.target.value, undefined)}
+                                          className="text-xs border rounded px-1 py-0.5 w-full"
+                                          style={{ background: "var(--bg-surface2)", color: "var(--text-primary)", borderColor: "var(--border)" }}>
+                                          {(statusMaster.primary ?? []).map(s => (
+                                            <option key={s} value={s}>{s}</option>
+                                          ))}
+                                        </select>
+                                      )}
+
+                                      {/* Dropdown Detail Progres */}
+                                      {isDetailCol && statusMaster && (
+                                        <select value={currentVal}
+                                          onChange={e => handleUpdateStatus(r.row_id, r.data[statusCol] ?? "", e.target.value)}
+                                          className="text-xs border rounded px-1 py-0.5 w-full"
+                                          style={{ background: "var(--bg-surface2)", color: "var(--text-primary)", borderColor: "var(--border)" }}>
+                                          <option value="-">-</option>
+                                          {(statusMaster.mapping?.[r.data[statusCol]] ?? []).map(o => (
+                                            <option key={o} value={o}>{o}</option>
+                                          ))}
+                                        </select>
+                                      )}
+
+                                      {/* Inline edit optimistic untuk kolom editable */}
+                                      {isEditable && !isStatusCol && !isDetailCol && (
+                                        <PTLEditableCell
+                                          value={currentVal}
+                                          colW={colW}
+                                          onCommit={val => handleUpdateCell(r.row_id, col, val)}
                                         />
-                                      ) : (
-                                        <div className="truncate w-full block" style={{ maxWidth: `${colW - 24}px` }}
-                                          onMouseEnter={e => { if (editable) (e.currentTarget as HTMLElement).style.outline = "1px dashed var(--accent)"; }}
-                                          onMouseLeave={e => { if (editable) (e.currentTarget as HTMLElement).style.outline = "none"; }}>
-                                          {r.data[col] ?? ""}
+                                      )}
+
+                                      {/* Plain text untuk kolom tidak editable */}
+                                      {!isStatusCol && !isDetailCol && !isEditable && (
+                                        <div className="truncate px-2 py-1 text-xs"
+                                          style={{ color: "var(--text-secondary)", maxWidth: `${colW - 8}px` }}>
+                                          {currentVal || "—"}
                                         </div>
                                       )}
                                     </td>
@@ -720,13 +956,23 @@ export default function PTLDetailPanel() {
         />
       )}
 
-      {/* Edit preset (PresetEditorModal sama dengan Engineer) */}
+      {/* Edit preset PTL */}
       {editingPresetId !== null && (
         <PresetEditorModal
           presetId={editingPresetId}
           scope="ptl"
           allCols={allColumns}
+          onSaved={refetchPresets}
           onClose={() => setEditingPresetId(null)}
+        />
+      )}
+
+      {/* Kolom Editable Modal */}
+      {showEditableColumns && (
+        <EditableColumnsModal
+          scope="ptl"
+          allCols={columns}
+          onClose={() => setShowEditableColumns(false)}
         />
       )}
     </div>

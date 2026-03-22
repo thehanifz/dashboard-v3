@@ -7,6 +7,8 @@ GET  /api/profile/me           → info profil (semua role termasuk superuser)
 PUT  /api/profile/password     → ganti password (verifikasi lama dulu) — non-superuser only
 PUT  /api/profile/gsheet       → edit gsheet_url + gsheet_sheet_name — PTL only
 """
+import re
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
@@ -14,13 +16,32 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import SUPERUSER_USERNAME
+from app.core.config import SUPERUSER_USERNAME, GOOGLE_SERVICE_ACCOUNT_EMAIL
 from app.core.deps import get_current_user, _get_token
 from app.core.security import verify_password, hash_password, decode_access_token
 from app.db.database import get_db
 from app.db.models import RefreshToken, User, RoleEnum
+from app.services.sheet_writer import (
+    ensure_columns_exist_external,
+    check_write_permission_external,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Profile"])
+
+# Kolom wajib yang harus ada di GSheet PTL
+PTL_REQUIRED_COLUMNS = [
+    "Status Pekerjaan",
+    "Detail Progres",
+    "Status PA",
+    "Kategori PA",
+]
+
+
+def _extract_spreadsheet_id(url: str) -> str | None:
+    match = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", url)
+    return match.group(1) if match else None
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -144,14 +165,59 @@ async def update_gsheet(
             detail="Hanya PTL yang bisa update GSheet info",
         )
 
+    # Simpan ke DB dulu
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
     user.gsheet_url        = payload.gsheet_url.strip() if payload.gsheet_url else None
     user.gsheet_sheet_name = payload.gsheet_sheet_name.strip() if payload.gsheet_sheet_name else None
-
     await db.commit()
+
+    # Kalau URL kosong, return langsung
+    if not user.gsheet_url:
+        return {"ok": True, "gsheet_url": None, "gsheet_sheet_name": None,
+                "created_columns": [], "need_share": False, "service_email": GOOGLE_SERVICE_ACCOUNT_EMAIL}
+
+    spreadsheet_id = _extract_spreadsheet_id(user.gsheet_url)
+    if not spreadsheet_id:
+        raise HTTPException(status_code=400, detail="URL GSheet tidak valid")
+
+    sheet_name = user.gsheet_sheet_name or "Sheet1"
+
+    # ── 1. Cek write permission ───────────────────────────────────────────────
+    has_write = False
+    try:
+        has_write = check_write_permission_external(spreadsheet_id, sheet_name)
+    except Exception as e:
+        logger.warning(f"[profile/gsheet] Gagal cek permission: {e}")
+
+    if not has_write:
+        return {
+            "ok":              True,
+            "gsheet_url":      user.gsheet_url,
+            "gsheet_sheet_name": user.gsheet_sheet_name,
+            "created_columns": [],
+            "need_share":      True,
+            "service_email":   GOOGLE_SERVICE_ACCOUNT_EMAIL,
+        }
+
+    # ── 2. Auto-create kolom wajib yang belum ada ─────────────────────────────
+    created_columns = []
+    try:
+        created_columns = ensure_columns_exist_external(
+            spreadsheet_id=spreadsheet_id,
+            sheet_name=sheet_name,
+            required_columns=PTL_REQUIRED_COLUMNS,
+        )
+        if created_columns:
+            logger.info(f"[profile/gsheet] Auto-created columns: {created_columns} for user {current_user.username}")
+    except Exception as e:
+        logger.warning(f"[profile/gsheet] Gagal auto-create kolom: {e}")
+
     return {
         "ok":                True,
         "gsheet_url":        user.gsheet_url,
         "gsheet_sheet_name": user.gsheet_sheet_name,
+        "created_columns":   created_columns,
+        "need_share":        False,
+        "service_email":     GOOGLE_SERVICE_ACCOUNT_EMAIL,
     }

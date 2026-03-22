@@ -4,18 +4,29 @@ import { useAppearanceStore } from "../../state/appearanceStore";
 
 type Props = {
   onClose: () => void;
+  scope?: "engineer" | "ptl";
+  /** Kolom dari preset aktif PTL — wajib di-pass kalau scope="ptl" */
+  allCols?: string[];
 };
 
-export default function EditableColumnsModal({ onClose }: Props) {
+export default function EditableColumnsModal({ onClose, scope = "engineer", allCols }: Props) {
   const { activePresetId } = usePresetStore();
-  const { editableColumns, toggleEditableColumn } = useAppearanceStore();
-  const presets = usePresetStore((s) => s.presets);
+  const presets            = usePresetStore((s) => s.presets);
 
-  const activePreset = useMemo(() => {
-    return presets.find(p => p.id === activePresetId);
-  }, [presets, activePresetId]);
+  const {
+    editableColumns,    toggleEditableColumn,
+    ptlEditableColumns, togglePtlEditableColumn,
+  } = useAppearanceStore();
 
-  const columns = activePreset?.columns || [];
+  // Engineer: kolom dari preset Engineer aktif
+  // PTL: kolom dari allCols prop (sudah di-fetch di PTLDetailPanel)
+  const activePreset = useMemo(() => presets.find(p => p.id === activePresetId), [presets, activePresetId]);
+  const columns = scope === "ptl"
+    ? (allCols ?? [])
+    : (activePreset?.columns ?? []);
+
+  const currentEditable   = scope === "ptl" ? ptlEditableColumns : editableColumns;
+  const handleToggle      = scope === "ptl" ? togglePtlEditableColumn : toggleEditableColumn;
 
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50"
@@ -54,7 +65,7 @@ export default function EditableColumnsModal({ onClose }: Props) {
 
           <div className="space-y-1">
             {columns.map(column => {
-              const isChecked = editableColumns.includes(column);
+              const isChecked = currentEditable.includes(column);
               return (
                 <label key={column}
                   className="flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors"
@@ -68,7 +79,7 @@ export default function EditableColumnsModal({ onClose }: Props) {
                   <input
                     type="checkbox"
                     checked={isChecked}
-                    onChange={() => toggleEditableColumn(column)}
+                    onChange={() => handleToggle(column)}
                     className="rounded cursor-pointer"
                     style={{ accentColor: "var(--accent)" }}
                   />
@@ -82,7 +93,7 @@ export default function EditableColumnsModal({ onClose }: Props) {
         <div className="p-4 shrink-0 flex justify-between items-center"
           style={{ borderTop: "1px solid var(--border)" }}>
           <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-            {editableColumns.filter(c => columns.includes(c)).length} dari {columns.length} kolom dipilih
+            {currentEditable.filter(c => columns.includes(c)).length} dari {columns.length} kolom dipilih
           </span>
           <button onClick={onClose}
             className="px-4 py-2 rounded-lg text-xs font-semibold text-white transition-colors"

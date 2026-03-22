@@ -27,6 +27,7 @@ SHEET_NAME                     = os.getenv("SHEET_NAME", "RAW")
 STATUS_SHEET_NAME              = os.getenv("STATUS_SHEET_NAME", "Opsi")
 STATUS_COL_PRIMARY             = os.getenv("STATUS_COL_PRIMARY", "Status Pekerjaan")
 STATUS_COL_DETAIL              = os.getenv("STATUS_COL_DETAIL", "Detail Progres")
+GOOGLE_SERVICE_ACCOUNT_EMAIL   = os.getenv("GOOGLE_SERVICE_ACCOUNT_EMAIL", "")
 
 # Nama kolom di GSheet untuk filter per role
 # Dua kolom PTL — filter OR: baris dimana salah satu kolom = nama PTL
@@ -69,13 +70,6 @@ REFRESH_TOKEN_EXPIRE_DAYS   = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 7))
 # ── Superuser ─────────────────────────────────────────────────────────────────
 SUPERUSER_USERNAME      = os.getenv("SUPERUSER_USERNAME", "superadmin")
 SUPERUSER_PASSWORD_HASH = os.getenv("SUPERUSER_PASSWORD_HASH", "")
-
-# ── RBAC — kolom editable per role ───────────────────────────────────────────
-PTL_EDITABLE_COLUMNS: set = {
-    col.strip()
-    for col in os.getenv("PTL_EDITABLE_COLUMNS", "STATUS,DETAIL,KETERANGAN").split(",")
-    if col.strip()
-}
 
 MITRA_EDITABLE_WHITELIST: set = {
     col.strip()

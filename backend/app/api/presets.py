@@ -91,6 +91,7 @@ async def create_preset(
 
 @router.get("/editable-columns", response_model=list[str])
 async def get_editable_columns(
+    scope: str = Query("engineer"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -98,12 +99,17 @@ async def get_editable_columns(
         select(UserColumnConfig).where(UserColumnConfig.user_id == current_user.id)
     )
     config = result.scalar_one_or_none()
-    return config.editable_columns if config else []
+    if not config:
+        return []
+    if scope == "ptl":
+        return config.ptl_editable_columns or []
+    return config.editable_columns or []
 
 
 @router.put("/editable-columns", response_model=list[str])
 async def save_editable_columns(
     body: EditableColumnsIn,
+    scope: str = Query("engineer"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -112,9 +118,16 @@ async def save_editable_columns(
     )
     config = result.scalar_one_or_none()
     if config:
-        config.editable_columns = body.columns
+        if scope == "ptl":
+            config.ptl_editable_columns = body.columns
+        else:
+            config.editable_columns = body.columns
     else:
-        config = UserColumnConfig(user_id=current_user.id, editable_columns=body.columns)
+        config = UserColumnConfig(
+            user_id=current_user.id,
+            editable_columns=body.columns if scope == "engineer" else [],
+            ptl_editable_columns=body.columns if scope == "ptl" else [],
+        )
         db.add(config)
     await db.flush()
     return body.columns
