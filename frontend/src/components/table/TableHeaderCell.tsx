@@ -25,6 +25,7 @@ export function TableHeaderCell({ column, width, minWidth, onResize, onAutoFit, 
       className="relative select-none group th-table-head"
       style={{ ...style, padding: "10px 12px", borderBottom: "2px solid var(--border)", cursor: "grab" } as any}
     >
+      <style>{`.group:hover .filter-btn { opacity: 0.5 !important; } .group:hover .filter-btn:hover { opacity: 1 !important; color: var(--accent) !important; background: var(--accent-soft); }`}</style>
       <div className="flex items-center justify-between gap-1.5 overflow-hidden">
         <span className="truncate flex-1 text-[11px] font-bold uppercase tracking-wider cursor-grab"
           style={{ color: isDragging ? "var(--accent)" : "var(--text-secondary)" }}
@@ -35,9 +36,9 @@ export function TableHeaderCell({ column, width, minWidth, onResize, onAutoFit, 
         <button
           onPointerDown={e => e.stopPropagation()}
           onClick={e => onFilter(e, column)}
-          className="p-0.5 rounded transition-all shrink-0"
+          className="p-0.5 rounded transition-all shrink-0 filter-btn"
           style={{
-            color: isFiltered ? "var(--accent)" : "var(--text-muted)",
+            color:   isFiltered ? "var(--accent)" : "var(--text-muted)",
             opacity: isFiltered ? 1 : 0,
           }}
           title="Filter kolom"

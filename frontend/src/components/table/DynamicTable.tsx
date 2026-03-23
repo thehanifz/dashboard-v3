@@ -5,26 +5,31 @@ import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-
 import { useTaskStore } from "../../state/taskStore";
 import { usePresetStore } from "../../state/presetStore";
 import { useAppearanceStore } from "../../state/appearanceStore";
+import { useAuthStore } from "../../state/authStore";
 import { getColorTheme } from "../../utils/colorPalette";
 
-import { renderCell } from "./renderCell";
-import { useTablePagination } from "./useTablePagination";
-import { useTableResize } from "./useTableResize";
-import { TableHeaderCell } from "./TableHeaderCell";
-import PresetEditorModal from "../preset/PresetEditorModal";
-import ColumnFilter from "./ColumnFilter";
-import EditableColumnsModal from "./EditableColumnsModal";
-import BaiActionButton from "./BaiActionButton";
-import TeskomActionButton from "./TeskomActionButton";   // ← tambah
-import { useToast } from "../../utils/useToast";
-// Tambah di baris import paling atas
-import { useAuthStore } from "../../state/authStore";
+import { renderCell }          from "./renderCell";
+import { useTablePagination }  from "./useTablePagination";
+import { useTableResize }      from "./useTableResize";
+import { TableHeaderCell }     from "./TableHeaderCell";
+import TableToolbar            from "./TableToolbar";
+import PresetEditorModal       from "../preset/PresetEditorModal";
+import ColumnFilter            from "./ColumnFilter";
+import EditableColumnsModal    from "./EditableColumnsModal";
+import BaiActionButton         from "./BaiActionButton";
+import TeskomActionButton      from "./TeskomActionButton";
+import { useToast }            from "../../utils/useToast";
 
 
 const MIN_COL_WIDTH     = 60;
 const DEFAULT_COL_WIDTH = 150;
 
-export default function DynamicTable() {
+type Props = {
+  view?:         "table" | "kanban";
+  onViewChange?: (v: "table" | "kanban") => void;
+};
+
+export default function DynamicTable({ view, onViewChange }: Props = {}) {
   const records        = useTaskStore(s => s.records) ?? [];
   const statusMaster   = useTaskStore(s => s.statusMaster);
   const presets        = usePresetStore(s => s.presets) ?? [];
@@ -93,7 +98,7 @@ export default function DynamicTable() {
   const [showEditableColumns, setShowEditableColumns] = useState(false);
   const [activeFilterCol,     setActiveFilterCol]     = useState<string | null>(null);
   const [filterPos,           setFilterPos]           = useState({ top: 0, left: 0 });
-  const [presetDropdownOpen,  setPresetDropdownOpen]  = useState(false);
+  const [saving,              setSaving]              = useState(false);
 
   const filteredRecords = useMemo(() => {
     let result = [...records];
@@ -126,8 +131,14 @@ export default function DynamicTable() {
   };
 
   const handleOpenFilter = (e: React.MouseEvent, col: string) => {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setFilterPos({ top: rect.bottom + 5, left: rect.left });
+    const rect        = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const POPUP_W     = 268;
+    const POPUP_MAX_H = 420;
+    const vw          = window.innerWidth;
+    const vh          = window.innerHeight;
+    const left = rect.left + POPUP_W > vw ? Math.max(4, vw - POPUP_W - 8) : rect.left;
+    const top  = rect.bottom + 5 + POPUP_MAX_H > vh ? Math.max(4, rect.top - POPUP_MAX_H - 4) : rect.bottom + 5;
+    setFilterPos({ top, left });
     setActiveFilterCol(activeFilterCol === col ? null : col);
   };
 
@@ -136,128 +147,26 @@ export default function DynamicTable() {
   return (
     <div className="flex flex-col h-full" >
 
-      {/* ── Toolbar ── */}
-      <div className="shrink-0 flex flex-wrap items-center gap-2 px-1 pb-3">
-
-        {/* Search */}
-        <div className="relative">
-          <svg className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ color: "var(--text-muted)" }}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input type="text" placeholder="Cari data..." value={search} onChange={e => setSearch(e.target.value)}
-            className="th-input pl-8 pr-3 py-1.5 text-xs w-48" />
-        </div>
-
-        {/* Filter badge */}
-        {filterCount > 0 && (
-          <span className="text-xs px-2.5 py-1.5 rounded-lg font-medium flex items-center gap-1.5"
-            style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--accent)" }}>
-            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clipRule="evenodd" /></svg>
-            {filterCount} filter aktif
-          </span>
-        )}
-
-        {/* Editable Columns */}
-        <button onClick={() => setShowEditableColumns(true)} className="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-2.5">
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-          <span className="hidden sm:inline">Kolom Editable</span>
-        </button>
-
-        {/* Stats */}
-        <div className="ml-auto text-[11px]" style={{ color: "var(--text-muted)" }}>
-          {filteredRecords.length} / {records.length} baris
-        </div>
-      </div>
-
-      {/* ── Preset Dropdown ── */}
-      <div className="shrink-0 flex items-center gap-2 px-1 mb-2 relative">
-        <div className="relative">
-          <button
-            onClick={() => setPresetDropdownOpen(!presetDropdownOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border"
-            style={{
-              background: "var(--bg-surface)",
-              color: "var(--text-primary)",
-              borderColor: "var(--border)",
-              minWidth: "180px",
-              justifyContent: "space-between"
-            }}
-          >
-            <span className="truncate max-w-[150px]">
-              {activePreset ? activePreset.name : "Pilih Preset"}
-            </span>
-            <svg className={`w-4 h-4 transition-transform ${presetDropdownOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-
-          {presetDropdownOpen && (
-            <>
-              <div
-                className="fixed inset-0 z-10"
-                onClick={() => setPresetDropdownOpen(false)}
-              />
-              <div
-                className="absolute top-full left-0 mt-1 w-full rounded-lg shadow-xl border z-20 overflow-hidden"
-                style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
-              >
-                <div className="max-h-64 overflow-y-auto custom-scrollbar py-1">
-                  {presets.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => {
-                        setActivePreset(p.id);
-                        setPresetDropdownOpen(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors" style={{ color: "var(--text-primary)" }} onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)"} onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "transparent"}
-                    >
-                      {p.id === activePresetId && (
-                        <svg className="w-4 h-4 text-blue-600 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                      <span style={{ color: p.id === activePresetId ? "var(--accent)" : "var(--text-primary)", fontWeight: p.id === activePresetId ? 600 : 400 }}>
-                        {p.name}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="border-t py-1" style={{ borderColor: "var(--border)" }}>
-                  <button
-                    onClick={() => {
-                      addPreset("Preset Baru", []);
-                      setPresetDropdownOpen(false);
-                      setShowEditor(true);
-                    }}
-                    className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors" style={{ color: "var(--text-secondary)" }}
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                    </svg>
-                    Tambah Preset Baru
-                  </button>
-                  {activePreset && (
-                    <button
-                      onClick={() => {
-                        setPresetDropdownOpen(false);
-                        setShowEditor(true);
-                      }}
-                      className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors" style={{ color: "var(--text-secondary)" }}
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      Edit Preset
-                    </button>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+      <TableToolbar
+        title="Detail Pekerjaan"
+        recordCount={records.length}
+        userName={user?.nama_lengkap ?? ""}
+        saving={saving}
+        view={view}
+        onViewChange={onViewChange}
+        search={search}
+        onSearch={v => { setSearch(v); pagination.setPage(1); }}
+        presets={presets.map(p => ({ id: p.id, name: p.name, columns: p.columns ?? [] }))}
+        activePreset={activePreset ? { id: activePreset.id, name: activePreset.name, columns: activePreset.columns ?? [] } : null}
+        onSelectPreset={id => setActivePreset(id as string)}
+        onCreatePreset={() => { addPreset("Preset Baru", []); setShowEditor(true); }}
+        onEditPreset={() => setShowEditor(true)}
+        filterCount={filterCount}
+        onResetFilter={() => useAppearanceStore.getState().clearFilters()}
+        onOpenEditableColumns={() => setShowEditableColumns(true)}
+        filteredCount={filteredRecords.length}
+        totalCount={records.length}
+      />
 
       {/* ── Table ── */}
       {!activePreset ? (
@@ -419,7 +328,16 @@ export default function DynamicTable() {
 
       {showEditor && activePreset && <PresetEditorModal presetId={activePreset.id} scope="engineer" onClose={() => setShowEditor(false)} />}
       {showEditableColumns && <EditableColumnsModal onClose={() => setShowEditableColumns(false)} />}
-      {activeFilterCol && <ColumnFilter column={activeFilterCol} onClose={() => setActiveFilterCol(null)} position={filterPos} />}
+      {activeFilterCol && (
+        <ColumnFilter
+          column={activeFilterCol}
+          records={records}
+          activeFilters={activeFilters}
+          onToggle={(col, val) => useAppearanceStore.getState().toggleFilter(col, val)}
+          onClose={() => setActiveFilterCol(null)}
+          position={filterPos}
+        />
+      )}
     </div>
   );
 }
