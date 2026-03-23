@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 
@@ -121,13 +121,6 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
   const [filterPos,           setFilterPos]           = useState({ top: 0, left: 0 });
   const [saving,              setSaving]              = useState(false);
 
-  // Refs untuk sync scroll horizontal antara header dan body
-  const headerRef = useRef<HTMLDivElement>(null);
-  const bodyRef   = useRef<HTMLDivElement>(null);
-
-  const syncHeaderScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    if (headerRef.current) headerRef.current.scrollLeft = e.currentTarget.scrollLeft;
-  };
 
   const filteredRecords = useMemo(() => {
     let result = [...records];
@@ -214,15 +207,9 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
         </div>
       ) : (
         <>
-          <div className="flex-1 flex flex-col overflow-hidden rounded-2xl" style={{ border: "1px solid var(--border)" }}>
-
-            {/* ── Header (tidak ikut scroll vertikal) ── */}
-            <div ref={headerRef}
-              className="shrink-0 th-table-head th-header-scroll"
-              style={{ overflowX: "auto", overflowY: "hidden", scrollbarWidth: "none", msOverflowStyle: "none" }}
-              onScroll={e => { if (bodyRef.current) bodyRef.current.scrollLeft = e.currentTarget.scrollLeft; }}>
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <table className="text-xs border-collapse" style={{ tableLayout: "fixed", width: "max-content" }}>
+          <div className="flex-1 overflow-auto custom-scrollbar rounded-2xl" style={{ border: "1px solid var(--border)" }}>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <table className="text-xs" style={{ tableLayout: "fixed", width: "max-content", borderCollapse: "separate", borderSpacing: 0 }}>
                 <colgroup>
                   <col style={{ width: "64px", minWidth: "64px" }} />
                   {columns.map(col => (
@@ -231,7 +218,7 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
                 </colgroup>
                 <thead>
                   <tr>
-                    <th className="sticky left-0 z-10 th-table-head" style={{ width: 64, minWidth: 64, padding: "10px 8px", borderBottom: "2px solid var(--border)", borderRight: "1px solid var(--border)", textAlign: "center" }}>
+                    <th className="sticky top-0 left-0 th-table-head" style={{ zIndex: 30, width: 64, minWidth: 64, maxWidth: 64, padding: "10px 8px", borderBottom: "2px solid var(--border)", borderRight: "1px solid var(--border)", textAlign: "center", background: "var(--table-head-bg)" }}>
                       <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Aksi</span>
                     </th>
                     <SortableContext items={columns} strategy={horizontalListSortingStrategy}>
@@ -259,22 +246,6 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
                     </SortableContext>
                   </tr>
                 </thead>
-              </table>
-              </DndContext>
-            </div>
-
-            {/* ── Body (scroll kedua arah, horizontal disync ke header) ── */}
-            <div ref={bodyRef}
-              className="flex-1 custom-scrollbar"
-              style={{ overflowX: "auto", overflowY: "auto" }}
-              onScroll={syncHeaderScroll}>
-              <table className="text-xs border-collapse" style={{ tableLayout: "fixed", width: "max-content" }}>
-                <colgroup>
-                  <col style={{ width: "64px", minWidth: "64px" }} />
-                  {columns.map(col => (
-                    <col key={col} style={{ width: `${widths[col] ?? DEFAULT_COL_WIDTH}px`, minWidth: `${MIN_COL_WIDTH}px` }} />
-                  ))}
-                </colgroup>
                 <tbody>
                   {pagination.rows.map((r, rowIdx) => {
                     const status  = statusMaster?.status_column ? r.data?.[statusMaster.status_column] : r.data?.StatusPekerjaan;
@@ -287,7 +258,7 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
                         style={{ background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)" }}
                       >
                         {/* Action cell — BAI + Teskom berdampingan */}
-                        <td className="sticky left-0 z-10 border-r" style={{ width: 64, minWidth: 64, padding: "4px 8px", textAlign: "center", borderColor: "var(--border)", background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)" }}>
+                        <td className="sticky left-0" style={{ zIndex: 10, width: 64, minWidth: 64, padding: "4px 8px", textAlign: "center", borderRight: "1px solid var(--border)", borderBottom: "1px solid var(--border)", background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)" }}>
                           <div className="flex items-center justify-center gap-1">
                             <BaiActionButton
                               rowId={r.row_id}
@@ -315,9 +286,10 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
                           return (
                             <td
                               key={col}
-                              className={`px-3 py-2 border-r overflow-hidden ${isPinned ? "z-10" : ""}`}
+                              className="px-3 py-2 overflow-hidden"
                               style={{
-                                borderColor: "var(--border)",
+                                borderRight: "1px solid var(--border)",
+                                borderBottom: "1px solid var(--border)",
                                 width: colWidth,
                                 minWidth: MIN_COL_WIDTH,
                                 maxWidth: colWidth,
@@ -325,6 +297,7 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
                                 ...(isPinned ? {
                                   position: "sticky",
                                   left: pinnedLeft,
+                                  zIndex: 10,
                                   background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)",
                                   boxShadow: "2px 0 4px rgba(0,0,0,0.06)",
                                 } : {}),
@@ -372,7 +345,7 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
                   })}
                 </tbody>
               </table>
-            </div>
+            </DndContext>
           </div>
 
           {/* ── Pagination ── */}

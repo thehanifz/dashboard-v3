@@ -23,12 +23,16 @@ export function TableHeaderCell({
     transform, transition, isDragging,
   } = useSortable({ id: column });
 
-  const stickyStyle: React.CSSProperties = isPinned ? {
+  const stickyStyle: React.CSSProperties = {
     position: "sticky",
-    left: pinnedLeft ?? 0,
-    zIndex: 10,
-    boxShadow: "2px 0 4px rgba(0,0,0,0.08)",
-  } : {};
+    top: 0,
+    zIndex: isPinned ? 30 : 20,
+    background: "var(--table-head-bg)",
+    ...(isPinned ? {
+      left: pinnedLeft ?? 0,
+      boxShadow: "2px 0 4px rgba(0,0,0,0.08)",
+    } : {}),
+  };
 
   const style: React.CSSProperties = {
     // Kalau pinned: JANGAN apply transform dari dnd-kit agar tidak bergeser
@@ -36,6 +40,7 @@ export function TableHeaderCell({
     transition,
     width: `${width}px`,
     minWidth: `${minWidth}px`,
+    maxWidth: `${width}px`,
     opacity: isDragging ? 0.75 : 1,
     ...stickyStyle,
   };

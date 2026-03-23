@@ -4,7 +4,7 @@
  * Preset kolom sekarang disimpan di DB via usePresets("ptl").
  * activePresetId tetap di localStorage (useActivePresetStore).
  */
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { useThemeStore }     from "../../state/themeStore";
@@ -263,11 +263,6 @@ export default function PTLDetailPanel() {
   const [tablePage, setTablePage]               = useState(1);
   const [saving, setSaving]                     = useState(false);
 
-  // Refs untuk sync scroll horizontal header ↔ body
-  const headerRef = useRef<HTMLDivElement>(null);
-  const syncHeaderScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    if (headerRef.current) headerRef.current.scrollLeft = e.currentTarget.scrollLeft;
-  };
   const [activeFilters, setActiveFilters]       = useState<Record<string, string[]>>({});
   const [activeFilterCol, setActiveFilterCol]   = useState<string | null>(null);
   const [filterPos, setFilterPos]               = useState({ top: 0, left: 0 });
@@ -582,15 +577,9 @@ export default function PTLDetailPanel() {
                 </div>
               ) : (
                 <>
-                  <div className="flex-1 flex flex-col overflow-hidden rounded-2xl" style={{ border: "1px solid var(--border)" }}>
-
-                    {/* ── Header (tidak ikut scroll vertikal) ── */}
-                    <div ref={headerRef}
-                      className="shrink-0 th-table-head th-header-scroll"
-                      style={{ overflowX: "auto", overflowY: "hidden", scrollbarWidth: "none", msOverflowStyle: "none" }}
-                      onScroll={e => { const body = e.currentTarget.nextElementSibling as HTMLElement; if (body) body.scrollLeft = e.currentTarget.scrollLeft; }}>
+                  <div className="flex-1 overflow-auto custom-scrollbar rounded-2xl" style={{ border: "1px solid var(--border)" }}>
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                      <table className="text-xs border-collapse" style={{ tableLayout: "fixed", width: "max-content" }}>
+                      <table className="text-xs" style={{ tableLayout: "fixed", width: "max-content", borderCollapse: "separate", borderSpacing: 0 }}>
                         <colgroup>
                           <col style={{ width: "72px", minWidth: "72px" }} />
                           {columns.map(col => (
@@ -599,8 +588,8 @@ export default function PTLDetailPanel() {
                         </colgroup>
                         <thead>
                           <tr>
-                            <th className="sticky left-0 z-10 th-table-head"
-                              style={{ width: 72, minWidth: 72, padding: "10px 8px", borderBottom: "2px solid var(--border)", borderRight: "1px solid var(--border)", textAlign: "center" }}>
+                            <th className="sticky top-0 left-0 th-table-head"
+                              style={{ zIndex: 30, width: 72, minWidth: 72, maxWidth: 72, padding: "10px 8px", borderBottom: "2px solid var(--border)", borderRight: "1px solid var(--border)", textAlign: "center", background: "var(--table-head-bg)" }}>
                               <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Aksi</span>
                             </th>
                             <SortableContext items={columns} strategy={horizontalListSortingStrategy}>
@@ -624,21 +613,6 @@ export default function PTLDetailPanel() {
                             </SortableContext>
                           </tr>
                         </thead>
-                      </table>
-                    </DndContext>
-                    </div>
-
-                    {/* ── Body (scroll dua arah, horizontal disync ke header) ── */}
-                    <div className="flex-1 custom-scrollbar"
-                      style={{ overflowX: "auto", overflowY: "auto" }}
-                      onScroll={syncHeaderScroll}>
-                      <table className="text-xs border-collapse" style={{ tableLayout: "fixed", width: "max-content" }}>
-                        <colgroup>
-                          <col style={{ width: "72px", minWidth: "72px" }} />
-                          {columns.map(col => (
-                            <col key={col} style={{ width: `${widths[col] ?? DEFAULT_COL_WIDTH}px`, minWidth: `${MIN_COL_WIDTH}px` }} />
-                          ))}
-                        </colgroup>
                         <tbody>
                           {pagedRecords.map((r, rowIdx) => {
                             const idPaVal = r.data[idPaCol] ?? "";
@@ -646,8 +620,8 @@ export default function PTLDetailPanel() {
                             return (
                               <tr key={r.row_id} className="th-table-row"
                                 style={{ background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)" }}>
-                                <td className="sticky left-0 z-10 border-r"
-                                  style={{ width: 72, minWidth: 72, padding: "4px 8px", textAlign: "center", borderColor: "var(--border)", background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)" }}>
+                                <td className="sticky left-0"
+                                  style={{ zIndex: 10, width: 72, minWidth: 72, padding: "4px 8px", textAlign: "center", borderRight: "1px solid var(--border)", borderBottom: "1px solid var(--border)", background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)" }}>
                                   <div className="flex items-center justify-center gap-0.5">
                                     <PtlBaiButton rowId={r.row_id} idPa={idPaVal} namaPerusahaan={namaVal} onToast={showToast} />
                                     <PtlTeskomButton idPa={idPaVal} />
@@ -668,9 +642,10 @@ export default function PTLDetailPanel() {
 
                                   return (
                                     <td key={col}
-                                      className={`border-r overflow-hidden ${isPinned ? "z-10" : ""}`}
+                                      className="overflow-hidden"
                                       style={{
-                                        borderColor: "var(--border)",
+                                        borderRight: "1px solid var(--border)",
+                                        borderBottom: "1px solid var(--border)",
                                         width: colW,
                                         minWidth: MIN_COL_WIDTH,
                                         maxWidth: colW,
@@ -678,6 +653,7 @@ export default function PTLDetailPanel() {
                                         ...(isPinned ? {
                                           position: "sticky",
                                           left: pinnedLeft,
+                                          zIndex: 10,
                                           background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)",
                                           boxShadow: "2px 0 4px rgba(0,0,0,0.06)",
                                         } : {}),
@@ -734,7 +710,7 @@ export default function PTLDetailPanel() {
                           })}
                         </tbody>
                       </table>
-                    </div>
+                    </DndContext>
                   </div>
 
                   {/* Pagination */}
