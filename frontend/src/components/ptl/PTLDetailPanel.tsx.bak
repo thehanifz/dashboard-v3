@@ -38,6 +38,7 @@ interface PTLSheetData {
 type DetailView = "kanban" | "table";
 const DEFAULT_COL_WIDTH = 160;
 const MIN_COL_WIDTH     = 60;
+const PAGE_SIZE         = 20;
 
 // ─── BAI Button ───────────────────────────────────────────────────────────────
 function PtlBaiButton({ rowId, idPa, namaPerusahaan, onToast }: {
@@ -260,7 +261,6 @@ export default function PTLDetailPanel() {
   const [loading, setLoading]                   = useState(true);
   const [search, setSearch]                     = useState("");
   const [tablePage, setTablePage]               = useState(1);
-  const [pageSize, setPageSize]                 = useState(20);
   const [saving, setSaving]                     = useState(false);
 
   const [activeFilters, setActiveFilters]       = useState<Record<string, string[]>>({});
@@ -433,8 +433,8 @@ export default function PTLDetailPanel() {
     return result;
   }, [records, search, activeFilters]);
 
-  const totalPage    = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
-  const pagedRecords = filteredRecords.slice((tablePage - 1) * pageSize, tablePage * pageSize);
+  const totalPage    = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE));
+  const pagedRecords = filteredRecords.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE);
   const filterCount  = Object.keys(activeFilters).length;
 
   const toggleFilter = (key: string, val: string) => {
@@ -718,23 +718,15 @@ export default function PTLDetailPanel() {
                     style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
                     <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                       <b style={{ color: "var(--text-primary)" }}>
-                        {(tablePage - 1) * pageSize + 1}–{Math.min(tablePage * pageSize, filteredRecords.length)}
+                        {(tablePage - 1) * PAGE_SIZE + 1}–{Math.min(tablePage * PAGE_SIZE, filteredRecords.length)}
                       </b>{" "}dari <b style={{ color: "var(--text-primary)" }}>{filteredRecords.length}</b>
                     </span>
-                    <div className="flex items-center gap-2">
-                      <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setTablePage(1); }}
-                        className="th-select text-xs py-1">
-                        <option value={20}>20/hal</option>
-                        <option value={50}>50/hal</option>
-                        <option value={100}>100/hal</option>
-                      </select>
-                      <div className="flex gap-1">
-                        <button disabled={tablePage === 1} onClick={() => setTablePage(1)} className="btn-ghost px-2 py-1 text-xs disabled:opacity-30">«</button>
-                        <button disabled={tablePage === 1} onClick={() => setTablePage(p => p - 1)} className="btn-ghost px-2 py-1 text-xs disabled:opacity-30">‹</button>
-                        <span className="px-3 py-1 text-xs font-medium rounded-lg" style={{ background: "var(--accent)", color: "#fff" }}>{tablePage}</span>
-                        <button disabled={tablePage === totalPage} onClick={() => setTablePage(p => p + 1)} className="btn-ghost px-2 py-1 text-xs disabled:opacity-30">›</button>
-                        <button disabled={tablePage === totalPage} onClick={() => setTablePage(totalPage)} className="btn-ghost px-2 py-1 text-xs disabled:opacity-30">»</button>
-                      </div>
+                    <div className="flex gap-1">
+                      <button disabled={tablePage === 1} onClick={() => setTablePage(1)} className="btn-ghost px-2 py-1 text-xs disabled:opacity-30">«</button>
+                      <button disabled={tablePage === 1} onClick={() => setTablePage(p => p - 1)} className="btn-ghost px-2 py-1 text-xs disabled:opacity-30">‹</button>
+                      <span className="px-3 py-1 text-xs font-medium rounded-lg" style={{ background: "var(--accent)", color: "#fff" }}>{tablePage}</span>
+                      <button disabled={tablePage === totalPage} onClick={() => setTablePage(p => p + 1)} className="btn-ghost px-2 py-1 text-xs disabled:opacity-30">›</button>
+                      <button disabled={tablePage === totalPage} onClick={() => setTablePage(totalPage)} className="btn-ghost px-2 py-1 text-xs disabled:opacity-30">»</button>
                     </div>
                   </div>
                 </>
