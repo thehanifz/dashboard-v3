@@ -359,9 +359,9 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
             <div className="flex items-center gap-2">
               <select value={pagination.pageSize} onChange={e => pagination.setPageSize(Number(e.target.value))}
                 className="th-select text-xs py-1">
-                <option value={10}>10/hal</option>
                 <option value={20}>20/hal</option>
                 <option value={50}>50/hal</option>
+                <option value={100}>100/hal</option>
               </select>
 
               <div className="flex gap-1">
