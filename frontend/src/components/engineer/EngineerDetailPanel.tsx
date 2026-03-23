@@ -1,7 +1,9 @@
 /**
  * EngineerDetailPanel.tsx
  * Panel "Detail Pekerjaan" untuk Engineer.
- * Tab Tabel/Kanban sudah dipindah ke DynamicTable via TableToolbar.
+ * DynamicTable selalu dirender agar TableToolbar tetap tampil.
+ * Saat view=kanban, DynamicTable hanya render toolbar (toolbarOnly=true),
+ * KanbanBoard dirender di bawahnya dalam flex layout.
  */
 import { useCallback, useState } from "react";
 import { useTaskStore }  from "../../state/taskStore";
@@ -21,7 +23,6 @@ export default function EngineerDetailPanel() {
   const { toasts, show: showToast }             = useToast();
 
   const refreshAll = useTaskStore((s) => s.refreshAll);
-  const theme      = useThemeStore((s) => s.theme);
 
   const handleRefresh = useCallback(async () => {
     try {
@@ -43,11 +44,19 @@ export default function EngineerDetailPanel() {
           onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
         />
 
-        <main className="flex-1 overflow-hidden">
-          {view === "kanban" && <div className="h-full overflow-hidden"><KanbanBoard /></div>}
-          {view === "table"  && (
-            <div className="h-full overflow-hidden">
+        <main className="flex-1 overflow-hidden flex flex-col">
+          {view === "table" ? (
+            /* Tabel — DynamicTable full dengan toolbar + body */
+            <div className="flex-1 overflow-hidden">
               <DynamicTable view={view} onViewChange={setView} />
+            </div>
+          ) : (
+            /* Kanban — toolbar dari DynamicTable (toolbarOnly) + KanbanBoard */
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <DynamicTable view={view} onViewChange={setView} toolbarOnly />
+              <div className="flex-1 overflow-hidden">
+                <KanbanBoard />
+              </div>
             </div>
           )}
         </main>

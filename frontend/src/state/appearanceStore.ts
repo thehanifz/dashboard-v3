@@ -3,11 +3,18 @@ import { persist } from "zustand/middleware";
 import presetApi from "../services/presetApi";
 
 interface AppearanceState {
-  // --- WARNA & TAMPILAN ---
+  // --- WARNA & TAMPILAN (Engineer Kanban) ---
   columnColors:   Record<string, string>;
   labelColors:    Record<string, string>;
   cardFields:     string[];
   hiddenStatuses: string[];
+
+  // --- WARNA & TAMPILAN (PTL Kanban) ---
+  ptlColumnColors:   Record<string, string>;
+  ptlLabelColors:    Record<string, string>;
+  ptlCardFields:     string[];
+  ptlHiddenStatuses: string[];
+  ptlColumnWidth:    number;
 
   // --- UKURAN ---
   columnWidth: number;
@@ -24,6 +31,14 @@ interface AppearanceState {
   setCardFields:         (fields: string[]) => void;
   toggleStatusVisibility:(statusName: string) => void;
   setColumnWidth:        (width: number) => void;
+
+  // PTL Kanban setters
+  setPtlColumnColor:        (statusName: string, colorId: string) => void;
+  setPtlLabelColor:         (labelName: string, colorId: string) => void;
+  setPtlCardFields:         (fields: string[]) => void;
+  togglePtlStatusVisibility:(statusName: string) => void;
+  setPtlColumnWidth:        (width: number) => void;
+
   toggleFilter:          (key: string, value: string) => void;
   clearFilters:          () => void;
   toggleEditableColumn:     (columnName: string) => void;
@@ -44,6 +59,13 @@ export const useAppearanceStore = create<AppearanceState>()(
       cardFields:     ["ID PA"],
       hiddenStatuses: [],
       columnWidth:    320,
+
+      ptlColumnColors:   {},
+      ptlLabelColors:    {},
+      ptlCardFields:     ["ID PA"],
+      ptlHiddenStatuses: [],
+      ptlColumnWidth:    300,
+
       activeFilters:  {},
       editableColumns:    [],
       ptlEditableColumns: [],
@@ -64,6 +86,24 @@ export const useAppearanceStore = create<AppearanceState>()(
         })),
 
       setColumnWidth: (width) => set({ columnWidth: width }),
+
+      // ── PTL Kanban setters ─────────────────────────────────────────────────
+      setPtlColumnColor: (statusName, colorId) =>
+        set(state => ({ ptlColumnColors: { ...state.ptlColumnColors, [statusName]: colorId } })),
+
+      setPtlLabelColor: (labelName, colorId) =>
+        set(state => ({ ptlLabelColors: { ...state.ptlLabelColors, [labelName]: colorId } })),
+
+      setPtlCardFields: (fields) => set({ ptlCardFields: fields }),
+
+      togglePtlStatusVisibility: (statusName) =>
+        set(state => ({
+          ptlHiddenStatuses: state.ptlHiddenStatuses.includes(statusName)
+            ? state.ptlHiddenStatuses.filter(s => s !== statusName)
+            : [...state.ptlHiddenStatuses, statusName],
+        })),
+
+      setPtlColumnWidth: (width) => set({ ptlColumnWidth: width }),
 
       toggleFilter: (key, value) =>
         set(state => {
@@ -121,6 +161,11 @@ export const useAppearanceStore = create<AppearanceState>()(
         columnWidth:        320,
         editableColumns:    [],
         ptlEditableColumns: [],
+        ptlColumnColors:    {},
+        ptlLabelColors:     {},
+        ptlCardFields:      ["ID PA"],
+        ptlHiddenStatuses:  [],
+        ptlColumnWidth:     300,
       }),
 
       // ── Load dari DB saat login ───────────────────────────────────────────
@@ -142,12 +187,17 @@ export const useAppearanceStore = create<AppearanceState>()(
       name: "appearance-storage",
       // editableColumns tidak di-persist ke localStorage — selalu load dari DB
       partialize: (state) => ({
-        columnColors:   state.columnColors,
-        labelColors:    state.labelColors,
-        cardFields:     state.cardFields,
-        hiddenStatuses: state.hiddenStatuses,
-        columnWidth:    state.columnWidth,
-        activeFilters:  state.activeFilters,
+        columnColors:      state.columnColors,
+        labelColors:       state.labelColors,
+        cardFields:        state.cardFields,
+        hiddenStatuses:    state.hiddenStatuses,
+        columnWidth:       state.columnWidth,
+        activeFilters:     state.activeFilters,
+        ptlColumnColors:   state.ptlColumnColors,
+        ptlLabelColors:    state.ptlLabelColors,
+        ptlCardFields:     state.ptlCardFields,
+        ptlHiddenStatuses: state.ptlHiddenStatuses,
+        ptlColumnWidth:    state.ptlColumnWidth,
         // editableColumns sengaja TIDAK disimpan ke localStorage
       }),
     }

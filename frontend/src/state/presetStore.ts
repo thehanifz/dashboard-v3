@@ -14,11 +14,12 @@ import { persist } from "zustand/middleware";
 import presetApi from "../services/presetApi";
 
 export type TablePreset = {
-  id:      string;   // UUID lokal (tetap dipakai sebagai key di komponen)
-  db_id?:  number;   // ID di database
-  name:    string;
-  columns: string[];
-  widths?: Record<string, number>;
+  id:             string;
+  db_id?:         number;
+  name:           string;
+  columns:        string[];
+  widths?:        Record<string, number>;
+  pinnedColumns?: string[];
 };
 
 type PresetState = {
@@ -51,13 +52,18 @@ export const usePresetStore = create<PresetState>()(
           const dbPresets = await presetApi.list("engineer");
           if (!dbPresets || !dbPresets.length) return;
 
-          const merged: TablePreset[] = dbPresets.map(p => ({
-            id:      p.id.toString(),
-            db_id:   p.id,
-            name:    p.name,
-            columns: Array.isArray(p.columns) ? p.columns : [],
-            widths:  p.widths ?? {},
-          }));
+          const merged: TablePreset[] = dbPresets.map(p => {
+            const rawWidths = p.widths ?? {};
+            const { __pinned, ...cleanWidths } = rawWidths as any;
+            return {
+              id:             p.id.toString(),
+              db_id:          p.id,
+              name:           p.name,
+              columns:        Array.isArray(p.columns) ? p.columns : [],
+              widths:         cleanWidths,
+              pinnedColumns:  Array.isArray(__pinned) ? __pinned : [],
+            };
+          });
 
           set(state => ({
             presets: merged,
@@ -120,11 +126,16 @@ export const usePresetStore = create<PresetState>()(
         set(state => ({ presets: (state.presets ?? []).map(p => p.id === id ? { ...p, ...updates } : p) }));
         const preset = (get().presets ?? []).find(p => p.id === id);
         if (preset?.db_id) {
-          const { name, columns, widths } = updates;
+          const merged = { ...preset, ...updates };
+          // Encode pinnedColumns ke dalam widths.__pinned (tidak perlu migrasi DB)
+          const widthsToSave = {
+            ...(updates.widths ?? merged.widths ?? {}),
+            __pinned: merged.pinnedColumns ?? [],
+          };
           presetApi.update(preset.db_id, {
-            ...(name    !== undefined && { name }),
-            ...(columns !== undefined && { columns }),
-            ...(widths  !== undefined && { widths }),
+            ...(updates.name    !== undefined && { name: updates.name }),
+            ...(updates.columns !== undefined && { columns: updates.columns }),
+            widths: widthsToSave,
           }).catch(() => {});
         }
       },

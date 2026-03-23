@@ -7,12 +7,7 @@
  * PTL:      pass records dan activeFilters dari state lokal PTLDetailPanel
  */
 import { useMemo, useEffect, useRef, useState } from "react";
-
-interface SheetRecord {
-  id?:    string;
-  row_id: number;
-  data:   Record<string, string>;
-}
+import type { SheetRecord } from "../../types/record";
 
 type Props = {
   column:        string;

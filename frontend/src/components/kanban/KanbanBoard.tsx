@@ -1,7 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { DndContext } from "@dnd-kit/core";
 import { useTaskStore } from "../../state/taskStore";
 import { useAppearanceStore } from "../../state/appearanceStore";
+import { useKanbanPreset } from "../../hooks/useKanbanPreset";
 
 import KanbanColumn from "./KanbanColumn";
 import GlobalLabelManager from "./GlobalLabelManager";
@@ -14,16 +15,45 @@ export default function KanbanBoard() {
   const statusMaster = useTaskStore(s => s.statusMaster);
   const updateStatus = useTaskStore(s => s.updateStatus);
 
-  const { activeFilters, columnWidth, setColumnWidth, hiddenStatuses } = useAppearanceStore();
+  const { activeFilters, columnWidth, setColumnWidth } = useAppearanceStore();
 
-  const [showLabelMgr, setShowLabelMgr]   = useState(false);
-  const [showFieldMgr, setShowFieldMgr]   = useState(false);
-  const [showColMgr,   setShowColMgr]     = useState(false);
-  const [showFilter,   setShowFilter]     = useState(false);
-  const [showSlider,   setShowSlider]     = useState(false);
-  const [search,       setSearch]         = useState("");
+  // ── Kanban preset dari DB ─────────────────────────────────────────────────
+  const { preset: dbPreset, loading: presetLoading, save: savePreset } = useKanbanPreset("kanban_engineer");
+
+  // hiddenStatuses & cardFields — dari DB preset, fallback ke default
+  const [hiddenStatuses, setHiddenStatuses] = useState<string[]>([]);
+  const [localCardFields, setLocalCardFields] = useState<string[]>([]);  // kosong = tampilkan semua
+  const [presetReady, setPresetReady] = useState(false);
+
+  // Sync dari DB preset saat load
+  useEffect(() => {
+    if (!presetLoading) {
+      if (dbPreset) {
+        setHiddenStatuses(dbPreset.hiddenStatuses ?? []);
+        if (dbPreset.cardFields?.length) setLocalCardFields(dbPreset.cardFields);
+      }
+      setPresetReady(true);
+    }
+  }, [presetLoading, dbPreset]);
+
+  // Save ke DB saat hiddenStatuses atau cardFields berubah (debounced)
+  useEffect(() => {
+    if (!presetReady) return;
+    const t = setTimeout(() => {
+      savePreset({ cardFields: localCardFields, hiddenStatuses });
+    }, 800);
+    return () => clearTimeout(t);
+  }, [localCardFields, hiddenStatuses, presetReady]);
+
+  const [showLabelMgr, setShowLabelMgr] = useState(false);
+  const [showFieldMgr, setShowFieldMgr] = useState(false);
+  const [showColMgr,   setShowColMgr]   = useState(false);
+  const [showFilter,   setShowFilter]   = useState(false);
+  const [showSlider,   setShowSlider]   = useState(false);
+  const [search,       setSearch]       = useState("");
   const [sortBy, setSortBy] = useState<"id_asc"|"id_desc"|"newest"|"oldest"|"aging_asc"|"aging_desc">("id_asc");
 
+  // Urutan kolom ikut statusMaster.primary (tidak random)
   const visibleStatuses = useMemo(() => {
     if (!statusMaster?.primary) return [];
     return statusMaster.primary.filter(s => !hiddenStatuses.includes(s));
@@ -33,20 +63,17 @@ export default function KanbanBoard() {
 
   const processedRecords = useMemo(() => {
     let result = [...records];
-
     if (Object.keys(activeFilters).length > 0) {
       result = result.filter(r =>
         Object.entries(activeFilters).every(([key, vals]) => vals.includes(String(r.data[key] || "")))
       );
     }
-
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(r =>
         Object.values(r.data).join(" ").toLowerCase().includes(q) || String(r.row_id).includes(q)
       );
     }
-
     result.sort((a, b) => {
       const idA = a.data["ID PA"] || "";
       const idB = b.data["ID PA"] || "";
@@ -57,7 +84,7 @@ export default function KanbanBoard() {
       if (sortBy === "aging_desc") {
         const tA = new Date(a.data["TGL TERBIT PA"] || 0).getTime();
         const tB = new Date(b.data["TGL TERBIT PA"] || 0).getTime();
-        return tA - tB; // terlama = terkecil tanggal
+        return tA - tB;
       }
       if (sortBy === "aging_asc") {
         const tA = new Date(a.data["TGL TERBIT PA"] || 0).getTime();
@@ -66,7 +93,6 @@ export default function KanbanBoard() {
       }
       return 0;
     });
-
     return result;
   }, [records, search, sortBy, activeFilters]);
 
@@ -80,6 +106,14 @@ export default function KanbanBoard() {
     if (rowId && nextStatus) updateStatus(rowId, nextStatus, undefined);
   };
 
+  // Pass setters ke CardFieldManager & ColumnVisibilityManager via appearanceStore bridge
+  // Tidak perlu — kita pakai local state, terus pass via props ke manager
+  const handleToggleStatus = (s: string) => {
+    setHiddenStatuses(prev =>
+      prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
+    );
+  };
+
   if (!statusMaster) return (
     <div className="flex items-center justify-center h-full">
       <div className="text-sm" style={{ color: "var(--text-muted)" }}>Memuat data kanban...</div>
@@ -90,18 +124,19 @@ export default function KanbanBoard() {
     <div className="flex flex-col h-full">
 
       {/* Toolbar */}
-      <div className="px-4 py-2.5 shrink-0 flex flex-wrap items-center gap-2" style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
+      <div className="px-4 py-2.5 shrink-0 flex flex-wrap items-center gap-2"
+        style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
 
         {/* Search */}
         <div className="relative">
-          <svg className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ color: "var(--text-muted)" }}>
+          <svg className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+            style={{ color: "var(--text-muted)" }}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
-          <input
-            type="text" placeholder="Cari..." value={search}
+          <input type="text" placeholder="Cari..." value={search}
             onChange={e => setSearch(e.target.value)}
-            className="th-input pl-8 pr-3 py-1.5 text-xs w-44"
-          />
+            className="th-input pl-8 pr-3 py-1.5 text-xs w-44" />
         </div>
 
         {/* Sort */}
@@ -119,27 +154,37 @@ export default function KanbanBoard() {
         {/* Filter */}
         <button onClick={() => setShowFilter(true)}
           className="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-2.5"
-          style={activeFilterCount > 0 ? { background: "var(--accent-soft)", borderColor: "var(--accent)", color: "var(--accent)" } : {}}
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
-          Filter {activeFilterCount > 0 && <span className="font-bold text-[10px] px-1.5 py-0.5 rounded-full text-white" style={{ background: "var(--accent)" }}>{activeFilterCount}</span>}
+          style={activeFilterCount > 0 ? { background: "var(--accent-soft)", borderColor: "var(--accent)", color: "var(--accent)" } : {}}>
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+          </svg>
+          Filter {activeFilterCount > 0 && (
+            <span className="font-bold text-[10px] px-1.5 py-0.5 rounded-full text-white"
+              style={{ background: "var(--accent)" }}>{activeFilterCount}</span>
+          )}
         </button>
 
         {/* Kolom Status */}
         <button onClick={() => setShowColMgr(true)} className="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-2.5">
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" /></svg>
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+          </svg>
           <span className="hidden sm:inline">Kolom</span>
         </button>
 
         {/* Isi Kartu */}
         <button onClick={() => setShowFieldMgr(true)} className="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-2.5">
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" /></svg>
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+          </svg>
           <span className="hidden sm:inline">Kartu</span>
         </button>
 
         {/* Warna Label */}
         <button onClick={() => setShowLabelMgr(true)} className="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-2.5">
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+          </svg>
           <span className="hidden sm:inline">Warna</span>
         </button>
 
@@ -148,7 +193,9 @@ export default function KanbanBoard() {
         {/* Ukuran kolom */}
         <div className="relative">
           <button onClick={() => setShowSlider(v => !v)} className="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-2.5">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+            </svg>
             <span className="hidden sm:inline font-mono-data">{columnWidth}px</span>
           </button>
           {showSlider && (
@@ -161,8 +208,7 @@ export default function KanbanBoard() {
                 <input type="range" min="220" max="500" step="10" value={columnWidth}
                   onChange={e => setColumnWidth(Number(e.target.value))}
                   className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
-                  style={{ accentColor: "var(--accent)" }}
-                />
+                  style={{ accentColor: "var(--accent)" }} />
               </div>
             </>
           )}
@@ -174,7 +220,7 @@ export default function KanbanBoard() {
         </div>
       </div>
 
-      {/* Board */}
+      {/* Board — urutan kolom ikut statusMaster.primary */}
       <DndContext onDragEnd={onDragEnd}>
         <div className="flex gap-3 overflow-x-auto overflow-y-hidden flex-1 p-4 custom-scrollbar">
           {visibleStatuses.map(status => (
@@ -182,6 +228,7 @@ export default function KanbanBoard() {
               key={status}
               status={status}
               records={processedRecords.filter(r => r.data[statusColumnName] === status)}
+              cardFields={localCardFields}
             />
           ))}
         </div>
@@ -189,9 +236,21 @@ export default function KanbanBoard() {
 
       {/* Modals */}
       {showLabelMgr && <GlobalLabelManager onClose={() => setShowLabelMgr(false)} />}
-      {showFieldMgr && <CardFieldManager   onClose={() => setShowFieldMgr(false)} />}
-      {showColMgr   && <ColumnVisibilityManager onClose={() => setShowColMgr(false)} />}
-      {showFilter   && <FilterManager      onClose={() => setShowFilter(false)} />}
+      {showFieldMgr && (
+        <CardFieldManager
+          cardFields={localCardFields}
+          onCardFieldsChange={setLocalCardFields}
+          onClose={() => setShowFieldMgr(false)}
+        />
+      )}
+      {showColMgr && (
+        <ColumnVisibilityManager
+          hiddenStatuses={hiddenStatuses}
+          onToggle={handleToggleStatus}
+          onClose={() => setShowColMgr(false)}
+        />
+      )}
+      {showFilter && <FilterManager onClose={() => setShowFilter(false)} />}
     </div>
   );
 }

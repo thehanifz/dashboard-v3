@@ -1,20 +1,23 @@
 /**
  * usePresets.ts
  * Hook untuk manajemen preset kolom.
- *
- * - Preset DATA → dari database via /api/presets
- * - activePresetId → localStorage (Zustand persist, per scope)
- *
- * Cara pakai:
- *   const { presets, activePreset, createPreset, updatePreset, deletePreset, setActivePresetId } = usePresets("engineer");
+ * pinnedColumns disimpan di widths.__pinned dan di-decode saat load.
  */
 import { useEffect, useState, useCallback } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import presetApi, { Preset, PresetScope, PresetCreatePayload, PresetUpdatePayload } from "../services/presetApi";
+import presetApi, {
+  Preset, PresetScope, PresetCreatePayload, PresetUpdatePayload,
+  encodeWidths, decodePinned, decodeWidths,
+} from "../services/presetApi";
+
+// ── Tipe preset dengan pinnedColumns yang sudah di-decode ────────────────────
+export interface DecodedPreset extends Omit<Preset, "widths"> {
+  widths:         Record<string, number>;
+  pinnedColumns:  string[];
+}
 
 // ── Active preset ID store (localStorage per scope) ───────────────────────────
-// Disimpan terpisah per scope agar tidak saling tumpuk
 interface ActivePresetState {
   engineerActiveId: number | null;
   ptlActiveId:      number | null;
@@ -34,29 +37,35 @@ export const useActivePresetStore = create<ActivePresetState>()(
   )
 );
 
+function decodePreset(p: Preset): DecodedPreset {
+  return {
+    ...p,
+    widths:        decodeWidths(p.widths),
+    pinnedColumns: decodePinned(p.widths),
+  };
+}
+
 // ── Main hook ─────────────────────────────────────────────────────────────────
 export function usePresets(scope: PresetScope) {
-  const [presets,  setPresets]  = useState<Preset[]>([]);
+  const [presets,  setPresets]  = useState<DecodedPreset[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState<string | null>(null);
 
   const { engineerActiveId, ptlActiveId, setEngineerId, setPtlId } = useActivePresetStore();
 
-  const activePresetId = scope === "engineer" ? engineerActiveId : ptlActiveId;
+  const activePresetId    = scope === "engineer" ? engineerActiveId : ptlActiveId;
   const setActivePresetId = useCallback((id: number | null) => {
     scope === "engineer" ? setEngineerId(id) : setPtlId(id);
   }, [scope, setEngineerId, setPtlId]);
 
   const activePreset = presets.find(p => p.id === activePresetId) ?? null;
 
-  // Fetch dari DB
   const fetchPresets = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const data = await presetApi.list(scope);
-      setPresets(data);
-      // Jika activePresetId tidak ada di data, reset ke null
+      setPresets(data.map(decodePreset));
       if (activePresetId !== null && !data.find(p => p.id === activePresetId)) {
         setActivePresetId(null);
       }
@@ -69,27 +78,44 @@ export function usePresets(scope: PresetScope) {
 
   useEffect(() => { fetchPresets(); }, [fetchPresets]);
 
-  // Create
   const createPreset = useCallback(async (payload: Omit<PresetCreatePayload, "scope">) => {
     const created = await presetApi.create({ ...payload, scope });
-    setPresets(prev => [...prev, created]);
-    setActivePresetId(created.id);
-    return created;
+    const decoded = decodePreset(created);
+    setPresets(prev => [...prev, decoded]);
+    setActivePresetId(decoded.id);
+    return decoded;
   }, [scope, setActivePresetId]);
 
-  // Update (nama / kolom / widths)
-  const updatePreset = useCallback(async (id: number, payload: PresetUpdatePayload) => {
-    const updated = await presetApi.update(id, payload);
-    setPresets(prev => prev.map(p => p.id === id ? updated : p));
-    return updated;
-  }, []);
+  // Update — encode pinnedColumns ke widths sebelum kirim ke API
+  const updatePreset = useCallback(async (
+    id: number,
+    payload: PresetUpdatePayload & { pinnedColumns?: string[] },
+  ) => {
+    // Ambil preset lama untuk merge widths + pinnedColumns
+    const current = presets.find(p => p.id === id);
+    let apiPayload: PresetUpdatePayload = { ...payload };
 
-  // Delete
+    if (payload.pinnedColumns !== undefined || payload.widths !== undefined) {
+      const baseWidths  = (payload.widths as Record<string, number> | undefined)
+        ?? current?.widths ?? {};
+      const pinned      = payload.pinnedColumns ?? current?.pinnedColumns ?? [];
+      apiPayload = {
+        ...apiPayload,
+        widths: encodeWidths(baseWidths, pinned),
+      };
+      delete (apiPayload as any).pinnedColumns;
+    }
+
+    const updated = await presetApi.update(id, apiPayload);
+    const decoded = decodePreset(updated);
+    setPresets(prev => prev.map(p => p.id === id ? decoded : p));
+    return decoded;
+  }, [presets]);
+
   const deletePreset = useCallback(async (id: number) => {
     await presetApi.remove(id);
     setPresets(prev => {
       const next = prev.filter(p => p.id !== id);
-      // Jika yang dihapus adalah yang aktif, pindah ke preset pertama
       if (activePresetId === id) setActivePresetId(next[0]?.id ?? null);
       return next;
     });

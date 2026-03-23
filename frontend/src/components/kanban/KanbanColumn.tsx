@@ -16,9 +16,9 @@ const THEME_HEX: Record<string, string> = {
 };
 
 type KanbanRecord = { row_id: number; data: Record<string, string> };
-type Props = { status: string; records: KanbanRecord[] };
+type Props = { status: string; records: KanbanRecord[]; cardFields?: string[] };
 
-export default function KanbanColumn({ status, records }: Props) {
+export default function KanbanColumn({ status, records, cardFields }: Props) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   const [showPicker, setShowPicker] = useState(false);
 
@@ -102,7 +102,7 @@ export default function KanbanColumn({ status, records }: Props) {
         }}
       >
         {records.map(r => (
-          <TaskCard key={r.row_id} record={r} columnColor={headerColor} />
+          <TaskCard key={r.row_id} record={r} columnColor={headerColor} cardFieldsOverride={cardFields} />
         ))}
         {records.length === 0 && (
           <div

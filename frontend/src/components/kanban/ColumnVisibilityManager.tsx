@@ -1,59 +1,60 @@
 import { useTaskStore } from "../../state/taskStore";
-import { useAppearanceStore } from "../../state/appearanceStore";
 
-export default function ColumnVisibilityManager({ onClose }: { onClose: () => void }) {
+interface Props {
+  onClose: () => void;
+  hiddenStatuses?: string[];
+  onToggle?: (status: string) => void;
+}
+
+export default function ColumnVisibilityManager({ onClose, hiddenStatuses: externalHidden, onToggle }: Props) {
   const statusMaster = useTaskStore((s) => s.statusMaster);
-  const { hiddenStatuses, toggleStatusVisibility } = useAppearanceStore();
+  if (!statusMaster?.primary) return null;
 
-  if (!statusMaster || !statusMaster.primary) return null;
-
-  // List semua status dari Backend
-  const allStatuses = statusMaster.primary || [];
-
-  // Hitung berapa yang aktif
-  const activeCount = allStatuses.length - hiddenStatuses.length;
+  const allStatuses  = statusMaster.primary;
+  const hiddenList   = externalHidden ?? [];
+  const activeCount  = allStatuses.length - hiddenList.length;
 
   return (
     <>
-      {/* Backdrop */}
       <div className="fixed inset-0 z-40 th-overlay" onClick={onClose} />
-
-      {/* Modal - Posisi agak ke kiri dari tombolnya */}
-      <div className="fixed top-20 right-32 z-50 bg-white rounded-lg shadow-xl w-72 p-4 border border-gray-200 animate-in fade-in slide-in-from-top-4">
-        <div className="flex justify-between items-center mb-3 pb-2 border-b">
-          <h3 className="font-bold text-gray-700 text-sm">Filter Kolom Status</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-red-500">
-            &times;
-          </button>
+      <div className="fixed top-20 right-4 z-50 rounded-xl shadow-2xl w-64 p-4 animate-in fade-in slide-in-from-top-4"
+        style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+        <div className="flex justify-between items-center mb-3 pb-2"
+          style={{ borderBottom: "1px solid var(--border)" }}>
+          <div>
+            <h3 className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>Kolom Status</h3>
+            <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+              {activeCount} aktif dari {allStatuses.length}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-lg leading-none"
+            style={{ color: "var(--text-muted)" }}>&times;</button>
         </div>
-
-        <p className="text-xs text-gray-500 mb-3">
-            Sembunyikan kolom status yang tidak relevan. Data tidak hilang, hanya disembunyikan.
+        <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
+          Sembunyikan kolom yang tidak relevan.
         </p>
-
-        <div className="max-h-[60vh] overflow-y-auto space-y-1 pr-1">
+        <div className="max-h-[60vh] overflow-y-auto space-y-1 custom-scrollbar">
           {allStatuses.map((status) => {
-            const isVisible = !hiddenStatuses.includes(status);
-            
+            const isVisible = !hiddenList.includes(status);
             return (
-              <label
-                key={status}
-                className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer text-xs select-none transition-colors ${
-                  isVisible ? "bg-green-50 text-green-800" : "hover:bg-gray-50 text-gray-400 decoration-slate-400"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+              <label key={status}
+                className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-xs select-none"
+                style={{ background: isVisible ? "var(--accent-soft)" : "transparent" }}
+                onMouseEnter={e => { if (!isVisible) (e.currentTarget as HTMLElement).style.background = "var(--bg-surface2)"; }}
+                onMouseLeave={e => { if (!isVisible) (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
+                <input type="checkbox" className="rounded shrink-0"
+                  style={{ accentColor: "var(--accent)" }}
                   checked={isVisible}
                   onChange={() => {
-                    // Validasi: Jangan biarkan kosong total (minimal 1 kolom)
                     if (isVisible && activeCount <= 1) return;
-                    toggleStatusVisibility(status);
-                  }}
-                />
-                <span className={`truncate flex-1 ${!isVisible && "line-through"}`}>
-                    {status}
+                    onToggle?.(status);
+                  }} />
+                <span style={{
+                  color: isVisible ? "var(--accent)" : "var(--text-muted)",
+                  fontWeight: isVisible ? 600 : 400,
+                  textDecoration: !isVisible ? "line-through" : "none",
+                }}>
+                  {status}
                 </span>
               </label>
             );

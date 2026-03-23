@@ -135,7 +135,8 @@ export default function TableToolbar({
         )}
       </div>
 
-      {/* ── TOOLBAR ─────────────────────────────────────────────────────── */}
+      {/* ── TOOLBAR — hanya tampil saat view=table ──────────────────────── */}
+      {view !== "kanban" && (
       <div className="px-5 pb-3 flex items-center gap-2 flex-wrap">
 
         {/* Search */}
@@ -305,6 +306,7 @@ export default function TableToolbar({
           </span>
         </div>
       </div>
+      )}
     </div>
   );
 }

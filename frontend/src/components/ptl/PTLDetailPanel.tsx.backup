@@ -591,12 +591,6 @@ export default function PTLDetailPanel() {
                       onScroll={e => { const body = e.currentTarget.nextElementSibling as HTMLElement; if (body) body.scrollLeft = e.currentTarget.scrollLeft; }}>
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                       <table className="text-xs border-collapse" style={{ tableLayout: "fixed", width: "max-content" }}>
-                        <colgroup>
-                          <col style={{ width: "72px", minWidth: "72px" }} />
-                          {columns.map(col => (
-                            <col key={col} style={{ width: `${widths[col] ?? DEFAULT_COL_WIDTH}px`, minWidth: `${MIN_COL_WIDTH}px` }} />
-                          ))}
-                        </colgroup>
                         <thead>
                           <tr>
                             <th className="sticky left-0 z-10 th-table-head"
@@ -630,15 +624,9 @@ export default function PTLDetailPanel() {
 
                     {/* ── Body (scroll dua arah, horizontal disync ke header) ── */}
                     <div className="flex-1 custom-scrollbar"
-                      style={{ overflowX: "auto", overflowY: "auto" }}
+                      style={{ overflowX: "auto", overflowY: "auto", scrollbarGutter: "stable" }}
                       onScroll={syncHeaderScroll}>
                       <table className="text-xs border-collapse" style={{ tableLayout: "fixed", width: "max-content" }}>
-                        <colgroup>
-                          <col style={{ width: "72px", minWidth: "72px" }} />
-                          {columns.map(col => (
-                            <col key={col} style={{ width: `${widths[col] ?? DEFAULT_COL_WIDTH}px`, minWidth: `${MIN_COL_WIDTH}px` }} />
-                          ))}
-                        </colgroup>
                         <tbody>
                           {pagedRecords.map((r, rowIdx) => {
                             const idPaVal = r.data[idPaCol] ?? "";
@@ -671,8 +659,6 @@ export default function PTLDetailPanel() {
                                       className={`border-r overflow-hidden ${isPinned ? "z-10" : ""}`}
                                       style={{
                                         borderColor: "var(--border)",
-                                        width: colW,
-                                        minWidth: MIN_COL_WIDTH,
                                         maxWidth: colW,
                                         padding: "8px 12px",
                                         ...(isPinned ? {

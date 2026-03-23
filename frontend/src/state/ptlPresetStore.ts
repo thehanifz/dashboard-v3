@@ -8,11 +8,12 @@ import { persist } from "zustand/middleware";
 import presetApi from "../services/presetApi";
 
 export type PTLTablePreset = {
-  id:      string;
-  db_id?:  number;
-  name:    string;
-  columns: string[];
-  widths?: Record<string, number>;
+  id:             string;
+  db_id?:         number;
+  name:           string;
+  columns:        string[];
+  widths?:        Record<string, number>;
+  pinnedColumns?: string[];
 };
 
 type PTLPresetState = {

@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
+from typing import Optional, Any
 
 from app.db.database import get_db
 from app.db.models import UserPreset, UserColumnConfig
@@ -30,13 +30,13 @@ class PresetIn(BaseModel):
     scope   : str
     name    : str
     columns : list[str]
-    widths  : Optional[dict[str, float]] = None
+    widths  : Optional[dict[str, Any]] = None
 
 
 class PresetUpdate(BaseModel):
     name    : Optional[str]              = None
     columns : Optional[list[str]]        = None
-    widths  : Optional[dict[str, float]] = None
+    widths  : Optional[dict[str, Any]] = None
 
 
 class PresetOut(BaseModel):
@@ -44,7 +44,7 @@ class PresetOut(BaseModel):
     scope   : str
     name    : str
     columns : list[str]
-    widths  : Optional[dict[str, float]] = None
+    widths  : Optional[dict[str, Any]] = None
     model_config = {"from_attributes": True}
 
 
@@ -74,8 +74,8 @@ async def create_preset(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if body.scope not in ("engineer", "ptl"):
-        raise HTTPException(400, "scope harus 'engineer' atau 'ptl'")
+    if body.scope not in ("engineer", "ptl", "kanban_engineer", "kanban_ptl"):
+        raise HTTPException(400, "scope harus 'engineer', 'ptl', 'kanban_engineer', atau 'kanban_ptl'")
     preset = UserPreset(
         user_id = current_user.id,
         scope   = body.scope,

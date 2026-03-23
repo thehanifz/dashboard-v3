@@ -133,6 +133,10 @@ body {
 .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
+/* Header tabel — scrollbar disembunyikan tapi space tetap ada via scrollbar-gutter */
+.th-header-scroll::-webkit-scrollbar { display: none; }
+.th-header-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+
 /* ─── Surface components ────────────────────────────────────────────────── */
 .surface    { background: var(--bg-surface);  border: 1px solid var(--border); }
 .surface-2  { background: var(--bg-surface2); border: 1px solid var(--border); }

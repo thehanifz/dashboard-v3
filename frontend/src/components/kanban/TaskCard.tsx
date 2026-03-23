@@ -14,13 +14,17 @@ const AGING_COLORS: Record<string, string> = {
 
 interface Props {
   record: { row_id: number; data: Record<string, string> };
-  columnColor: string; // hex warna dari kolom induk
+  columnColor: string;
+  cardFieldsOverride?: string[];
 }
 
-export default function TaskCard({ record, columnColor }: Props) {
+export default function TaskCard({ record, columnColor, cardFieldsOverride }: Props) {
   const statusMaster = useTaskStore(s => s.statusMaster);
   const updateStatus = useTaskStore(s => s.updateStatus);
   const { cardFields, labelColors } = useAppearanceStore();
+
+  // Kalau ada override dari DB preset, pakai itu. Fallback ke store (localStorage)
+  const effectiveFields = cardFieldsOverride ?? cardFields;
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: record.row_id,
@@ -38,8 +42,12 @@ export default function TaskCard({ record, columnColor }: Props) {
   const statusColumnName = statusMaster.status_column || "StatusPekerjaan";
   const detailColumnName = statusMaster.detail_column || "Detail Progres";
 
-  const visibleKeys = Object.keys(record.data).filter(k => cardFields.includes(k));
-  const finalKeys   = visibleKeys.length > 0 ? visibleKeys : ["ID PA"];
+  // Kalau fields kosong = tampilkan semua kolom
+  const allKeys     = Object.keys(record.data);
+  const visibleKeys = effectiveFields.length > 0
+    ? allKeys.filter(k => effectiveFields.includes(k))
+    : allKeys;
+  const finalKeys   = visibleKeys.length > 0 ? visibleKeys : allKeys;
 
   // Aging — hanya untuk badge di kartu
   const aging      = calcAging(record.data["TGL TERBIT PA"]);

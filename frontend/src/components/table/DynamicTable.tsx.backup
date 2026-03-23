@@ -223,12 +223,6 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
               onScroll={e => { if (bodyRef.current) bodyRef.current.scrollLeft = e.currentTarget.scrollLeft; }}>
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <table className="text-xs border-collapse" style={{ tableLayout: "fixed", width: "max-content" }}>
-                <colgroup>
-                  <col style={{ width: "64px", minWidth: "64px" }} />
-                  {columns.map(col => (
-                    <col key={col} style={{ width: `${widths[col] ?? DEFAULT_COL_WIDTH}px`, minWidth: `${MIN_COL_WIDTH}px` }} />
-                  ))}
-                </colgroup>
                 <thead>
                   <tr>
                     <th className="sticky left-0 z-10 th-table-head" style={{ width: 64, minWidth: 64, padding: "10px 8px", borderBottom: "2px solid var(--border)", borderRight: "1px solid var(--border)", textAlign: "center" }}>
@@ -266,15 +260,9 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
             {/* ── Body (scroll kedua arah, horizontal disync ke header) ── */}
             <div ref={bodyRef}
               className="flex-1 custom-scrollbar"
-              style={{ overflowX: "auto", overflowY: "auto" }}
+              style={{ overflowX: "auto", overflowY: "auto", scrollbarGutter: "stable" }}
               onScroll={syncHeaderScroll}>
               <table className="text-xs border-collapse" style={{ tableLayout: "fixed", width: "max-content" }}>
-                <colgroup>
-                  <col style={{ width: "64px", minWidth: "64px" }} />
-                  {columns.map(col => (
-                    <col key={col} style={{ width: `${widths[col] ?? DEFAULT_COL_WIDTH}px`, minWidth: `${MIN_COL_WIDTH}px` }} />
-                  ))}
-                </colgroup>
                 <tbody>
                   {pagination.rows.map((r, rowIdx) => {
                     const status  = statusMaster?.status_column ? r.data?.[statusMaster.status_column] : r.data?.StatusPekerjaan;
@@ -318,8 +306,6 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
                               className={`px-3 py-2 border-r overflow-hidden ${isPinned ? "z-10" : ""}`}
                               style={{
                                 borderColor: "var(--border)",
-                                width: colWidth,
-                                minWidth: MIN_COL_WIDTH,
                                 maxWidth: colWidth,
                                 cursor: editable ? "pointer" : "default",
                                 ...(isPinned ? {
