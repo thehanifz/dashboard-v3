@@ -12,13 +12,14 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, text
 
 from app.core.deps import get_current_user, require_role
 from app.core.config import (
     MITRA_COLUMN_NAME,
     MITRA_EDITABLE_WHITELIST,
 )
-from app.db.models import User, SyncLog
+from app.db.models import User, SyncLog, PARecord
 from app.db.database import get_db
 from app.services.sheet_reader import read_sheet
 from app.services.sheet_writer import update_cells, update_cells_external
@@ -226,28 +227,133 @@ async def update_ptl_own_sheet(
     return {"ok": True, "row_id": row_id, "updated": list(sanitized.keys())}
 
 
-# ── GET /records — Engineer + Mitra (PTL sudah pakai /ptl-sheet) ──────────────
+# ── Mapping kolom DB → nama tampilan Engineer (frontend tidak berubah) ─────────
+# Key   = nama kolom di tabel pa_records
+# Value = nama kolom yang dikenal frontend (preset, filter, dll)
+PA_RECORD_COL_DISPLAY = {
+    "id_pa":             "ID PA",
+    "node":              "NODE",
+    "id_permohonan":     "ID PERMOHONAN",
+    "service_id":        "SERVICE ID",
+    "nama_produk":       "NAMA PRODUK",
+    "jenis_layanan":     "JENIS LAYANAN",
+    "kategori_layanan":  "KATEGORI LAYANAN",
+    "segmentasi":        "SEGMENTASI",
+    "kategori_customer": "KATEGORI CUSTOMER",
+    "kategori_owner":    "KATEGORI OWNER",
+    "bandwidth":         "BANDWIDTH",
+    "alamat":            "ALAMAT",
+    "kp_node":           "KP NODE",
+    "latitude":          "LATITUDE",
+    "longitude":         "LONGITUDE",
+    "nama_customer":     "NAMA CUSTOMER",
+    "tgl_terbit_pa":     "TGL TERBIT PA",
+    "tgl_bai":           "TGL BAI",
+    "tgl_upload_bai":    "TGL UPLOAD BAI",
+    "jenis_pekerjaan":   "JENIS PEKERJAAN",
+    "nomor_io":          "NOMOR IO",
+    "status_pa":         "STATUS PA",
+    "kategori_status":   "KATEGORI STATUS",
+    "kategori_progres":  "KATEGORI PROGRES",
+    "detail_progres":    "DETAIL PROGRES",
+    "progress_update":   "PROGRESS UPDATE",
+    "aging_pa":          "AGING PA",
+    "aging_non_sc":      "AGING NON SC",
+    "aging_sc":          "AGING SC",
+    "nama_ptl":          "NAMA PTL",
+    "nama_sales":        "NAMA SALES",
+    "ptl_update":        "PTL UPDATE",
+}
+
+DISPLAY_COLUMNS = list(PA_RECORD_COL_DISPLAY.values())
+
+
+def _pa_record_to_dict(rec: PARecord) -> dict:
+    """Konversi PARecord SQLAlchemy ke format {id, row_id, data} yang sama dengan GSheet."""
+    data = {}
+    for db_col, display_name in PA_RECORD_COL_DISPLAY.items():
+        val = getattr(rec, db_col, None)
+        # Tanggal → string format standar
+        if val is None:
+            data[display_name] = ""
+        elif hasattr(val, "strftime"):
+            data[display_name] = val.strftime("%Y-%m-%d %H:%M") if val.hour or val.minute else val.strftime("%Y-%m-%d")
+        else:
+            data[display_name] = str(val)
+    return {
+        "id":     f"rec_{rec.gsheet_row}",
+        "row_id": rec.gsheet_row,
+        "data":   data,
+    }
+
+
+async def _get_engineer_records_from_pg(db: AsyncSession) -> dict:
+    """Baca data Engineer dari PostgreSQL pa_records."""
+    result = await db.execute(
+        select(PARecord).order_by(PARecord.gsheet_row)
+    )
+    rows = result.scalars().all()
+    records = [_pa_record_to_dict(r) for r in rows]
+    return {
+        "columns": DISPLAY_COLUMNS,
+        "records": records,
+        "source":  "postgresql",
+        "total":   len(records),
+    }
+
+
+# ── GET /records — Engineer dari PostgreSQL, Mitra dari GSheet ────────────────
 @router.get("")
-def get_records(current_user: User = Depends(require_role("engineer", "mitra"))):
+async def get_records(
+    current_user: User = Depends(require_role("engineer", "mitra")),
+    db: AsyncSession = Depends(get_db),
+):
+    role = current_user.role.value
+
+    # Engineer → baca dari PostgreSQL
+    if role == "engineer":
+        return await _get_engineer_records_from_pg(db)
+
+    # Mitra → tetap dari GSheet (filter by nama mitra)
     sheet_data = read_sheet()
     return _filter_records_engineer(sheet_data, current_user)
 
 
 # ── POST /records/by-id/{record_id}/status ────────────────────────────────────
 @router.post("/by-id/{record_id}/status")
-def update_record_status_by_id(
+async def update_record_status_by_id(
     record_id: str,
     payload: StatusUpdatePayload,
     current_user: User = Depends(require_role("engineer", "mitra")),
+    db: AsyncSession = Depends(get_db),
 ):
-    sheet_data = read_sheet()
-    filtered   = _filter_records_engineer(sheet_data, current_user)
-    record     = next((r for r in filtered["records"] if r["id"] == record_id), None)
+    role = current_user.role.value
 
-    if not record:
-        raise HTTPException(status_code=404, detail=f"Record '{record_id}' tidak ditemukan")
+    # Engineer → cari record di PostgreSQL
+    if role == "engineer":
+        result = await db.execute(
+            select(PARecord).where(PARecord.id_pa == record_id.replace("rec_", ""))
+        )
+        pa_rec = result.scalar_one_or_none()
+        # Fallback: cari by gsheet_row jika record_id = "rec_N"
+        if not pa_rec and record_id.startswith("rec_"):
+            try:
+                grow = int(record_id.replace("rec_", ""))
+                result2 = await db.execute(select(PARecord).where(PARecord.gsheet_row == grow))
+                pa_rec = result2.scalar_one_or_none()
+            except ValueError:
+                pass
+        if not pa_rec:
+            raise HTTPException(status_code=404, detail=f"Record '{record_id}' tidak ditemukan")
+        row_id = pa_rec.gsheet_row
+    else:
+        sheet_data = read_sheet()
+        filtered   = _filter_records_engineer(sheet_data, current_user)
+        record     = next((r for r in filtered["records"] if r["id"] == record_id), None)
+        if not record:
+            raise HTTPException(status_code=404, detail=f"Record '{record_id}' tidak ditemukan")
+        row_id = record["row_id"]
 
-    row_id = record["row_id"]
     master = read_status_master()
     status = payload.status.strip()
     detail = (payload.detail or "").strip()
@@ -261,19 +367,31 @@ def update_record_status_by_id(
     if detail:
         updates[master["detail_column"]] = detail
 
-    # Auto-update Status PA + Kategori PA dari sheet Opsi
     updates = _enrich_updates_with_opsi(updates, status)
 
+    # Tulis ke GSheet
     update_cells(row_id=row_id, updates=updates)
+
+    # Update PostgreSQL juga (Engineer)
+    if role == "engineer" and pa_rec:
+        if master["status_column"] == "Status Pekerjaan":
+            pa_rec.kategori_status = status
+        if detail and master["detail_column"] == "Detail Progres":
+            pa_rec.detail_progres = detail
+        from datetime import datetime as _dt
+        pa_rec.updated_at = _dt.now()
+        await db.commit()
+
     return {"ok": True, "record_id": record_id, "row_id": row_id, "status": status, "detail": detail or "-"}
 
 
 # ── POST /records/{row_id}/status ─────────────────────────────────────────────
 @router.post("/{row_id}/status")
-def update_record_status(
+async def update_record_status(
     row_id: int,
     payload: StatusUpdatePayload,
     current_user: User = Depends(require_role("engineer", "mitra")),
+    db: AsyncSession = Depends(get_db),
 ):
     if row_id < 2:
         raise HTTPException(status_code=400, detail="row_id harus >= 2")
@@ -309,11 +427,26 @@ def update_record_status(
     if detail:
         updates[master["detail_column"]] = detail
 
-    # Auto-update Status PA + Kategori PA dari sheet Opsi
     updates = _enrich_updates_with_opsi(updates, status)
-
     update_cells(row_id=row_id, updates=updates)
+
+    # Sync ke PostgreSQL untuk Engineer
+    if role == "engineer":
+        result = await db.execute(select(PARecord).where(PARecord.gsheet_row == row_id))
+        pa_rec = result.scalar_one_or_none()
+        if pa_rec:
+            pa_rec.kategori_status = status
+            if detail:
+                pa_rec.detail_progres = detail
+            from datetime import datetime as _dt
+            pa_rec.updated_at = _dt.now()
+            await db.commit()
+
     return {"ok": True, "row_id": row_id, "status": status, "detail": detail or "-"}
+
+
+# Mapping tampilan → kolom DB (kebalikan dari PA_RECORD_COL_DISPLAY)
+DISPLAY_TO_DB_COL = {v: k for k, v in PA_RECORD_COL_DISPLAY.items()}
 
 
 # ── POST /records/{row_id}/cells — Engineer + Mitra ──────────────────────────
@@ -350,27 +483,79 @@ async def update_record_cells(
         if owner != current_user.nama_lengkap.strip().lower():
             raise HTTPException(status_code=403, detail="Akses ditolak — bukan data milikmu")
 
-    if sheet_data["columns"]:
+    # Engineer: TIDAK perlu validasi kolom dari GSheet (karena tulis ke DB, bukan GSheet)
+    # Mitra: Validasi kolom dari GSheet
+    if role == "mitra" and sheet_data["columns"]:
         invalid = [col for col in payload.updates if col not in sheet_data["columns"]]
         if invalid:
             raise HTTPException(status_code=400, detail=f"Kolom tidak valid: {invalid}")
 
-    update_cells(row_id=row_id, updates=payload.updates)
+    # Engineer: Update PostgreSQL (TIDAK ke GSheet)
+    if role == "engineer":
+        result = await db.execute(select(PARecord).where(PARecord.gsheet_row == row_id))
+        pa_rec = result.scalar_one_or_none()
+        if not pa_rec:
+            raise HTTPException(status_code=404, detail="Record tidak ditemukan di database")
 
-    # Catat sync_log Mitra
-    if role == "mitra" and record:
-        id_pa = record["data"].get("ID PA", str(row_id))
-        for field, new_val in payload.updates.items():
-            old_val = record["data"].get(field)
-            await _write_sync_log(
-                db,
-                ptl_user_id=None,
-                id_pa=id_pa,
-                field_changed=field,
-                old_value=old_val,
-                new_value=new_val,
-                sync_type="mitra_update",
-                synced_by=current_user.username,
-            )
+        from datetime import datetime as _dt
+        for field_display, new_val in payload.updates.items():
+            db_col = DISPLAY_TO_DB_COL.get(field_display)
+            if db_col and hasattr(pa_rec, db_col):
+                old_val = getattr(pa_rec, db_col, None)
+                # Konversi tipe data sesuai kolom
+                if db_col in ("tgl_terbit_pa", "tgl_bai", "tgl_upload_bai"):
+                    # Parse tanggal dari string
+                    if new_val:
+                        for fmt in ["%Y-%m-%d %H:%M", "%Y-%m-%d", "%d/%m/%Y"]:
+                            try:
+                                new_val = _dt.strptime(new_val, fmt)
+                                break
+                            except ValueError:
+                                continue
+                    else:
+                        new_val = None
+                elif db_col in ("latitude", "longitude", "aging_non_sc", "aging_sc"):
+                    new_val = float(new_val.replace(",", ".")) if new_val else None
+                elif db_col == "aging_pa":
+                    new_val = int(float(new_val.replace(",", "."))) if new_val else None
+                elif db_col == "gsheet_row":
+                    continue  # Skip gsheet_row
+
+                setattr(pa_rec, db_col, new_val)
+
+                # Catat sync_log untuk Engineer
+                await _write_sync_log(
+                    db,
+                    ptl_user_id=None,
+                    id_pa=pa_rec.id_pa or str(row_id),
+                    field_changed=field_display,
+                    old_value=old_val,
+                    new_value=new_val,
+                    sync_type="manual",
+                    synced_by=current_user.username,
+                )
+
+        pa_rec.updated_at = _dt.now()
+        await db.commit()
+
+    # Mitra: Tulis ke GSheet
+    elif role == "mitra":
+        update_cells(row_id=row_id, updates=payload.updates)
+
+        # Catat sync_log Mitra
+        if record:
+            id_pa = record["data"].get("ID PA", str(row_id))
+            for field, new_val in payload.updates.items():
+                old_val = record["data"].get(field)
+                await _write_sync_log(
+                    db,
+                    ptl_user_id=None,
+                    id_pa=id_pa,
+                    field_changed=field,
+                    old_value=old_val,
+                    new_value=new_val,
+                    sync_type="mitra_update",
+                    synced_by=current_user.username,
+                )
 
     return {"ok": True, "row_id": row_id, "updated": list(payload.updates.keys())}

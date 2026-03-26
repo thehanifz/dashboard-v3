@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, func, JSON
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, Float, func, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -189,3 +189,67 @@ class UserColumnConfig(Base):
     updated_at           : Mapped[datetime]  = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     user: Mapped["User"] = relationship(back_populates="column_config")
+
+# ── pa_records ────────────────────────────────────────────────────────────────
+class PARecord(Base):
+    """
+    Data PA Engineer dari GSheet yang sudah dimigrasi ke PostgreSQL.
+    GSheet tetap sebagai source of truth — tabel ini adalah cache/replica.
+    gsheet_row = nomor baris di GSheet (untuk write-back status).
+    """
+    __tablename__ = "pa_records"
+
+    id               : Mapped[int]             = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # Identitas
+    id_pa            : Mapped[Optional[str]]   = mapped_column(String(50),  nullable=True,  index=True)
+    node             : Mapped[Optional[str]]   = mapped_column(String(20),  nullable=True)
+    id_permohonan    : Mapped[Optional[str]]   = mapped_column(String(50),  nullable=True)
+    service_id       : Mapped[Optional[str]]   = mapped_column(String(50),  nullable=True)
+
+    # Produk & Layanan
+    nama_produk      : Mapped[Optional[str]]   = mapped_column(Text,        nullable=True)
+    jenis_layanan    : Mapped[Optional[str]]   = mapped_column(String(50),  nullable=True)
+    kategori_layanan : Mapped[Optional[str]]   = mapped_column(String(100), nullable=True)
+    segmentasi       : Mapped[Optional[str]]   = mapped_column(String(50),  nullable=True)
+    kategori_customer: Mapped[Optional[str]]   = mapped_column(String(100), nullable=True)
+    kategori_owner   : Mapped[Optional[str]]   = mapped_column(String(100), nullable=True)
+    bandwidth        : Mapped[Optional[str]]   = mapped_column(String(50),  nullable=True)
+
+    # Lokasi
+    alamat           : Mapped[Optional[str]]   = mapped_column(Text,        nullable=True)
+    kp_node          : Mapped[Optional[str]]   = mapped_column(String(100), nullable=True, index=True)
+    latitude         : Mapped[Optional[float]] = mapped_column(Float,       nullable=True)
+    longitude        : Mapped[Optional[float]] = mapped_column(Float,       nullable=True)
+
+    # Customer
+    nama_customer    : Mapped[Optional[str]]   = mapped_column(Text,        nullable=True)
+
+    # Tanggal
+    tgl_terbit_pa    : Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
+    tgl_bai          : Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
+    tgl_upload_bai   : Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
+
+    # Jenis & Status
+    jenis_pekerjaan  : Mapped[Optional[str]]   = mapped_column(String(50),  nullable=True, index=True)
+    nomor_io         : Mapped[Optional[str]]   = mapped_column(String(50),  nullable=True)
+    status_pa        : Mapped[Optional[str]]   = mapped_column(String(100), nullable=True, index=True)
+    kategori_status  : Mapped[Optional[str]]   = mapped_column(String(100), nullable=True)
+    kategori_progres : Mapped[Optional[str]]   = mapped_column(String(200), nullable=True)
+    detail_progres   : Mapped[Optional[str]]   = mapped_column(Text,        nullable=True)
+    progress_update  : Mapped[Optional[str]]   = mapped_column(Text,        nullable=True)
+
+    # Aging
+    aging_pa         : Mapped[Optional[int]]   = mapped_column(Integer,     nullable=True)
+    aging_non_sc     : Mapped[Optional[float]] = mapped_column(Float,       nullable=True)
+    aging_sc         : Mapped[Optional[float]] = mapped_column(Float,       nullable=True)
+
+    # Tim
+    nama_ptl         : Mapped[Optional[str]]   = mapped_column(String(200), nullable=True)
+    nama_sales       : Mapped[Optional[str]]   = mapped_column(String(200), nullable=True)
+    ptl_update       : Mapped[Optional[str]]   = mapped_column(String(200), nullable=True)
+
+    # Metadata sync
+    gsheet_row       : Mapped[int]             = mapped_column(Integer,     nullable=False, unique=True)
+    synced_at        : Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
+    updated_at       : Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
