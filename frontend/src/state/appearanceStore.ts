@@ -19,8 +19,11 @@ interface AppearanceState {
   // --- UKURAN ---
   columnWidth: number;
 
-  // --- FILTER ---
+  // --- FILTER (Engineer) ---
   activeFilters: Record<string, string[]>;
+
+  // --- FILTER (PTL) ---
+  ptlActiveFilters: Record<string, string[]>;
 
   // --- EDITABLE COLUMNS ---
   editableColumns:    string[];
@@ -39,8 +42,14 @@ interface AppearanceState {
   togglePtlStatusVisibility:(statusName: string) => void;
   setPtlColumnWidth:        (width: number) => void;
 
-  toggleFilter:          (key: string, value: string) => void;
-  clearFilters:          () => void;
+  // Filter Engineer
+  toggleFilter:  (key: string, value: string) => void;
+  clearFilters:  () => void;
+
+  // Filter PTL
+  togglePtlFilter:  (key: string, value: string) => void;
+  clearPtlFilters:  () => void;
+
   toggleEditableColumn:     (columnName: string) => void;
   setEditableColumns:       (columnNames: string[]) => void;
   togglePtlEditableColumn:  (columnName: string) => void;
@@ -66,7 +75,8 @@ export const useAppearanceStore = create<AppearanceState>()(
       ptlHiddenStatuses: [],
       ptlColumnWidth:    300,
 
-      activeFilters:  {},
+      activeFilters:    {},
+      ptlActiveFilters: {},
       editableColumns:    [],
       ptlEditableColumns: [],
 
@@ -105,6 +115,7 @@ export const useAppearanceStore = create<AppearanceState>()(
 
       setPtlColumnWidth: (width) => set({ ptlColumnWidth: width }),
 
+      // ── Filter Engineer ────────────────────────────────────────────────────
       toggleFilter: (key, value) =>
         set(state => {
           const cur = state.activeFilters[key] || [];
@@ -115,6 +126,18 @@ export const useAppearanceStore = create<AppearanceState>()(
         }),
 
       clearFilters: () => set({ activeFilters: {} }),
+
+      // ── Filter PTL ─────────────────────────────────────────────────────────
+      togglePtlFilter: (key, value) =>
+        set(state => {
+          const cur = state.ptlActiveFilters[key] || [];
+          const next = cur.includes(value) ? cur.filter(v => v !== value) : [...cur, value];
+          const newFilters = { ...state.ptlActiveFilters };
+          if (next.length > 0) newFilters[key] = next; else delete newFilters[key];
+          return { ptlActiveFilters: newFilters };
+        }),
+
+      clearPtlFilters: () => set({ ptlActiveFilters: {} }),
 
       // ── toggleEditableColumn — sync ke DB ─────────────────────────────────
       toggleEditableColumn: (columnName) => {
@@ -128,13 +151,11 @@ export const useAppearanceStore = create<AppearanceState>()(
         });
       },
 
-      // ── setEditableColumns — sync ke DB ───────────────────────────────────
       setEditableColumns: (columnNames) => {
         set({ editableColumns: columnNames });
         presetApi.saveEditableColumns(columnNames, "engineer").catch(() => {});
       },
 
-      // ── togglePtlEditableColumn — sync ke DB ──────────────────────────────
       togglePtlEditableColumn: (columnName) => {
         set(state => {
           const isEditable = state.ptlEditableColumns.includes(columnName);
@@ -146,7 +167,6 @@ export const useAppearanceStore = create<AppearanceState>()(
         });
       },
 
-      // ── setPtlEditableColumns — sync ke DB ────────────────────────────────
       setPtlEditableColumns: (columnNames) => {
         set({ ptlEditableColumns: columnNames });
         presetApi.saveEditableColumns(columnNames, "ptl").catch(() => {});
@@ -158,6 +178,7 @@ export const useAppearanceStore = create<AppearanceState>()(
         cardFields:         [],
         hiddenStatuses:     [],
         activeFilters:      {},
+        ptlActiveFilters:   {},
         columnWidth:        320,
         editableColumns:    [],
         ptlEditableColumns: [],
@@ -168,7 +189,6 @@ export const useAppearanceStore = create<AppearanceState>()(
         ptlColumnWidth:     300,
       }),
 
-      // ── Load dari DB saat login ───────────────────────────────────────────
       loadEditableColumnsFromDB: async () => {
         try {
           const cols = await presetApi.getEditableColumns("engineer");
@@ -185,7 +205,6 @@ export const useAppearanceStore = create<AppearanceState>()(
     }),
     {
       name: "appearance-storage",
-      // editableColumns tidak di-persist ke localStorage — selalu load dari DB
       partialize: (state) => ({
         columnColors:      state.columnColors,
         labelColors:       state.labelColors,
@@ -193,6 +212,7 @@ export const useAppearanceStore = create<AppearanceState>()(
         hiddenStatuses:    state.hiddenStatuses,
         columnWidth:       state.columnWidth,
         activeFilters:     state.activeFilters,
+        ptlActiveFilters:  state.ptlActiveFilters,
         ptlColumnColors:   state.ptlColumnColors,
         ptlLabelColors:    state.ptlLabelColors,
         ptlCardFields:     state.ptlCardFields,

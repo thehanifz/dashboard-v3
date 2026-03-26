@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { DndContext } from "@dnd-kit/core";
 import { useTaskStore } from "../../state/taskStore";
 import { useAppearanceStore } from "../../state/appearanceStore";
@@ -20,10 +20,12 @@ export default function KanbanBoard() {
   // ── Kanban preset dari DB ─────────────────────────────────────────────────
   const { preset: dbPreset, loading: presetLoading, save: savePreset } = useKanbanPreset("kanban_engineer");
 
-  // hiddenStatuses & cardFields — dari DB preset, fallback ke default
   const [hiddenStatuses, setHiddenStatuses] = useState<string[]>([]);
-  const [localCardFields, setLocalCardFields] = useState<string[]>([]);  // kosong = tampilkan semua
+  const [localCardFields, setLocalCardFields] = useState<string[]>([]);
   const [presetReady, setPresetReady] = useState(false);
+
+  // Flag: skip auto-save pada render pertama setelah preset load
+  const isFirstLoad = useRef(true);
 
   // Sync dari DB preset saat load
   useEffect(() => {
@@ -33,17 +35,21 @@ export default function KanbanBoard() {
         if (dbPreset.cardFields?.length) setLocalCardFields(dbPreset.cardFields);
       }
       setPresetReady(true);
+      // Set false SETELAH React flush semua state perubahan di atas
+      setTimeout(() => { isFirstLoad.current = false; }, 0);
     }
   }, [presetLoading, dbPreset]);
 
   // Save ke DB saat hiddenStatuses atau cardFields berubah (debounced)
+  // presetReady SENGAJA dihapus dari dependency array — mencegah race condition
   useEffect(() => {
     if (!presetReady) return;
+    if (isFirstLoad.current) return;
     const t = setTimeout(() => {
       savePreset({ cardFields: localCardFields, hiddenStatuses });
     }, 800);
     return () => clearTimeout(t);
-  }, [localCardFields, hiddenStatuses, presetReady]);
+  }, [localCardFields, hiddenStatuses]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [showLabelMgr, setShowLabelMgr] = useState(false);
   const [showFieldMgr, setShowFieldMgr] = useState(false);
@@ -53,7 +59,6 @@ export default function KanbanBoard() {
   const [search,       setSearch]       = useState("");
   const [sortBy, setSortBy] = useState<"id_asc"|"id_desc"|"newest"|"oldest"|"aging_asc"|"aging_desc">("id_asc");
 
-  // Urutan kolom ikut statusMaster.primary (tidak random)
   const visibleStatuses = useMemo(() => {
     if (!statusMaster?.primary) return [];
     return statusMaster.primary.filter(s => !hiddenStatuses.includes(s));
@@ -106,8 +111,6 @@ export default function KanbanBoard() {
     if (rowId && nextStatus) updateStatus(rowId, nextStatus, undefined);
   };
 
-  // Pass setters ke CardFieldManager & ColumnVisibilityManager via appearanceStore bridge
-  // Tidak perlu — kita pakai local state, terus pass via props ke manager
   const handleToggleStatus = (s: string) => {
     setHiddenStatuses(prev =>
       prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
@@ -158,7 +161,8 @@ export default function KanbanBoard() {
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
           </svg>
-          Filter {activeFilterCount > 0 && (
+          <span className="hidden sm:inline">Filter</span>
+          {activeFilterCount > 0 && (
             <span className="font-bold text-[10px] px-1.5 py-0.5 rounded-full text-white"
               style={{ background: "var(--accent)" }}>{activeFilterCount}</span>
           )}
@@ -220,7 +224,7 @@ export default function KanbanBoard() {
         </div>
       </div>
 
-      {/* Board — urutan kolom ikut statusMaster.primary */}
+      {/* Board */}
       <DndContext onDragEnd={onDragEnd}>
         <div className="flex gap-3 overflow-x-auto overflow-y-hidden flex-1 p-4 custom-scrollbar">
           {visibleStatuses.map(status => (

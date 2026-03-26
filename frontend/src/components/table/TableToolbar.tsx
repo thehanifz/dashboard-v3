@@ -196,8 +196,8 @@ export default function TableToolbar({
           {/* Dropdown list preset */}
           {presetDropdownOpen && (
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setPresetDropdownOpen(false)} />
-              <div className="absolute top-full left-0 mt-1.5 rounded-xl shadow-2xl border z-20 overflow-hidden"
+              <div className="fixed inset-0 z-[25]" onClick={() => setPresetDropdownOpen(false)} />
+              <div className="absolute top-full left-0 mt-1.5 rounded-xl shadow-2xl border z-[35] overflow-hidden"
                 style={{ background: "var(--bg-surface)", borderColor: "var(--border)", minWidth: 220 }}>
                 <div className="px-3 pt-2.5 pb-1">
                   <p className="text-[10px] font-bold uppercase tracking-widest"
