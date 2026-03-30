@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(source *)",
+      "Bash(alembic *)",
+      "Bash(pip list)",
+      "Bash(./venv/bin/alembic *)",
+      "Bash(psql *)",
+      "Bash(pm2 *)",
+      "Bash(sleep *)",
+      "Bash(curl *)",
+      "Bash(python3 *)",
+      "Bash(find *)",
+      "Bash(python *)",
+      "Bash(rm *)",
+      "Bash(pip install *)"
+    ]
+  },
+  "$version": 3
+}

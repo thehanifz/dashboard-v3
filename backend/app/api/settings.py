@@ -22,7 +22,7 @@ from app.db.database import get_db
 from app.db.models import DashboardSetting
 from app.schemas.settings import SettingRead, SettingUpdate
 
-router = APIRouter(prefix="/settings", tags=["settings"])
+router = APIRouter(tags=["settings"])
 
 
 # ── GET /settings/public — tanpa auth, untuk frontend ──────────────────────────
