@@ -1,11 +1,11 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type AppPage = "dashboard" | "detail" | "asbuilt" | "teskom" | "mitra-config" | "sync" | "profile";
+export type AppPage = "dashboard" | "detail" | "asbuilt" | "teskom" | "mitra-config" | "sync" | "profile" | "settings";
 export type AsBuiltView = "library" | "generate";
 
 // Halaman yang TIDAK disimpan ke localStorage — selalu reset ke default saat load
-const TRANSIENT_PAGES: AppPage[] = ["profile"];
+const TRANSIENT_PAGES: AppPage[] = ["profile"], "settings";
 
 interface AppState {
   currentPage: AppPage;
