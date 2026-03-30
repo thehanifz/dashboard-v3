@@ -8,7 +8,7 @@ import { useAuthStore } from "../state/authStore";
 
 const api: AxiosInstance = axios.create({
   baseURL: "/api",
-  timeout: 15000,
+  timeout: 60000, // 60 detik — untuk load data 18MB pertama kali
   withCredentials: true,
 });
 

@@ -27,12 +27,16 @@ export default function EngineerDashboardPanel() {
     try {
       await refreshAll();
       showToast("Data berhasil diperbarui", "success");
-    } catch {
+    } catch (err) {
+      console.error("Gagal refresh data:", err);
       showToast("Gagal memuat data dari server", "error");
     }
   }, [refreshAll, showToast]);
 
-  useEffect(() => { handleRefresh(); }, []);
+  useEffect(() => {
+    console.log("[EngineerDashboard] Mounting, triggering refresh...");
+    handleRefresh();
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg-app)" }}>

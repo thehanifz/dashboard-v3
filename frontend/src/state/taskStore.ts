@@ -48,7 +48,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   setRecords: (records) => set({ records }),
 
   fetchRecords: async () => {
+    console.log("[taskStore] Fetching /records...");
     const res = await api.get("/records");
+    console.log("[taskStore] Records response:", res.data);
     set({
       columns: res.data.columns ?? [],
       records: res.data.records ?? [],
@@ -56,8 +58,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   fetchStatusMaster: async () => {
+    console.log("[taskStore] Fetching /status...");
     try {
       const res = await api.get("/status");
+      console.log("[taskStore] Status master response:", res.data);
       set({ statusMaster: res.data });
     } catch (error) {
       console.error("Failed to fetch status master:", error);
@@ -74,10 +78,15 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   // ─── Refresh All (manual & auto) ─────────────────────────────────────────
   refreshAll: async () => {
+    console.log("[taskStore] refreshAll called");
     set({ isLoading: true });
     try {
       await Promise.all([get().fetchStatusMaster(), get().fetchRecords()]);
+      console.log("[taskStore] refreshAll completed");
       set({ lastUpdated: new Date() });
+    } catch (err) {
+      console.error("[taskStore] refreshAll error:", err);
+      throw err;
     } finally {
       set({ isLoading: false });
     }
