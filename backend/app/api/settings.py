@@ -8,8 +8,10 @@ Sekarang semua konfigurasi disimpan di tabel dashboard_settings (PostgreSQL).
 GET  /api/settings         — semua user login, baca list semua settings
 GET  /api/settings/public  — tanpa auth, untuk frontend baca config awal
 GET  /api/settings/{key}   — baca satu setting by key
-PUT  /api/settings/{key}   — superadmin only: update satu setting
-POST /api/settings/cache/invalidate — superadmin only: force reload cache
+PUT  /api/settings/{key}   — engineer only: update satu setting
+POST /api/settings/cache/invalidate — engineer only: force reload cache
+
+Role superuser hanya untuk management user — tidak akses endpoint fitur operasional.
 """
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -17,7 +19,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import settings_cache
-from app.core.deps import get_current_user, require_superuser
+from app.core.deps import get_current_user, require_role
 from app.db.database import get_db
 from app.db.models import DashboardSetting
 from app.schemas.settings import SettingRead, SettingUpdate
@@ -73,15 +75,15 @@ async def get_setting(
     return setting
 
 
-# ── PUT /settings/{key} — superadmin only ───────────────────────────────────
+# ── PUT /settings/{key} — engineer only ─────────────────────────────────────
 @router.put("/{key}", response_model=SettingRead)
 async def update_setting(
     key: str,
     payload: SettingUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_superuser),
+    current_user=Depends(require_role("engineer")),
 ):
-    """Update satu setting — hanya superadmin."""
+    """Update satu setting — engineer."""
     result = await db.execute(
         select(DashboardSetting).where(DashboardSetting.key == key)
     )
@@ -97,11 +99,7 @@ async def update_setting(
             detail=f"Setting '{key}' tidak bisa diedit via API",
         )
 
-    # Ambil username dari current_user (bisa dict JWT payload atau User object)
-    actor = (
-        current_user.get("sub") if isinstance(current_user, dict)
-        else getattr(current_user, "username", "superadmin")
-    )
+    actor = getattr(current_user, "username", "engineer")
 
     await db.execute(
         update(DashboardSetting)
@@ -119,10 +117,10 @@ async def update_setting(
     return result2.scalar_one()
 
 
-# ── POST /settings/cache/invalidate — superadmin only ───────────────────────
+# ── POST /settings/cache/invalidate — engineer only ─────────────────────────
 @router.post("/cache/invalidate", status_code=status.HTTP_204_NO_CONTENT)
 async def force_invalidate_cache(
-    _current_user=Depends(require_superuser),
+    _current_user=Depends(require_role("engineer")),
 ):
     """Force reload cache — berguna setelah maintenance DB langsung."""
     settings_cache.invalidate()
