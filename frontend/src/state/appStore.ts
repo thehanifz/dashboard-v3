@@ -5,7 +5,7 @@ export type AppPage = "dashboard" | "detail" | "asbuilt" | "teskom" | "mitra-con
 export type AsBuiltView = "library" | "generate";
 
 // Halaman yang TIDAK disimpan ke localStorage — selalu reset ke default saat load
-const TRANSIENT_PAGES: AppPage[] = ["profile"], "settings";
+const TRANSIENT_PAGES: AppPage[] = ["profile", "settings"];
 
 interface AppState {
   currentPage: AppPage;
