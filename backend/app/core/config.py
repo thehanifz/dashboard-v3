@@ -24,17 +24,17 @@ BACKEND_CORS_ORIGINS = parse_cors(os.getenv("BACKEND_CORS_ORIGINS", "*"))
 # ── Google Sheets ─────────────────────────────────────────────────────────────
 GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "credentials.json")
 SPREADSHEET_ID                 = os.getenv("SPREADSHEET_ID")
-SHEET_NAME                     = os.getenv("SHEET_NAME", "PLN")
+SHEET_NAME                     = os.getenv("SHEET_NAME", "PLN")  # DEPRECATED: gunakan key 'columns.sheet_name' di dashboard_settings
 STATUS_SHEET_NAME              = os.getenv("STATUS_SHEET_NAME", "Opsi")
-STATUS_COL_PRIMARY             = os.getenv("STATUS_COL_PRIMARY", "Status Pekerjaan")
-STATUS_COL_DETAIL              = os.getenv("STATUS_COL_DETAIL", "Detail Progres")
+STATUS_COL_PRIMARY             = os.getenv("STATUS_COL_PRIMARY", "Status Pekerjaan")  # DEPRECATED: gunakan key 'columns.status_primary' di dashboard_settings
+STATUS_COL_DETAIL              = os.getenv("STATUS_COL_DETAIL", "Detail Progres")  # DEPRECATED: gunakan key 'columns.status_detail' di dashboard_settings
 GOOGLE_SERVICE_ACCOUNT_EMAIL   = os.getenv("GOOGLE_SERVICE_ACCOUNT_EMAIL", "")
 
 # Nama kolom di GSheet untuk filter per role
-# Dua kolom PTL — filter OR: baris dimana salah satu kolom = nama PTL
-PTL_COL_TERMINATING = os.getenv("PTL_COL_TERMINATING", "PTL TERMINATING")
-PTL_COL_ORIGINATING = os.getenv("PTL_COL_ORIGINATING", "PTL ORIGINATING")
-MITRA_COLUMN_NAME   = os.getenv("MITRA_COLUMN_NAME", "MITRA TERMINATING")
+# Dua kolom PTL — filter OR: baris dimana salah satu kolom = nama PTL  # DEPRECATED: gunakan key 'columns.ptl_terminating' di dashboard_settings
+PTL_COL_TERMINATING = os.getenv("PTL_COL_TERMINATING", "PTL TERMINATING")  # DEPRECATED: gunakan key 'columns.ptl_originating' di dashboard_settings
+PTL_COL_ORIGINATING = os.getenv("PTL_COL_ORIGINATING", "PTL ORIGINATING")  # DEPRECATED: gunakan key 'columns.ptl_originating' di dashboard_settings
+MITRA_COLUMN_NAME   = os.getenv("MITRA_COLUMN_NAME", "MITRA TERMINATING")  # DEPRECATED: gunakan key 'columns.mitra' di dashboard_settings
 
 # ── AsBuilt ───────────────────────────────────────────────────────────────────
 SVG_TEMPLATE_DIR: Path = BASE_DIR / "public" / "templates"
