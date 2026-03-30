@@ -253,3 +253,23 @@ class PARecord(Base):
     gsheet_row       : Mapped[int]             = mapped_column(Integer,     nullable=False, unique=True)
     synced_at        : Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
     updated_at       : Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
+
+
+# ── dashboard_settings ──────────────────────────────────────────────────────────
+class DashboardSetting(Base):
+    """
+    Konfigurasi dashboard yang bisa diedit superadmin via UI.
+    Dibaca via settings_cache.py (TTL 5 menit) — tidak query DB setiap request.
+    """
+    __tablename__ = "dashboard_settings"
+
+    id          : Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key         : Mapped[str]           = mapped_column(String(100), unique=True, nullable=False, index=True)
+    value       : Mapped[str]           = mapped_column(Text, nullable=False)
+    value_type  : Mapped[str]           = mapped_column(String(20), nullable=False, default="string")  # string | number | boolean | json
+    category    : Mapped[str]           = mapped_column(String(50), nullable=False, index=True)
+    label       : Mapped[str]           = mapped_column(String(200), nullable=False)
+    description : Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_editable : Mapped[bool]          = mapped_column(Boolean, nullable=False, default=True)
+    updated_by  : Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    updated_at  : Mapped[datetime]      = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
