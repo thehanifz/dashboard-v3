@@ -12,6 +12,7 @@ import { useAppStore }  from "./state/appStore";
 import LoginPage   from "./pages/LoginPage";
 import ProfilePage from "./pages/ProfilePage";
 import MainPage    from "./pages/MainPage";
+import SettingsPage from "./pages/SettingsPage";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isLoggedIn } = useAuthStore();
@@ -25,7 +26,7 @@ export default function App() {
   return (
     <AuthGuard>
       <div className="h-screen overflow-hidden flex flex-col">
-        {page === "profile" ? <ProfilePage /> : <MainPage />}
+                  {page === "profile" ? <ProfilePage /> : page === "settings" ? <SettingsPage /> : <MainPage />}
       </div>
     </AuthGuard>
   );
