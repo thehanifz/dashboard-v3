@@ -1,20 +1,9 @@
 /**
  * services/settingsApi.ts
  * API client untuk endpoint /api/settings
- * Dipakai di SettingsPage.tsx (superadmin only)
- *
- * Menggantikan versi lama yang hanya handle AgingThresholds.
+ * Pakai axios instance (api.ts) agar token auto-refresh berjalan.
  */
-
-const TOKEN_KEY = "dash_v3_at";
-
-function getBaseUrl() {
-  return import.meta.env.VITE_API_BASE_URL || "/api";
-}
-
-function getToken() {
-  return sessionStorage.getItem(TOKEN_KEY) ?? "";
-}
+import api from "./api";
 
 export type DashboardSetting = {
   id:          number;
@@ -29,48 +18,30 @@ export type DashboardSetting = {
   updated_at:  string | null;
 };
 
-// ── GET /api/settings — semua settings (butuh login) ───────────────────────
+// ── GET /api/settings — semua settings (butuh login) ─────────────────────
 export async function fetchAllSettings(): Promise<DashboardSetting[]> {
-  const res = await fetch(`${getBaseUrl()}/settings/`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
-  if (!res.ok) throw new Error("Gagal memuat settings");
-  return res.json();
+  const { data } = await api.get<DashboardSetting[]>("/settings/");
+  return data;
 }
 
-// ── PUT /api/settings/{key} — update satu setting (superadmin only) ────────
+// ── PUT /api/settings/{key} — update satu setting (engineer) ───────────────
 export async function updateSetting(
   key: string,
   value: string
 ): Promise<DashboardSetting> {
-  const res = await fetch(`${getBaseUrl()}/settings/${key}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${getToken()}`,
-    },
-    body: JSON.stringify({ value }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail ?? "Gagal menyimpan setting");
-  }
-  return res.json();
+  const { data } = await api.put<DashboardSetting>(`/settings/${key}`, { value });
+  return data;
 }
 
 // ── POST /api/settings/cache/invalidate — force reload cache ──────────────
 export async function invalidateSettingsCache(): Promise<void> {
-  await fetch(`${getBaseUrl()}/settings/cache/invalidate`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
+  await api.post("/settings/cache/invalidate");
 }
 
-// ── GET /api/settings/public — tanpa auth ──────────────────────────────────
+// ── GET /api/settings/public — tanpa auth ───────────────────────────────
 export async function fetchPublicSettings(): Promise<Record<string, unknown>> {
-  const res = await fetch(`${getBaseUrl()}/settings/public`);
-  if (!res.ok) throw new Error("Gagal memuat public settings");
-  return res.json();
+  const { data } = await api.get<Record<string, unknown>>("/settings/public");
+  return data;
 }
 
 // ── Legacy: getAgingThresholds — baca dari public settings ─────────────────
