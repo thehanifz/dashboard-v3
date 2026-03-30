@@ -1,6 +1,7 @@
 /**
  * pages/SettingsPage.tsx
- * Halaman pengaturan dashboard — hanya bisa diakses role superuser.
+ * Halaman pengaturan dashboard.
+ * Dapat diakses oleh role superuser dan engineer.
  * Menampilkan semua settings dari tabel dashboard_settings di DB,
  * dikelompokkan per category, dan bisa diedit inline.
  */
@@ -20,6 +21,9 @@ const CATEGORY_LABEL: Record<string, string> = {
   columns: "📋 Nama Kolom GSheet",
 };
 
+/** Role yang diizinkan mengakses halaman ini */
+const ALLOWED_ROLES = ["superuser", "engineer"];
+
 export default function SettingsPage() {
   const { user, hasRole }   = useAuthStore();
   const { setPage }         = useAppStore();
@@ -33,9 +37,9 @@ export default function SettingsPage() {
   const [saveMsg, setSaveMsg]     = useState("");
   const [cacheMsg, setCacheMsg]   = useState("");
 
-  // Guard — hanya superuser
+  // Guard — hanya superuser atau engineer
   useEffect(() => {
-    if (!hasRole("superuser")) {
+    if (!ALLOWED_ROLES.some(r => hasRole(r))) {
       setPage("dashboard");
     }
   }, [hasRole, setPage]);
@@ -95,7 +99,7 @@ export default function SettingsPage() {
     setTimeout(() => setCacheMsg(""), 3000);
   }
 
-  if (!hasRole("superuser")) return null;
+  if (!ALLOWED_ROLES.some(r => hasRole(r))) return null;
 
   return (
     <div className="flex flex-col h-full bg-gray-950 text-white overflow-y-auto">

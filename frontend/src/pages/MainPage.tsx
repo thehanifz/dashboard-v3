@@ -8,7 +8,7 @@
  *   ptl       → PTLDashboardPanel | PTLDetailPanel | AsBuiltPage | TeskomPage
  *   mitra     → MitraDashboardPanel
  *   engineer  → EngineerDashboardPanel | EngineerDetailPanel |
- *               AsBuiltPage | TeskomPage | MitraTableConfigPage | SyncDashboardPage
+ *               AsBuiltPage | TeskomPage | MitraTableConfigPage | SyncDashboardPage | SettingsPage
  *
  * Halaman profile ditangani di App.tsx (shared semua role).
  */
@@ -34,13 +34,14 @@ import AsBuiltPage          from "./AsBuiltPage";
 import TeskomPage           from "./TeskomPage";
 import MitraTableConfigPage from "./MitraTableConfigPage";
 import SyncDashboardPage    from "./SyncDashboardPage";
+import SettingsPage         from "./SettingsPage";
 
 // Panel superuser
 import SuperuserPanel from "../components/superuser/SuperuserPanel";
 
 /**
  * LayoutShell — wrapper Sidebar+Topbar untuk page bare (tanpa layout sendiri).
- * Dipakai untuk MitraTableConfigPage dan SyncDashboardPage.
+ * Dipakai untuk MitraTableConfigPage, SyncDashboardPage, dan SettingsPage.
  */
 function LayoutShell({ children, onRefresh }: { children: React.ReactNode; onRefresh?: () => void }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -94,6 +95,7 @@ export default function MainPage() {
     if (page === "teskom")       return <TeskomPage />;
     if (page === "mitra-config") return <LayoutShell><MitraTableConfigPage /></LayoutShell>;
     if (page === "sync")         return <LayoutShell><SyncDashboardPage /></LayoutShell>;
+    if (page === "settings")     return <LayoutShell><SettingsPage /></LayoutShell>;
     // default: dashboard
     return <EngineerDashboardPanel />;
   }
