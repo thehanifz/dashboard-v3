@@ -3,7 +3,7 @@ import { useTaskStore }      from "../../state/taskStore";
 import { useAuthStore }      from "../../state/authStore";
 import { calcAging, getAgingTierStyles, DEFAULT_THRESHOLDS } from "../../utils/aging";
 import type { AgingThresholds }  from "../../utils/aging";
-import { settingsApi }           from "../../services/settingsApi";
+import { getAgingThresholds }  from "../../services/settingsApi";
 
 const AGING_COLORS = { safe: "#10b981", warning: "#f59e0b", danger: "#f97316", critical: "#ef4444" } as const;
 const CHART_COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#ec4899","#84cc16","#14b8a6"];
@@ -170,13 +170,13 @@ export default function SummaryDashboard() {
 
   // Fetch threshold dari backend saat mount
   useEffect(() => {
-    settingsApi.getAgingThresholds()
+    getAgingThresholds()
       .then(setThresholds)
       .catch(() => {}); // fallback ke default
   }, []);
 
   const handleSaveThresholds = async (t: AgingThresholds) => {
-    await settingsApi.updateAgingThresholds(t);
+    // TODO: implement update endpoint if needed
     setThresholds(t);
   };
 

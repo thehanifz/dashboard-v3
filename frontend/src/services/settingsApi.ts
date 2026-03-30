@@ -16,7 +16,7 @@ function getToken() {
   return sessionStorage.getItem(TOKEN_KEY) ?? "";
 }
 
-export interface DashboardSetting {
+export type DashboardSetting = {
   id:          number;
   key:         string;
   value:       string;
@@ -27,7 +27,7 @@ export interface DashboardSetting {
   is_editable: boolean;
   updated_by:  string | null;
   updated_at:  string | null;
-}
+};
 
 // ── GET /api/settings — semua settings (butuh login) ───────────────────────
 export async function fetchAllSettings(): Promise<DashboardSetting[]> {
@@ -64,4 +64,27 @@ export async function invalidateSettingsCache(): Promise<void> {
     method: "POST",
     headers: { Authorization: `Bearer ${getToken()}` },
   });
+}
+
+// ── GET /api/settings/public — tanpa auth ──────────────────────────────────
+export async function fetchPublicSettings(): Promise<Record<string, unknown>> {
+  const res = await fetch(`${getBaseUrl()}/settings/public`);
+  if (!res.ok) throw new Error("Gagal memuat public settings");
+  return res.json();
+}
+
+// ── Legacy: getAgingThresholds — baca dari public settings ─────────────────
+export interface AgingThresholds {
+  tier1: number;
+  tier2: number;
+  tier3: number;
+}
+
+export async function getAgingThresholds(): Promise<AgingThresholds> {
+  const settings = await fetchPublicSettings();
+  return {
+    tier1: Number(settings["aging.tier1"] ?? 11),
+    tier2: Number(settings["aging.tier2"] ?? 30),
+    tier3: Number(settings["aging.tier3"] ?? 60),
+  };
 }

@@ -7,7 +7,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { calcAging, getAgingTierStyles, DEFAULT_THRESHOLDS } from "../../utils/aging";
 import type { AgingThresholds } from "../../utils/aging";
-import { settingsApi } from "../../services/settingsApi";
+import { getAgingThresholds } from "../../services/settingsApi";
 
 const AGING_COLORS = { safe: "#10b981", warning: "#f59e0b", danger: "#f97316", critical: "#ef4444" } as const;
 const CHART_COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#ec4899","#84cc16","#14b8a6"];
@@ -79,7 +79,7 @@ export default function PTLSummaryDashboard({ records }: Props) {
 
   // Fetch threshold dari backend saat mount (read-only untuk PTL)
   useEffect(() => {
-    settingsApi.getAgingThresholds()
+    getAgingThresholds()
       .then(setThresholds)
       .catch(() => {});
   }, []);
