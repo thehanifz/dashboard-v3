@@ -39,7 +39,7 @@ const ROLE_PAGES: Record<string, AppPage[]> = {
   engineer:  ["dashboard", "detail", "asbuilt", "teskom", "mitra-config", "sync"],
   ptl:       ["dashboard", "detail", "asbuilt", "teskom"],
   mitra:     ["dashboard"],
-  superuser: [],
+  superuser: ["settings"],
 };
 
 // ── Mismatch Badge ────────────────────────────────────────────────────────────
