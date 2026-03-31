@@ -7,7 +7,9 @@ type CellContentProps = {
   record: any;
   column: string;
   labelColors: Record<string, string>;
+  /** Opsional — jika tidak di-pass, baca dari taskStore.statusMaster */
   statusColumnName?: string;
+  /** Opsional — jika tidak di-pass, baca dari taskStore.statusMaster */
   detailColumnName?: string;
 };
 
@@ -15,8 +17,8 @@ export const CellContent = ({
   record,
   column,
   labelColors,
-  statusColumnName = "StatusPekerjaan",
-  detailColumnName = "Detail Progres"
+  statusColumnName,
+  detailColumnName,
 }: CellContentProps) => {
   const [isEditing, setIsEditing]   = useState(false);
   const [inputValue, setInputValue] = useState(record?.data?.[column] ?? "");
@@ -27,15 +29,20 @@ export const CellContent = ({
   const editableColumns = useAppearanceStore(state => state.editableColumns);
   const updateCell      = useTaskStore(state => state.updateCell);
 
+  // Baca statusMaster dari store — tidak ada default hardcode
+  const statusMaster = useTaskStore(state => state.statusMaster);
+  const resolvedStatusCol = statusColumnName ?? statusMaster?.status_column ?? null;
+  const resolvedDetailCol = detailColumnName ?? statusMaster?.detail_column ?? null;
+
   useEffect(() => {
     if (record?.data && column) {
       setInputValue(record.data[column] ?? "");
     }
   }, [record?.data, column]);
 
-  const isEditable    = editableColumns.includes(column);
-  const isStatusColumn = column === statusColumnName;
-  const isDetailColumn = column === detailColumnName;
+  const isEditable     = editableColumns.includes(column);
+  const isStatusColumn = resolvedStatusCol ? column === resolvedStatusCol : false;
+  const isDetailColumn = resolvedDetailCol ? column === resolvedDetailCol : false;
 
   const handleSave = async () => {
     if (inputValue === record?.data?.[column]) {
@@ -122,7 +129,6 @@ export const CellContent = ({
     );
   }
 
-  // Non-editable — plain text pakai CSS var
   return (
     <div className="w-full h-full">
       <span className="truncate block px-2 py-2" style={{ color: "var(--text-secondary)" }}>

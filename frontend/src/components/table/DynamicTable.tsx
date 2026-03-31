@@ -7,6 +7,7 @@ import { usePresetStore } from "../../state/presetStore";
 import { useAppearanceStore } from "../../state/appearanceStore";
 import { useAuthStore } from "../../state/authStore";
 import { getColorTheme } from "../../utils/colorPalette";
+import { getDynamicTableConfig, type DynamicTableConfig } from "../../services/settingsApi";
 
 import { renderCell }          from "./renderCell";
 import { useTablePagination }  from "./useTablePagination";
@@ -45,6 +46,18 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
   const activePreset    = presets.find(p => p.id === activePresetId);
   const pinnedColumns   = activePreset?.pinnedColumns ?? [];
 
+  // ── Load config dari DB (tidak hardcode) ─────────────────────────────────────
+  const [tableConfig, setTableConfig] = useState<DynamicTableConfig>({
+    colIdPa:            "ID PA",
+    colNamaPerusahaan:  "NAMA PERUSAHAAN",
+    tableTitle:         "Detail Pekerjaan",
+    ptlEditableColumns: ["STATUS", "DETAIL", "KETERANGAN"],
+  });
+
+  useEffect(() => {
+    getDynamicTableConfig().then(setTableConfig);
+  }, []);
+
   const handleTogglePin = (col: string) => {
     if (!activePreset) return;
     const current   = activePreset.pinnedColumns ?? [];
@@ -52,12 +65,10 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
     const isPinning = !current.includes(col);
 
     if (isPinning) {
-      // Tambah ke pinned, pindahkan kolom ke posisi setelah semua pinned
       const nextPinned = [...current, col];
       const unpinned   = cols.filter(c => !nextPinned.includes(c));
       updatePreset(activePreset.id, { pinnedColumns: nextPinned, columns: [...nextPinned, ...unpinned] });
     } else {
-      // Lepas dari pinned — posisi kolom tetap
       updatePreset(activePreset.id, { pinnedColumns: current.filter(c => c !== col) });
     }
   };
@@ -65,36 +76,35 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
   const { show: showToast } = useToast();
   const editableColumns     = useAppearanceStore(s => s.editableColumns);
 
-  // ── Inline edit state (Phase 4) ───────────────────────────────────────────
+  // ── Inline edit state ────────────────────────────────────────────────────────
   const { user }                            = useAuthStore();
   const updateCell                          = useTaskStore(s => s.updateCell);
   const [editingCell, setEditingCell]       = useState<{ rowId: number; col: string } | null>(null);
   const [editingValue, setEditingValue]     = useState("");
 
-  // ── Load preset dan editable columns dari DB saat mount ──────────────────
+  // ── Load preset dan editable columns dari DB saat mount ──────────────────────
   useEffect(() => {
     usePresetStore.getState().loadFromDB();
     useAppearanceStore.getState().loadEditableColumnsFromDB();
   }, []);
 
-  const PTL_EDITABLE   = new Set(["STATUS", "DETAIL", "KETERANGAN"]);
-  const role           = user?.role ?? "engineer";
+  const role = user?.role ?? "engineer";
 
-  // Kolom status dan detail tidak boleh diedit via inline edit (sudah pakai dropdown)
-  const statusColumn   = statusMaster?.status_column ?? "StatusPekerjaan";
-  const detailColumn   = statusMaster?.detail_column ?? "Detail Progres";
+  // PTL editable dari DB (tableConfig), bukan hardcode
+  const PTL_EDITABLE = useMemo(
+    () => new Set(tableConfig.ptlEditableColumns),
+    [tableConfig.ptlEditableColumns]
+  );
+
+  // Kolom status dan detail dari statusMaster (tidak hardcode)
+  const statusColumn = statusMaster?.status_column ?? "";
+  const detailColumn = statusMaster?.detail_column ?? "";
 
   function canEditCell(col: string): boolean {
-    // Status dan Detail kolom selalu false — gunakan dropdown
-    if (col === statusColumn || col === detailColumn) return false;
-
-    // Engineer: hanya kolom yang terdaftar di editableColumns
+    if (statusColumn && col === statusColumn) return false;
+    if (detailColumn && col === detailColumn) return false;
     if (role === "engineer") return editableColumns.includes(col);
-
-    // PTL: hanya kolom yang diizinkan
     if (role === "ptl") return PTL_EDITABLE.has(col);
-
-    // Mitra: tidak boleh edit via inline (pakai whitelist sendiri)
     return false;
   }
 
@@ -170,7 +180,7 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
     <div className={toolbarOnly ? "shrink-0" : "flex flex-col h-full"} >
 
       <TableToolbar
-        title="Detail Pekerjaan"
+        title={tableConfig.tableTitle}
         recordCount={records.length}
         userName={user?.nama_lengkap ?? ""}
         saving={saving}
@@ -190,10 +200,8 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
         totalCount={records.length}
       />
 
-      {/* Kalau toolbarOnly=true, stop di sini — hanya toolbar yang dirender */}
       {toolbarOnly ? null : (<>
 
-      {/* ── Table ── */}
       {!activePreset ? (
         <div className="flex-1 flex flex-col items-center justify-center rounded-2xl" style={{ background: "var(--bg-surface)", border: "2px dashed var(--border)" }}>
           <svg className="w-10 h-10 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} style={{ color: "var(--text-muted)" }}>
@@ -248,8 +256,10 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
                 </thead>
                 <tbody>
                   {pagination.rows.map((r, rowIdx) => {
-                    const status  = statusMaster?.status_column ? r.data?.[statusMaster.status_column] : r.data?.StatusPekerjaan;
-                    const themeId = columnColors[status] || "gray";
+                    // Pakai statusMaster?.status_column — tidak ada hardcode fallback
+                    const statusCol = statusMaster?.status_column;
+                    const status  = statusCol ? r.data?.[statusCol] : undefined;
+                    const themeId = status ? (columnColors[status] || "gray") : "gray";
                     const theme   = getColorTheme(themeId);
 
                     return (
@@ -262,12 +272,12 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
                           <div className="flex items-center justify-center gap-1">
                             <BaiActionButton
                               rowId={r.row_id}
-                              idPa={r.data["ID PA"] || ""}
-                              namaPerusahaan={r.data["NAMA PERUSAHAAN"] || ""}
+                              idPa={r.data[tableConfig.colIdPa] || ""}
+                              namaPerusahaan={r.data[tableConfig.colNamaPerusahaan] || ""}
                               onToast={showToast}
                             />
                             <TeskomActionButton
-                              idPa={r.data["ID PA"] || ""}
+                              idPa={r.data[tableConfig.colIdPa] || ""}
                             />
                           </div>
                         </td>
@@ -276,7 +286,6 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
                           const isEditing = editingCell?.rowId === r.row_id && editingCell?.col === col;
                           const editable  = canEditCell(col);
                           const isPinned  = pinnedColumns.includes(col);
-                          // Hitung left offset untuk pinned columns
                           const pinnedLeft = isPinned
                             ? 64 + pinnedColumns.slice(0, pinnedColumns.indexOf(col)).reduce(
                                 (acc, c) => acc + (widths[c] ?? DEFAULT_COL_WIDTH), 0
@@ -384,7 +393,6 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
       )}
       </>)}
 
-      {/* Modals — selalu dirender agar bisa dibuka dari toolbar saat kanban */}
       {showEditor && activePreset && <PresetEditorModal presetId={activePreset.id} scope="engineer" onClose={() => setShowEditor(false)} />}
       {showEditableColumns && <EditableColumnsModal onClose={() => setShowEditableColumns(false)} />}
       {activeFilterCol && (

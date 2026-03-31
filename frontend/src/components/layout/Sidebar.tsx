@@ -3,6 +3,7 @@ import { useThemeStore } from "../../state/themeStore";
 import { useAppStore, AppPage, AsBuiltView } from "../../state/appStore";
 import { useAuthStore } from "../../state/authStore";
 import { syncApi } from "../../services/syncApi";
+import { getAppInfo, type AppInfo } from "../../services/settingsApi";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -32,7 +33,7 @@ const IconChevronRight = () => (
   </svg>
 );
 
-// ── Role config ───────────────────────────────────────────────────────────────
+// ── Role config — tetap di kode (keamanan routing, bukan bisnis) ─────────────
 const ROLE_LABEL: Record<string, string> = { engineer: "Engineer", ptl: "PTL", mitra: "Mitra", superuser: "Superuser" };
 const ROLE_COLOR: Record<string, string> = { engineer: "#2563eb", ptl: "#7c3aed", mitra: "#059669", superuser: "#d97706" };
 
@@ -98,6 +99,17 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
   const [asbuiltOpen, setAsbuiltOpen]     = useState(currentPage === "asbuilt");
   const [mismatchCount, setMismatchCount] = useState(0);
 
+  // ── App info dari DB (tidak hardcode) ────────────────────────────────────────
+  const [appInfo, setAppInfo] = useState<AppInfo>({
+    appName:     import.meta.env.VITE_APP_NAME     ?? "Dashboard v3",
+    appSubtitle: import.meta.env.VITE_APP_SUBTITLE ?? "PA PLN Icon+",
+    appVersion:  import.meta.env.VITE_APP_VERSION  ?? "3.2",
+  });
+
+  useEffect(() => {
+    getAppInfo().then(setAppInfo);
+  }, []);
+
   const role       = user?.role ?? "engineer";
   const roleLabel  = ROLE_LABEL[role] ?? role;
   const roleColor  = ROLE_COLOR[role] ?? "#2563eb";
@@ -151,13 +163,13 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <p className="text-xs font-bold leading-tight truncate" style={{ color: "var(--text-primary)" }}>Dashboard v3</p>
-              <p className="text-[11px] leading-tight truncate" style={{ color: sectionColor }}>PA PLN Icon+</p>
+              <p className="text-xs font-bold leading-tight truncate" style={{ color: "var(--text-primary)" }}>{appInfo.appName}</p>
+              <p className="text-[11px] leading-tight truncate" style={{ color: sectionColor }}>{appInfo.appSubtitle}</p>
             </div>
           )}
         </div>
 
-        {/* User card — klik → ke ProfilePage */}
+        {/* User card */}
         {user && (
           <button
             onClick={() => setPage("profile")}
@@ -242,7 +254,7 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
           ))}
         </nav>
 
-        {/* Footer — toggle theme + versi */}
+        {/* Footer — toggle theme + versi dari DB */}
         <div style={{ height: 1, background: "var(--sidebar-border, var(--border))", margin: "0 12px" }} />
         <div className="shrink-0 px-2 py-3">
           <button onClick={toggleTheme}
@@ -255,7 +267,11 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
             {isDark ? <SunIcon /> : <MoonIcon />}
             {!collapsed && <span>{isDark ? "Light Mode" : "Dark Mode"}</span>}
           </button>
-          {!collapsed && <p className="text-[10px] px-3 pt-1" style={{ color: sectionColor }}>v3.2 · 2026</p>}
+          {!collapsed && (
+            <p className="text-[10px] px-3 pt-1" style={{ color: sectionColor }}>
+              v{appInfo.appVersion} · {new Date().getFullYear()}
+            </p>
+          )}
         </div>
       </aside>
 
@@ -280,7 +296,6 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
             </button>
           );
         })}
-        {/* Profil di mobile */}
         <button onClick={() => setPage("profile")}
           className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all"
           style={{ color: currentPage === "profile" ? "var(--accent)" : "var(--text-muted)", background: currentPage === "profile" ? "var(--accent-soft)" : "transparent" }}
