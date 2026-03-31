@@ -3,12 +3,16 @@ import { useTaskStore }      from "../../state/taskStore";
 import { useAuthStore }      from "../../state/authStore";
 import { calcAging, getAgingTierStyles, DEFAULT_THRESHOLDS } from "../../utils/aging";
 import type { AgingThresholds }  from "../../utils/aging";
-import { getAgingThresholds }  from "../../services/settingsApi";
+import {
+  getAgingThresholds,
+  getDashboardColumns,
+  type DashboardColumns,
+} from "../../services/settingsApi";
 
 const AGING_COLORS = { safe: "#10b981", warning: "#f59e0b", danger: "#f97316", critical: "#ef4444" } as const;
 const CHART_COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#ec4899","#84cc16","#14b8a6"];
 
-// ─── KPI Card ─────────────────────────────────────────────────────────────────
+// ─── KPI Card ───────────────────────────────────────────────────────────────────────────
 function KpiCard({ label, value, sub, accent, icon }: {
   label: string; value: number | string; sub?: string; accent: string; icon: React.ReactNode;
 }) {
@@ -26,7 +30,7 @@ function KpiCard({ label, value, sub, accent, icon }: {
   );
 }
 
-// ─── Horizontal Bar ───────────────────────────────────────────────────────────
+// ─── Horizontal Bar ─────────────────────────────────────────────────────────────────────
 function HBar({ label, value, max, color, pct }: {
   label: string; value: number; max: number; color: string; pct?: string;
 }) {
@@ -43,7 +47,7 @@ function HBar({ label, value, max, color, pct }: {
   );
 }
 
-// ─── Section Card ─────────────────────────────────────────────────────────────
+// ─── Section Card ─────────────────────────────────────────────────────────────────────────
 function SectionCard({ title, subtitle, action, children }: {
   title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode;
 }) {
@@ -61,7 +65,7 @@ function SectionCard({ title, subtitle, action, children }: {
   );
 }
 
-// ─── Aging Threshold Modal ─────────────────────────────────────────────────────
+// ─── Aging Threshold Modal ──────────────────────────────────────────────────────────────────
 function AgingSettingsModal({ thresholds, onSave, onClose }: {
   thresholds: AgingThresholds;
   onSave: (t: AgingThresholds) => Promise<void>;
@@ -159,31 +163,49 @@ function AgingSettingsModal({ thresholds, onSave, onClose }: {
   );
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+// ─── Main ─────────────────────────────────────────────────────────────────────────────
 export default function SummaryDashboard() {
   const records  = useTaskStore(s => s.records);
   const { user } = useAuthStore();
 
   const [thresholds, setThresholds]         = useState<AgingThresholds>(DEFAULT_THRESHOLDS);
   const [showAgingSettings, setShowAging]   = useState(false);
-  const tglCol = "TGL TERBIT PA";
+  // Kolom & nilai status dibaca dari DB via settingsApi — tidak lagi hardcode
+  const [cols, setCols] = useState<DashboardColumns | null>(null);
 
-  // Fetch threshold dari backend saat mount
+  // Fetch threshold aging dari backend saat mount
   useEffect(() => {
     getAgingThresholds()
       .then(setThresholds)
-      .catch(() => {}); // fallback ke default
+      .catch(() => {}); // fallback ke DEFAULT_THRESHOLDS
+  }, []);
+
+  // Fetch konfigurasi kolom dari DB saat mount
+  useEffect(() => {
+    getDashboardColumns()
+      .then(setCols)
+      .catch(() => {}); // fallback dihandle di dalam getDashboardColumns
   }, []);
 
   const handleSaveThresholds = async (t: AgingThresholds) => {
-    // TODO: implement update endpoint if needed
     setThresholds(t);
   };
 
   const tierStyles = useMemo(() => getAgingTierStyles(thresholds), [thresholds]);
 
-  // ─── Stats ───────────────────────────────────────────────────────────────
+  // ─── Stats ─────────────────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
+    // Gunakan cols dari DB jika sudah tersedia, fallback ke string kosong
+    // yang akan menyebabkan semua masuk bucket "Tidak Diketahui" daripada crash
+    const tglCol          = cols?.colTglTerbit       ?? "TGL TERBIT PA";
+    const statusPaCol     = cols?.colStatusPa        ?? "Status PA";
+    const statusPekCol    = cols?.colStatusPekerjaan ?? "Status Pekerjaan";
+    const layananCol      = cols?.colLayanan         ?? "LAYANAN";
+    const jenisMutasiCol  = cols?.colJenisMutasi     ?? "JENIS MUTASI";
+    const valDone         = cols?.valStatusDone      ?? "Done BAI";
+    const valProgress     = cols?.valStatusProgress  ?? "On Progress";
+    const valCancel       = cols?.valStatusCancel    ?? "PA Cancel";
+
     const byStatusPekerjaan: Record<string, number> = {};
     const byLayanan:         Record<string, number> = {};
     const byJenisMutasi:     Record<string, number> = {};
@@ -192,21 +214,21 @@ export default function SummaryDashboard() {
 
     records.forEach(r => {
       // Status Pekerjaan — hanya yang Status PA = On Progress
-      if ((r.data["Status PA"] || "") === "On Progress") {
-        const sp = r.data["Status Pekerjaan"] || "Tidak Diketahui";
+      if ((r.data[statusPaCol] || "") === valProgress) {
+        const sp = r.data[statusPekCol] || "Tidak Diketahui";
         byStatusPekerjaan[sp] = (byStatusPekerjaan[sp] || 0) + 1;
       }
 
       // STATUS PA
-      const spa = r.data["Status PA"] || "Tidak Diketahui";
+      const spa = r.data[statusPaCol] || "Tidak Diketahui";
       byStatusPA[spa] = (byStatusPA[spa] || 0) + 1;
 
       // Layanan — ambil bagian pertama sebelum " - "
-      const layanan = (r.data["LAYANAN"] || "Lainnya").split(" - ")[0].trim();
+      const layanan = (r.data[layananCol] || "Lainnya").split(" - ")[0].trim();
       byLayanan[layanan] = (byLayanan[layanan] || 0) + 1;
 
       // Jenis Mutasi
-      const mutasi = r.data["JENIS MUTASI"] || "Lainnya";
+      const mutasi = r.data[jenisMutasiCol] || "Lainnya";
       byJenisMutasi[mutasi] = (byJenisMutasi[mutasi] || 0) + 1;
 
       // Aging
@@ -215,18 +237,20 @@ export default function SummaryDashboard() {
     });
 
     const total      = records.length;
-    const doneBai    = byStatusPA["Done BAI"]    || 0;
-    const onProgress = byStatusPA["On Progress"] || 0;
-    const paCancel   = byStatusPA["PA Cancel"]   || 0;
+    const doneBai    = byStatusPA[valDone]     || 0;
+    const onProgress = byStatusPA[valProgress] || 0;
+    const paCancel   = byStatusPA[valCancel]   || 0;
     const donePct    = total > 0 ? Math.round((doneBai / total) * 100) : 0;
 
     return {
       byStatusPekerjaan, byLayanan, byJenisMutasi, byStatusPA,
       agingTiers, total, doneBai, onProgress, paCancel, donePct,
+      // Expose label nilai status agar bisa ditampilkan di UI
+      valDone, valProgress, valCancel,
     };
-  }, [records, thresholds]);
+  }, [records, thresholds, cols]);
 
-  const maxSP     = Math.max(...Object.values(stats.byStatusPekerjaan), 1);
+  const maxSP      = Math.max(...Object.values(stats.byStatusPekerjaan), 1);
   const maxLayanan = Math.max(...Object.values(stats.byLayanan), 1);
   const maxMutasi  = Math.max(...Object.values(stats.byJenisMutasi), 1);
   const totalSP    = Object.values(stats.byStatusPekerjaan).reduce((a, b) => a + b, 0);
@@ -243,13 +267,13 @@ export default function SummaryDashboard() {
         <KpiCard label="Total PA" value={stats.total} sub="Semua record aktif" accent="#3b82f6"
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
         />
-        <KpiCard label="Done BAI" value={stats.doneBai} sub={`${stats.donePct}% selesai`} accent="#10b981"
+        <KpiCard label={stats.valDone} value={stats.doneBai} sub={`${stats.donePct}% selesai`} accent="#10b981"
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
         />
-        <KpiCard label="On Progress" value={stats.onProgress} sub="Status PA = On Progress" accent="#f59e0b"
+        <KpiCard label={stats.valProgress} value={stats.onProgress} sub={`Status PA = ${stats.valProgress}`} accent="#f59e0b"
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
         />
-        <KpiCard label="PA Cancel" value={stats.paCancel} sub="Status PA = PA Cancel" accent="#ef4444"
+        <KpiCard label={stats.valCancel} value={stats.paCancel} sub={`Status PA = ${stats.valCancel}`} accent="#ef4444"
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
         />
       </div>
@@ -259,7 +283,7 @@ export default function SummaryDashboard() {
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Progress Penyelesaian</h3>
-            <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Status PA: Done BAI dari total PA</p>
+            <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Status PA: {stats.valDone} dari total PA</p>
           </div>
           <span className="text-2xl font-extrabold"
             style={{ color: stats.donePct >= 70 ? "#10b981" : stats.donePct >= 40 ? "#f59e0b" : "#ef4444" }}>
@@ -279,8 +303,8 @@ export default function SummaryDashboard() {
           />
         </div>
         <div className="flex justify-between mt-2">
-          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{stats.doneBai} Done BAI</span>
-          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{stats.onProgress} On Progress · {stats.paCancel} PA Cancel</span>
+          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{stats.doneBai} {stats.valDone}</span>
+          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{stats.onProgress} {stats.valProgress} · {stats.paCancel} {stats.valCancel}</span>
         </div>
       </div>
 
@@ -288,7 +312,10 @@ export default function SummaryDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
 
         {/* Per Status Pekerjaan */}
-        <SectionCard title="Per Status Pekerjaan On Progress" subtitle="Filter: Status PA = On Progress">
+        <SectionCard
+          title={`Per ${cols?.colStatusPekerjaan ?? "Status Pekerjaan"} On Progress`}
+          subtitle={`Filter: ${cols?.colStatusPa ?? "Status PA"} = ${stats.valProgress}`}
+        >
           <div className="space-y-2.5">
             {Object.entries(stats.byStatusPekerjaan)
               .sort((a, b) => b[1] - a[1])
@@ -302,7 +329,10 @@ export default function SummaryDashboard() {
         </SectionCard>
 
         {/* Per Layanan */}
-        <SectionCard title="Per Layanan" subtitle="Jenis layanan">
+        <SectionCard
+          title={`Per ${cols?.colLayanan ?? "Layanan"}`}
+          subtitle="Jenis layanan"
+        >
           <div className="space-y-2.5">
             {Object.entries(stats.byLayanan)
               .sort((a, b) => b[1] - a[1])
@@ -316,7 +346,10 @@ export default function SummaryDashboard() {
         </SectionCard>
 
         {/* Per Jenis Mutasi */}
-        <SectionCard title="Per Jenis Mutasi" subtitle="Kolom JENIS MUTASI">
+        <SectionCard
+          title={`Per ${cols?.colJenisMutasi ?? "Jenis Mutasi"}`}
+          subtitle={`Kolom ${cols?.colJenisMutasi ?? "JENIS MUTASI"}`}
+        >
           <div className="space-y-2.5">
             {Object.entries(stats.byJenisMutasi)
               .sort((a, b) => b[1] - a[1])
