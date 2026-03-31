@@ -4,7 +4,7 @@
  * Render panel yang tepat berdasarkan role + page state dari appStore.
  *
  * Struktur render:
- *   superuser → SuperuserPanel (self-contained)
+ *   superuser → LayoutShell + SuperuserPanel | SettingsPage
  *   ptl       → PTLDashboardPanel | PTLDetailPanel | AsBuiltPage | TeskomPage
  *   mitra     → MitraDashboardPanel
  *   engineer  → EngineerDashboardPanel | EngineerDetailPanel |
@@ -41,7 +41,7 @@ import SuperuserPanel from "../components/superuser/SuperuserPanel";
 
 /**
  * LayoutShell — wrapper Sidebar+Topbar untuk page bare (tanpa layout sendiri).
- * Dipakai untuk MitraTableConfigPage, SyncDashboardPage, dan SettingsPage.
+ * Dipakai untuk MitraTableConfigPage, SyncDashboardPage, SettingsPage, dan SuperuserPanel.
  */
 function LayoutShell({ children, onRefresh }: { children: React.ReactNode; onRefresh?: () => void }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -70,8 +70,15 @@ export default function MainPage() {
   const { currentPage: page } = useAppStore();
 
   // ── Superuser ──────────────────────────────────────────────────────────────
+  // Sebelumnya SuperuserPanel self-contained (tanpa Sidebar), sehingga tombol
+  // Settings di Sidebar tidak pernah muncul. Sekarang dibungkus LayoutShell
+  // agar Sidebar tampil dan navigasi ke halaman settings bisa diakses.
   if (user?.role === "superuser") {
-    return <SuperuserPanel />;
+    return (
+      <LayoutShell>
+        {page === "settings" ? <SettingsPage /> : <SuperuserPanel />}
+      </LayoutShell>
+    );
   }
 
   // ── PTL ───────────────────────────────────────────────────────────────────
