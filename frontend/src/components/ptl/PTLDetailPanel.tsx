@@ -3,6 +3,9 @@
  * Panel "Detail Pekerjaan" untuk PTL — setara dengan Engineer.
  * Preset kolom sekarang disimpan di DB via usePresets("ptl").
  * activePresetId tetap di localStorage (useActivePresetStore).
+ *
+ * Drill-down: saat masuk dari PTL Dashboard (via appStore.ptlDrillFilter),
+ * filter langsung diterapkan dan banner info ditampilkan.
  */
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
@@ -12,6 +15,10 @@ import { useAuthStore }      from "../../state/authStore";
 import { useToast }          from "../../utils/useToast";
 import { usePresets }        from "../../hooks/usePresets";
 import { useAppearanceStore } from "../../state/appearanceStore";
+import { useAppStore }        from "../../state/appStore";
+import { calcAging, DEFAULT_THRESHOLDS } from "../../utils/aging";
+import type { AgingThresholds } from "../../utils/aging";
+import { getAgingThresholds } from "../../services/settingsApi";
 import Sidebar               from "../layout/Sidebar";
 import Topbar                from "../layout/Topbar";
 import ToastContainer        from "../ui/ToastContainer";
@@ -24,7 +31,6 @@ import TableToolbar          from "../table/TableToolbar";
 import EditableCell          from "../table/EditableCell";
 import api                   from "../../services/api";
 import baiApi                from "../../services/baiApi";
-import { useAppStore }       from "../../state/appStore";
 
 import { type SheetRecord, type StatusMaster } from "../../types/record";
 
@@ -183,7 +189,6 @@ function PTLPresetCreateModal({ allCols, onCreate, onClose }: {
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden flex flex-col"
         style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", maxHeight: "85vh" }}>
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 shrink-0"
           style={{ borderBottom: "1px solid var(--border)" }}>
           <h3 className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>Buat Preset Baru</h3>
@@ -195,8 +200,6 @@ function PTLPresetCreateModal({ allCols, onCreate, onClose }: {
             </svg>
           </button>
         </div>
-
-        {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 custom-scrollbar space-y-4">
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>Nama Preset</label>
@@ -230,8 +233,6 @@ function PTLPresetCreateModal({ allCols, onCreate, onClose }: {
             </div>
           </div>
         </div>
-
-        {/* Footer */}
         <div className="flex gap-2 px-5 py-4 shrink-0" style={{ borderTop: "1px solid var(--border)" }}>
           <button onClick={onClose} disabled={saving}
             className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium"
@@ -250,6 +251,27 @@ function PTLPresetCreateModal({ allCols, onCreate, onClose }: {
   );
 }
 
+// ─── Drill Banner ─────────────────────────────────────────────────────────────
+function DrillBanner({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 rounded-xl shrink-0"
+      style={{ background: "var(--accent-soft)", border: "1px solid var(--accent)22" }}>
+      <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+        style={{ color: "var(--accent)" }}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+      </svg>
+      <span className="text-xs font-medium flex-1" style={{ color: "var(--accent)" }}>
+        Filter aktif dari Dashboard: <strong>{label}</strong>
+      </span>
+      <button onClick={onClear}
+        className="text-[10px] px-2 py-0.5 rounded-md font-medium"
+        style={{ background: "var(--accent)", color: "#fff" }}>
+        Hapus Filter
+      </button>
+    </div>
+  );
+}
+
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 export default function PTLDetailPanel() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -262,6 +284,7 @@ export default function PTLDetailPanel() {
   const [tablePage, setTablePage]               = useState(1);
   const [pageSize, setPageSize]                 = useState(20);
   const [saving, setSaving]                     = useState(false);
+  const [thresholds, setThresholds]             = useState<AgingThresholds>(DEFAULT_THRESHOLDS);
 
   const [activeFilters, setActiveFilters]       = useState<Record<string, string[]>>({});
   const [activeFilterCol, setActiveFilterCol]   = useState<string | null>(null);
@@ -270,12 +293,19 @@ export default function PTLDetailPanel() {
   const [showCreatePreset, setShowCreatePreset] = useState(false);
   const [editingPresetId, setEditingPresetId]   = useState<number | null>(null);
   const [showEditableColumns, setShowEditableColumns] = useState(false);
+  // Banner info drill-down
+  const [drillLabel, setDrillLabel]             = useState<string | null>(null);
 
   const { theme }                   = useThemeStore();
   const { user }                    = useAuthStore();
   const { toasts, show: showToast } = useToast();
 
   const { ptlEditableColumns, loadPtlEditableColumnsFromDB } = useAppearanceStore();
+
+  // ── Drill filter dari appStore ──
+  const ptlDrillFilter     = useAppStore(s => s.ptlDrillFilter);
+  const clearPtlDrillFilter = useAppStore(s => s.clearPtlDrillFilter);
+  const setPage            = useAppStore(s => s.setPage);
 
   // ── Preset dari DB ──
   const {
@@ -298,7 +328,6 @@ export default function PTLDetailPanel() {
     const current   = activePreset.pinnedColumns ?? [];
     const cols      = activePreset.columns ?? [];
     const isPinning = !current.includes(col);
-
     if (isPinning) {
       const nextPinned = [...current, col];
       const unpinned   = cols.filter(c => !nextPinned.includes(c));
@@ -311,6 +340,25 @@ export default function PTLDetailPanel() {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
+
+  // ── Consume drill filter saat masuk dari dashboard ──
+  useEffect(() => {
+    if (!ptlDrillFilter) return;
+
+    const { column, values, label } = ptlDrillFilter;
+
+    if (column === "__aging_tier") {
+      // Aging tier filter — computed, bukan kolom langsung
+      // Filter akan ditangani di filteredRecords dengan key __aging_tier
+      setActiveFilters({ ["__aging_tier"]: values });
+    } else {
+      setActiveFilters({ [column]: values });
+    }
+
+    setDrillLabel(label ?? `${column} = ${values.join(", ")}`);
+    setTablePage(1);
+    clearPtlDrillFilter();
+  }, [ptlDrillFilter]);
 
   const fetchSheet = useCallback(async () => {
     try {
@@ -330,40 +378,40 @@ export default function PTLDetailPanel() {
       const res = await api.get<StatusMaster>("/status");
       setStatusMaster(res.data);
     } catch {
-      // status master optional — tidak error kalau gagal
+      // status master optional
     }
   }, []);
 
   useEffect(() => { fetchSheet(); }, []);
   useEffect(() => { fetchStatusMaster(); }, []);
   useEffect(() => { loadPtlEditableColumnsFromDB(); }, []);
+  useEffect(() => {
+    getAgingThresholds().then(setThresholds).catch(() => {});
+  }, []);
 
   const allColumns = sheetData?.columns ?? [];
   const records    = localRecords;
   const idPaCol    = allColumns.find(c => c === "ID PA") ?? "ID PA";
   const namaCol    = allColumns.find(c => c.toLowerCase().includes("perusahaan")) ?? "";
+  const tglCol     = "TGL TERBIT PA";
 
   const statusCol = statusMaster?.status_column ?? "Status Pekerjaan";
   const detailCol = statusMaster?.detail_column ?? "Detail Progres";
 
   // ── Optimistic update cell ─────────────────────────────────────────────────
   const handleUpdateCell = useCallback(async (rowId: number, col: string, value: string) => {
-    // 1. Update local state dulu (optimistic)
     setLocalRecords(prev =>
       prev.map(r => r.row_id === rowId ? { ...r, data: { ...r.data, [col]: value } } : r)
     );
-    // 2. Kirim ke backend background
     setSaving(true);
     try {
       await api.post(`/records/ptl-sheet/${rowId}/cells`, { updates: { [col]: value } });
-      // Backend mungkin auto-update Status PA & Kategori PA — refresh untuk sync
       if (col === statusCol) {
         const res = await api.get<PTLSheetData>("/records/ptl-sheet");
         setSheetData(res.data);
         setLocalRecords(res.data.records ?? []);
       }
     } catch (err: any) {
-      // Rollback optimistic update
       setLocalRecords(prev =>
         prev.map(r => r.row_id === rowId ? { ...r, data: { ...r.data, [col]: sheetData?.records.find(s => s.row_id === rowId)?.data[col] ?? value } } : r)
       );
@@ -373,9 +421,7 @@ export default function PTLDetailPanel() {
     }
   }, [showToast, statusCol, sheetData]);
 
-  // ── Update status (pakai endpoint status khusus untuk Engineer-style dropdown) ─
   const handleUpdateStatus = useCallback(async (rowId: number, status: string, detail?: string) => {
-    // Optimistic update dulu
     setLocalRecords(prev =>
       prev.map(r => {
         if (r.row_id !== rowId) return r;
@@ -397,13 +443,11 @@ export default function PTLDetailPanel() {
           ...(detail !== undefined ? { [detailCol]: detail } : {}),
         },
       });
-      // Refresh untuk dapat Status PA & Kategori PA yang auto-update
       const res = await api.get<PTLSheetData>("/records/ptl-sheet");
       setSheetData(res.data);
       setLocalRecords(res.data.records ?? []);
     } catch (err: any) {
       showToast(err?.response?.data?.detail ?? "Gagal menyimpan status", "error");
-      // Rollback
       const res = await api.get<PTLSheetData>("/records/ptl-sheet");
       setSheetData(res.data);
       setLocalRecords(res.data.records ?? []);
@@ -418,20 +462,35 @@ export default function PTLDetailPanel() {
     showToast("Data diperbarui", "success");
   };
 
-  // ── Filter + search ──
+  // ── Filter + search — termasuk aging tier virtual ──
   const filteredRecords = useMemo(() => {
     let result = [...records];
-    if (Object.keys(activeFilters).length > 0) {
+
+    // Filter normal (kolom data)
+    const normalFilters = Object.fromEntries(
+      Object.entries(activeFilters).filter(([k]) => k !== "__aging_tier")
+    );
+    if (Object.keys(normalFilters).length > 0) {
       result = result.filter(r =>
-        Object.entries(activeFilters).every(([key, vals]) => vals.includes(String(r.data[key] || "")))
+        Object.entries(normalFilters).every(([key, vals]) => vals.includes(String(r.data[key] || "")))
       );
     }
+
+    // Filter aging tier virtual
+    if (activeFilters["__aging_tier"]) {
+      const tiers = activeFilters["__aging_tier"];
+      result = result.filter(r => {
+        const aging = calcAging(r.data[tglCol], thresholds);
+        return aging ? tiers.includes(aging.tier) : false;
+      });
+    }
+
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(r => Object.values(r.data ?? {}).some(v => String(v).toLowerCase().includes(q)));
     }
     return result;
-  }, [records, search, activeFilters]);
+  }, [records, search, activeFilters, thresholds]);
 
   const totalPage    = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
   const pagedRecords = filteredRecords.slice((tablePage - 1) * pageSize, tablePage * pageSize);
@@ -445,6 +504,13 @@ export default function PTLDetailPanel() {
       if (next.length === 0) delete upd[key]; else upd[key] = next;
       return upd;
     });
+    // Hapus drill label saat user mengubah filter manual
+    setDrillLabel(null);
+  };
+
+  const handleResetFilter = () => {
+    setActiveFilters({});
+    setDrillLabel(null);
   };
 
   // ── Drag reorder kolom ──
@@ -504,7 +570,6 @@ export default function PTLDetailPanel() {
     setActiveFilterCol(prev => prev === col ? null : col);
   };
 
-  // ── Create preset ──
   const handleCreatePreset = async (name: string, cols: string[]) => {
     try {
       await createPreset({ name, columns: cols });
@@ -540,7 +605,7 @@ export default function PTLDetailPanel() {
             onCreatePreset={() => setShowCreatePreset(true)}
             onEditPreset={id => setEditingPresetId(id as number)}
             filterCount={filterCount}
-            onResetFilter={() => setActiveFilters({})}
+            onResetFilter={handleResetFilter}
             onOpenEditableColumns={() => setShowEditableColumns(true)}
             filteredCount={filteredRecords.length}
             totalCount={records.length}
@@ -560,7 +625,11 @@ export default function PTLDetailPanel() {
           {view === "table" && (
             <div className="flex-1 overflow-hidden flex flex-col px-4 pt-3 pb-4 gap-2.5">
 
-              {/* Tabel / empty state */}
+              {/* Banner drill-down dari dashboard */}
+              {drillLabel && (
+                <DrillBanner label={drillLabel} onClear={handleResetFilter} />
+              )}
+
               {!activePreset ? (
                 <div className="flex-1 flex flex-col items-center justify-center rounded-2xl"
                   style={{ background: "var(--bg-surface)", border: "2px dashed var(--border)" }}>
@@ -660,7 +729,6 @@ export default function PTLDetailPanel() {
                                       }}
                                       title={currentVal}>
 
-                                      {/* Dropdown Status Pekerjaan */}
                                       {isStatusCol && statusMaster && (
                                         <select value={currentVal}
                                           onChange={e => handleUpdateStatus(r.row_id, e.target.value, undefined)}
@@ -673,7 +741,6 @@ export default function PTLDetailPanel() {
                                         </select>
                                       )}
 
-                                      {/* Dropdown Detail Progres */}
                                       {isDetailCol && statusMaster && (
                                         <select value={currentVal}
                                           onChange={e => handleUpdateStatus(r.row_id, r.data[statusCol] ?? "", e.target.value)}
@@ -686,7 +753,6 @@ export default function PTLDetailPanel() {
                                         </select>
                                       )}
 
-                                      {/* Inline edit optimistic untuk kolom editable */}
                                       {isEditable && !isStatusCol && !isDetailCol && (
                                         <EditableCell
                                           value={currentVal}
@@ -695,7 +761,6 @@ export default function PTLDetailPanel() {
                                         />
                                       )}
 
-                                      {/* Plain text untuk kolom tidak editable */}
                                       {!isStatusCol && !isDetailCol && !isEditable && (
                                         <div className="truncate px-2 py-1 text-xs"
                                           style={{ color: "var(--text-secondary)", maxWidth: `${colW - 8}px` }}>
@@ -746,7 +811,6 @@ export default function PTLDetailPanel() {
 
       <ToastContainer toasts={toasts} />
 
-      {/* Column filter popup */}
       {activeFilterCol && (
         <ColumnFilter
           column={activeFilterCol}
@@ -758,7 +822,6 @@ export default function PTLDetailPanel() {
         />
       )}
 
-      {/* Buat preset baru */}
       {showCreatePreset && (
         <PTLPresetCreateModal
           allCols={allColumns}
@@ -767,7 +830,6 @@ export default function PTLDetailPanel() {
         />
       )}
 
-      {/* Edit preset PTL */}
       {editingPresetId !== null && (
         <PresetEditorModal
           presetId={editingPresetId}
@@ -778,7 +840,6 @@ export default function PTLDetailPanel() {
         />
       )}
 
-      {/* Kolom Editable Modal */}
       {showEditableColumns && (
         <EditableColumnsModal
           scope="ptl"
