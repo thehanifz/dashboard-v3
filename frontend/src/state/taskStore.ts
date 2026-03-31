@@ -23,14 +23,38 @@ interface TaskState {
   lastUpdated: Date | null;
   autoRefreshEnabled: boolean;
   autoRefreshInterval: number; // menit
+  hasLoadedData: boolean; // flag: sudah pernah load data records saat sesi ini
+  
+  // PTL-specific state
+  ptlSheetData: PTLSheetData | null;
+  ptlLoading: boolean;
 
   setRecords: (records: RecordRow[]) => void;
   fetchRecords: () => Promise<void>;
   fetchStatusMaster: () => Promise<void>;
   refreshAll: () => Promise<void>;
+  refreshStatusOnly: () => Promise<void>; // fetch status master saja (untuk first load)
   setAutoRefresh: (enabled: boolean, interval?: number) => void;
   updateStatus: (rowId: number, status?: string, detail?: string) => Promise<void>;
   updateCell: (rowId: number, column: string, value: string) => Promise<void>;
+  resetLoadedFlag: () => void; // reset flag untuk refresh di login berikutnya
+  setHasLoadedData: () => void; // set flag hasLoadedData = true
+  
+  // PTL-specific methods
+  setPtlSheetData: (data: PTLSheetData | null) => void;
+  setPtlLoading: (loading: boolean) => void;
+}
+
+export interface PTLSheetData {
+  no_gsheet: boolean;
+  columns:   string[];
+  records:   SheetRecord[];
+}
+
+export interface SheetRecord {
+  id:     string;
+  row_id: number;
+  data:   Record<string, string>;
 }
 
 // ─── Debounce Timer (module-level, per-row) ─────────────────────────────────────
@@ -46,6 +70,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   lastUpdated: null,
   autoRefreshEnabled: false,
   autoRefreshInterval: 5,
+  hasLoadedData: false,
+  ptlSheetData: null,
+  ptlLoading: false,
 
   setRecords: (records) => set({ records }),
 
@@ -81,12 +108,23 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     try {
       await Promise.all([get().fetchStatusMaster(), get().fetchRecords()]);
       console.log("[taskStore] refreshAll completed");
-      set({ lastUpdated: new Date() });
+      set({ lastUpdated: new Date(), hasLoadedData: true });
     } catch (err) {
       console.error("[taskStore] refreshAll error:", err);
       throw err;
     } finally {
       set({ isLoading: false });
+    }
+  },
+
+  refreshStatusOnly: async () => {
+    console.log("[taskStore] refreshStatusOnly called");
+    try {
+      await get().fetchStatusMaster();
+      console.log("[taskStore] refreshStatusOnly completed");
+    } catch (err) {
+      console.error("[taskStore] refreshStatusOnly error:", err);
+      throw err;
     }
   },
 
@@ -156,4 +194,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       }
     }, 400);
   },
+
+  resetLoadedFlag: () => set({ hasLoadedData: false }),
+  setHasLoadedData: () => set({ hasLoadedData: true }),
+  setPtlSheetData: (data) => set({ ptlSheetData: data }),
+  setPtlLoading: (loading) => set({ ptlLoading: loading }),
 }));

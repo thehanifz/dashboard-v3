@@ -7,33 +7,28 @@ import { useEffect, useState, useCallback } from "react";
 import { useThemeStore }     from "../../state/themeStore";
 import { useAuthStore }      from "../../state/authStore";
 import { useAppStore }       from "../../state/appStore";
+import { useTaskStore }      from "../../state/taskStore";
 import { useToast }          from "../../utils/useToast";
 import Topbar                from "../layout/Topbar";
 import Sidebar               from "../layout/Sidebar";
 import ToastContainer        from "../ui/ToastContainer";
 import PTLSummaryDashboard   from "./PTLSummaryDashboard";
 import api                   from "../../services/api";
-
-interface SheetRecord {
-  id:     string;
-  row_id: number;
-  data:   Record<string, string>;
-}
-
-interface PTLSheetData {
-  no_gsheet: boolean;
-  columns:   string[];
-  records:   SheetRecord[];
-}
+import type { PTLSheetData } from "../../state/taskStore";
 
 export default function PTLDashboardPanel() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sheetData, setSheetData]               = useState<PTLSheetData | null>(null);
-  const [loading, setLoading]                   = useState(true);
 
-  const { theme }             = useThemeStore();
-  const { user }              = useAuthStore();
+  const { theme }               = useThemeStore();
+  const { user }                = useAuthStore();
   const { setPage: setAppPage } = useAppStore();
+  const ptlSheetData            = useTaskStore((s) => s.ptlSheetData);
+  const ptlLoading              = useTaskStore((s) => s.ptlLoading);
+  const setPtlSheetData         = useTaskStore((s) => s.setPtlSheetData);
+  const setPtlLoading           = useTaskStore((s) => s.setPtlLoading);
+  const hasLoadedData           = useTaskStore((s) => s.hasLoadedData);
+  const setHasLoadedData        = useTaskStore((s) => s.setHasLoadedData);
+  const refreshStatusOnly       = useTaskStore((s) => s.refreshStatusOnly);
   const { toasts, show: showToast } = useToast();
 
   useEffect(() => {
@@ -42,17 +37,30 @@ export default function PTLDashboardPanel() {
 
   const fetchSheet = useCallback(async () => {
     try {
-      setLoading(true);
+      setPtlLoading(true);
       const res = await api.get<PTLSheetData>("/records/ptl-sheet");
-      setSheetData(res.data);
+      setPtlSheetData(res.data);
     } catch {
       showToast("Gagal memuat data GSheet", "error");
     } finally {
-      setLoading(false);
+      setPtlLoading(false);
     }
-  }, [showToast]);
+  }, [showToast, setPtlLoading, setPtlSheetData]);
 
-  useEffect(() => { fetchSheet(); }, []);
+  // First load: fetch status master + PTL data in parallel
+  useEffect(() => {
+    if (!hasLoadedData) {
+      Promise.all([
+        refreshStatusOnly().catch(console.error),
+        fetchSheet()
+      ]).then(() => {
+        setHasLoadedData();
+      });
+    }
+  }, []); // Only run on mount
+
+  // Show loading only on first load when no data yet
+  const showLoading = ptlLoading && ptlSheetData === null;
 
   const handleRefresh = async () => {
     await fetchSheet();
@@ -60,7 +68,7 @@ export default function PTLDashboardPanel() {
   };
 
   // ── No GSheet state ──────────────────────────────────────────────────────────
-  if (!loading && sheetData?.no_gsheet) {
+  if (!showLoading && ptlSheetData?.no_gsheet) {
     return (
       <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg-app)" }}>
         <Sidebar collapsed={sidebarCollapsed} onToast={showToast} />
@@ -107,8 +115,8 @@ export default function PTLDashboardPanel() {
 
         <main className="flex-1 overflow-hidden pb-16 md:pb-0">
           <PTLSummaryDashboard
-            records={sheetData?.records ?? []}
-            loading={loading}
+            records={ptlSheetData?.records ?? []}
+            loading={showLoading}
           />
         </main>
       </div>

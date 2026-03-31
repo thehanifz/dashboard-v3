@@ -9,6 +9,7 @@ import { create } from "zustand";
 import { usePresetStore } from "./presetStore";
 import { usePTLPresetStore } from "./ptlPresetStore";
 import { useAppearanceStore } from "./appearanceStore";
+import { useTaskStore } from "./taskStore";
 
 export type UserRole = "engineer" | "ptl" | "mitra" | "superuser";
 
@@ -72,6 +73,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   clearAuth: () => {
     sessionStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(USER_KEY);
+    useTaskStore.getState().resetLoadedFlag(); // Reset flag agar refresh di login berikutnya
     set({ user: null, accessToken: null });
   },
 

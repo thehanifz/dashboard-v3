@@ -16,6 +16,8 @@ import { useToast }          from "../../utils/useToast";
 import { usePresets }        from "../../hooks/usePresets";
 import { useAppearanceStore } from "../../state/appearanceStore";
 import { useAppStore }        from "../../state/appStore";
+import { useTaskStore }       from "../../state/taskStore";
+import { useTableSettings }    from "../../hooks/useTableSettings";
 import { calcAging, DEFAULT_THRESHOLDS } from "../../utils/aging";
 import type { AgingThresholds } from "../../utils/aging";
 import { getAgingThresholds } from "../../services/settingsApi";
@@ -32,15 +34,9 @@ import EditableCell          from "../table/EditableCell";
 import api                   from "../../services/api";
 import baiApi                from "../../services/baiApi";
 
-import { type SheetRecord, type StatusMaster } from "../../types/record";
+import type { SheetRecord, PTLSheetData, StatusMaster } from "../../state/taskStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface PTLSheetData {
-  no_gsheet: boolean;
-  columns:   string[];
-  records:   SheetRecord[];
-}
-
 type DetailView = "kanban" | "table";
 const DEFAULT_COL_WIDTH = 160;
 const MIN_COL_WIDTH     = 60;
@@ -276,15 +272,13 @@ function DrillBanner({ label, onClear }: { label: string; onClear: () => void })
 export default function PTLDetailPanel() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [view, setView]                         = useState<DetailView>("table");
-  const [sheetData, setSheetData]               = useState<PTLSheetData | null>(null);
   const [localRecords, setLocalRecords]         = useState<SheetRecord[]>([]);
-  const [statusMaster, setStatusMaster]         = useState<StatusMaster | null>(null);
-  const [loading, setLoading]                   = useState(true);
   const [search, setSearch]                     = useState("");
-  const [tablePage, setTablePage]               = useState(1);
-  const [pageSize, setPageSize]                 = useState(20);
   const [saving, setSaving]                     = useState(false);
   const [thresholds, setThresholds]             = useState<AgingThresholds>(DEFAULT_THRESHOLDS);
+
+  // Persistent table settings from localStorage
+  const { pageSize, tablePage, setPageSize, setTablePage } = useTableSettings(20);
 
   const [activeFilters, setActiveFilters]       = useState<Record<string, string[]>>({});
   const [activeFilterCol, setActiveFilterCol]   = useState<string | null>(null);
@@ -301,6 +295,14 @@ export default function PTLDetailPanel() {
   const { toasts, show: showToast } = useToast();
 
   const { ptlEditableColumns, loadPtlEditableColumnsFromDB } = useAppearanceStore();
+
+  // ── Data dari store (cache) ──
+  const ptlSheetData          = useTaskStore((s) => s.ptlSheetData);
+  const setPtlSheetData       = useTaskStore((s) => s.setPtlSheetData);
+  const ptlLoading            = useTaskStore((s) => s.ptlLoading);
+  const setPtlLoading         = useTaskStore((s) => s.setPtlLoading);
+  const statusMaster          = useTaskStore((s) => s.statusMaster);
+  const refreshAll            = useTaskStore((s) => s.refreshAll);
 
   // ── Drill filter dari appStore ──
   const ptlDrillFilter     = useAppStore(s => s.ptlDrillFilter);
@@ -341,6 +343,21 @@ export default function PTLDetailPanel() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
+  // Sync local records dengan store data
+  useEffect(() => {
+    console.log("[PTLDetail] ptlSheetData changed:", ptlSheetData);
+    if (ptlSheetData?.records) {
+      console.log("[PTLDetail] Setting localRecords:", ptlSheetData.records.length);
+      setLocalRecords(ptlSheetData.records);
+    }
+  }, [ptlSheetData]);
+
+  // Load editable columns & thresholds
+  useEffect(() => { loadPtlEditableColumnsFromDB(); }, []);
+  useEffect(() => {
+    getAgingThresholds().then(setThresholds).catch(() => {});
+  }, []);
+
   // ── Consume drill filter saat masuk dari dashboard ──
   useEffect(() => {
     if (!ptlDrillFilter) return;
@@ -360,36 +377,7 @@ export default function PTLDetailPanel() {
     clearPtlDrillFilter();
   }, [ptlDrillFilter]);
 
-  const fetchSheet = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await api.get<PTLSheetData>("/records/ptl-sheet");
-      setSheetData(res.data);
-      setLocalRecords(res.data.records ?? []);
-    } catch {
-      showToast("Gagal memuat data GSheet", "error");
-    } finally {
-      setLoading(false);
-    }
-  }, [showToast]);
-
-  const fetchStatusMaster = useCallback(async () => {
-    try {
-      const res = await api.get<StatusMaster>("/status");
-      setStatusMaster(res.data);
-    } catch {
-      // status master optional
-    }
-  }, []);
-
-  useEffect(() => { fetchSheet(); }, []);
-  useEffect(() => { fetchStatusMaster(); }, []);
-  useEffect(() => { loadPtlEditableColumnsFromDB(); }, []);
-  useEffect(() => {
-    getAgingThresholds().then(setThresholds).catch(() => {});
-  }, []);
-
-  const allColumns = sheetData?.columns ?? [];
+  const allColumns = ptlSheetData?.columns ?? [];
   const records    = localRecords;
   const idPaCol    = allColumns.find(c => c === "ID PA") ?? "ID PA";
   const namaCol    = allColumns.find(c => c.toLowerCase().includes("perusahaan")) ?? "";
@@ -397,6 +385,37 @@ export default function PTLDetailPanel() {
 
   const statusCol = statusMaster?.status_column ?? "Status Pekerjaan";
   const detailCol = statusMaster?.detail_column ?? "Detail Progres";
+
+  // Helper: refresh PTL data from API
+  const refreshPtlData = useCallback(async () => {
+    try {
+      // Fetch status master + PTL sheet data in parallel
+      const [statusRes, sheetRes] = await Promise.all([
+        api.get("/status"),
+        api.get<PTLSheetData>("/records/ptl-sheet")
+      ]);
+      
+      // Update status master di store
+      useTaskStore.getState().fetchStatusMaster();
+      
+      // Update PTL sheet data di store
+      setPtlSheetData(sheetRes.data);
+      if (sheetRes.data.records) {
+        setLocalRecords(sheetRes.data.records);
+      }
+    } catch (err) {
+      console.error("[PTLDetail] refreshPtlData error:", err);
+      showToast("Gagal memuat data GSheet", "error");
+    }
+  }, [showToast, setPtlSheetData]);
+
+  // Fetch data saat pertama mount jika belum ada di store
+  useEffect(() => {
+    if (!ptlSheetData?.records && !ptlLoading) {
+      console.log("[PTLDetail] No data in store, fetching...");
+      refreshPtlData();
+    }
+  }, [ptlSheetData, ptlLoading, refreshPtlData]);
 
   // ── Optimistic update cell ─────────────────────────────────────────────────
   const handleUpdateCell = useCallback(async (rowId: number, col: string, value: string) => {
@@ -406,20 +425,17 @@ export default function PTLDetailPanel() {
     setSaving(true);
     try {
       await api.post(`/records/ptl-sheet/${rowId}/cells`, { updates: { [col]: value } });
-      if (col === statusCol) {
-        const res = await api.get<PTLSheetData>("/records/ptl-sheet");
-        setSheetData(res.data);
-        setLocalRecords(res.data.records ?? []);
-      }
+      // Refresh data dari API setelah update
+      await refreshPtlData();
     } catch (err: any) {
       setLocalRecords(prev =>
-        prev.map(r => r.row_id === rowId ? { ...r, data: { ...r.data, [col]: sheetData?.records.find(s => s.row_id === rowId)?.data[col] ?? value } } : r)
+        prev.map(r => r.row_id === rowId ? { ...r, data: { ...r.data, [col]: localRecords.find(s => s.row_id === rowId)?.data[col] ?? value } } : r)
       );
       showToast(err?.response?.data?.detail ?? "Gagal menyimpan", "error");
     } finally {
       setSaving(false);
     }
-  }, [showToast, statusCol, sheetData]);
+  }, [showToast, refreshPtlData, localRecords]);
 
   const handleUpdateStatus = useCallback(async (rowId: number, status: string, detail?: string) => {
     setLocalRecords(prev =>
@@ -443,23 +459,29 @@ export default function PTLDetailPanel() {
           ...(detail !== undefined ? { [detailCol]: detail } : {}),
         },
       });
-      const res = await api.get<PTLSheetData>("/records/ptl-sheet");
-      setSheetData(res.data);
-      setLocalRecords(res.data.records ?? []);
+      await refreshPtlData();
     } catch (err: any) {
       showToast(err?.response?.data?.detail ?? "Gagal menyimpan status", "error");
-      const res = await api.get<PTLSheetData>("/records/ptl-sheet");
-      setSheetData(res.data);
-      setLocalRecords(res.data.records ?? []);
+      await refreshPtlData();
     } finally {
       setSaving(false);
     }
-  }, [statusCol, detailCol, showToast]);
+  }, [statusCol, detailCol, showToast, refreshPtlData]);
 
   const handleRefresh = async () => {
-    await fetchSheet();
-    await fetchStatusMaster();
-    showToast("Data diperbarui", "success");
+    try {
+      setPtlLoading(true);
+      const res = await api.get<PTLSheetData>("/records/ptl-sheet");
+      setPtlSheetData(res.data);
+      if (res.data.records) {
+        setLocalRecords(res.data.records);
+      }
+      showToast("Data diperbarui", "success");
+    } catch {
+      showToast("Gagal memuat data GSheet", "error");
+    } finally {
+      setPtlLoading(false);
+    }
   };
 
   // ── Filter + search — termasuk aging tier virtual ──
@@ -594,6 +616,7 @@ export default function PTLDetailPanel() {
             recordCount={records.length}
             userName={user?.nama_lengkap ?? ""}
             saving={saving}
+            onRefresh={handleRefresh}
             view={view}
             onViewChange={setView}
             search={search}
@@ -614,7 +637,7 @@ export default function PTLDetailPanel() {
           {/* ── KANBAN VIEW ── */}
           {view === "kanban" && (
             <div className="flex-1 overflow-hidden">
-              {loading
+              {ptlLoading && localRecords.length === 0
                 ? <div className="p-6 text-xs" style={{ color: "var(--text-muted)" }}>Memuat data...</div>
                 : <PTLKanbanBoard records={records} onUpdateCell={handleUpdateCell} />
               }

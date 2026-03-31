@@ -16,8 +16,10 @@ export default function EngineerDashboardPanel() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { toasts, show: showToast }             = useToast();
 
-  const refreshAll = useTaskStore((s) => s.refreshAll);
-  const theme      = useThemeStore((s) => s.theme);
+  const refreshAll        = useTaskStore((s) => s.refreshAll);
+  const refreshStatusOnly = useTaskStore((s) => s.refreshStatusOnly);
+  const hasLoadedData     = useTaskStore((s) => s.hasLoadedData);
+  const theme             = useThemeStore((s) => s.theme);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -33,10 +35,15 @@ export default function EngineerDashboardPanel() {
     }
   }, [refreshAll, showToast]);
 
+  // Fetch status master saat pertama mount (untuk dropdown)
+  // Refresh records hanya jika belum pernah load data
   useEffect(() => {
-    console.log("[EngineerDashboard] Mounting, triggering refresh...");
-    handleRefresh();
-  }, []);
+    console.log("[EngineerDashboard] Mounting...");
+    refreshStatusOnly().catch(console.error);
+    if (!hasLoadedData) {
+      handleRefresh();
+    }
+  }, [hasLoadedData]);
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg-app)" }}>

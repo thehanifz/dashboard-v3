@@ -31,6 +31,8 @@ export default function MitraDashboardPanel() {
   const { toasts, show: showToast } = useToast();
   const { theme }                   = useThemeStore();
   const refreshAll                  = useTaskStore((s) => s.refreshAll);
+  const refreshStatusOnly           = useTaskStore((s) => s.refreshStatusOnly);
+  const hasLoadedData               = useTaskStore((s) => s.hasLoadedData);
   const records                     = useTaskStore((s) => s.records) ?? [];
   const updateCell                  = useTaskStore((s) => s.updateCell);
   const isLoading                   = useTaskStore((s) => s.isLoading);
@@ -49,8 +51,11 @@ export default function MitraDashboardPanel() {
 
   useEffect(() => {
     fetchConfig();
-    refreshAll().catch(() => showToast("Gagal memuat data", "error"));
-  }, []);
+    refreshStatusOnly().catch(console.error);
+    if (!hasLoadedData) {
+      refreshAll().catch(() => showToast("Gagal memuat data", "error"));
+    }
+  }, [hasLoadedData]);
 
   const filteredRecords = useMemo(() => {
     if (!search.trim()) return records;

@@ -12,15 +12,10 @@ import { calcAging, getAgingTierStyles, DEFAULT_THRESHOLDS } from "../../utils/a
 import type { AgingThresholds } from "../../utils/aging";
 import { getAgingThresholds } from "../../services/settingsApi";
 import { useAppStore } from "../../state/appStore";
+import type { SheetRecord } from "../../state/taskStore";
 
 const AGING_COLORS = { safe: "#10b981", warning: "#f59e0b", danger: "#f97316", critical: "#ef4444" } as const;
 const CHART_COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#ec4899","#84cc16","#14b8a6"];
-
-interface SheetRecord {
-  id:     string;
-  row_id: number;
-  data:   Record<string, string>;
-}
 
 interface Props {
   records: SheetRecord[];
@@ -232,7 +227,7 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
   const drillByAging = (tier: string, label: string) =>
     drillToPtlDetail({ column: "__aging_tier", values: [tier], label: `Aging: ${label}` });
 
-  if (loading) {
+  if (loading && records.length === 0) {
     return (
       <div className="p-4 md:p-5 space-y-4">
         {[...Array(3)].map((_, i) => (
