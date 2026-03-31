@@ -29,7 +29,6 @@ NEW_SETTINGS = [
         "category": "columns",
         "label": "Kolom ID PA",
         "description": "Nama kolom ID PA di GSheet — dipakai di tombol aksi BAI & Teskom",
-        "is_public": True,
         "is_editable": True,
     },
     {
@@ -39,7 +38,6 @@ NEW_SETTINGS = [
         "category": "columns",
         "label": "Kolom Nama Perusahaan",
         "description": "Nama kolom Nama Perusahaan di GSheet — dipakai di modal BAI",
-        "is_public": True,
         "is_editable": True,
     },
     # ── Konfigurasi tabel ────────────────────────────────────────────────────
@@ -50,7 +48,6 @@ NEW_SETTINGS = [
         "category": "app",
         "label": "Judul Tabel Utama",
         "description": "Judul yang ditampilkan di header TableToolbar halaman Detail",
-        "is_public": True,
         "is_editable": True,
     },
     {
@@ -60,7 +57,6 @@ NEW_SETTINGS = [
         "category": "columns",
         "label": "Kolom Editable PTL",
         "description": "Daftar kolom yang bisa diedit oleh role PTL (format JSON array string)",
-        "is_public": True,
         "is_editable": True,
     },
     # ── Info aplikasi (Sidebar) ──────────────────────────────────────────────
@@ -71,7 +67,6 @@ NEW_SETTINGS = [
         "category": "app",
         "label": "Nama Aplikasi",
         "description": "Nama aplikasi yang ditampilkan di header Sidebar",
-        "is_public": True,
         "is_editable": True,
     },
     {
@@ -81,7 +76,6 @@ NEW_SETTINGS = [
         "category": "app",
         "label": "Subtitle Aplikasi",
         "description": "Subtitle di bawah nama aplikasi pada Sidebar",
-        "is_public": True,
         "is_editable": True,
     },
     {
@@ -91,7 +85,6 @@ NEW_SETTINGS = [
         "category": "app",
         "label": "Versi Aplikasi",
         "description": "Versi aplikasi yang ditampilkan di footer Sidebar",
-        "is_public": True,
         "is_editable": True,
     },
 ]
@@ -102,14 +95,13 @@ def upgrade() -> None:
     now  = datetime.utcnow().isoformat()
 
     for s in NEW_SETTINGS:
-        # PostgreSQL: ON CONFLICT DO NOTHING (bukan INSERT OR IGNORE yang hanya SQLite)
         conn.execute(
             sa.text(
                 """
                 INSERT INTO dashboard_settings
-                    (key, value, value_type, category, label, description, is_public, is_editable, updated_at)
+                    (key, value, value_type, category, label, description, is_editable, updated_at)
                 VALUES
-                    (:key, :value, :value_type, :category, :label, :description, :is_public, :is_editable, :updated_at)
+                    (:key, :value, :value_type, :category, :label, :description, :is_editable, :updated_at)
                 ON CONFLICT (key) DO NOTHING
                 """
             ),
