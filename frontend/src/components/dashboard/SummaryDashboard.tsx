@@ -32,23 +32,6 @@ function KpiCard({ label, value, sub, accent, icon }: {
   );
 }
 
-// ─── Horizontal Bar ─────────────────────────────────────────────────────────────────────
-function HBar({ label, value, max, color, pct }: {
-  label: string; value: number; max: number; color: string; pct?: string;
-}) {
-  const w = max > 0 ? (value / max) * 100 : 0;
-  return (
-    <div className="flex items-center gap-3">
-      <span className="text-xs w-36 truncate shrink-0" style={{ color: "var(--text-secondary)" }} title={label}>{label}</span>
-      <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: "var(--border)" }}>
-        <div className="h-full rounded-full transition-all" style={{ width: `${w}%`, background: color }} />
-      </div>
-      <span className="text-xs font-bold w-5 text-right font-mono-data" style={{ color: "var(--text-primary)" }}>{value}</span>
-      {pct && <span className="text-[10px] w-8 text-right" style={{ color: "var(--text-muted)" }}>{pct}</span>}
-    </div>
-  );
-}
-
 // ─── Section Card ─────────────────────────────────────────────────────────────────────────
 function SectionCard({ title, subtitle, action, children }: {
   title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode;
@@ -173,8 +156,8 @@ export default function SummaryDashboard() {
   const [thresholds, setThresholds]       = useState<AgingThresholds>(DEFAULT_THRESHOLDS);
   const [showAgingSettings, setShowAging] = useState(false);
   const [cols, setCols] = useState<DashboardColumns | null>(null);
-  
-  // Dashboard interactive filter
+
+  // Dashboard interactive filter — state lokal, sync langsung ke Zustand store
   const [dashboardFilter, setDashboardFilter] = useState<{
     column: string;
     value: string;
@@ -188,57 +171,33 @@ export default function SummaryDashboard() {
     getDashboardColumns().then(setCols).catch(() => {});
   }, []);
 
-  // Load dashboard filter dari localStorage saat mount
-  useEffect(() => {
-    const saved = localStorage.getItem('dashboardFilter');
-    if (saved) {
-      try {
-        const filter = JSON.parse(saved);
-        setDashboardFilter(filter);
-        // Apply ke appearanceStore
-        useAppearanceStore.getState().setActiveFilters({
-          [filter.column]: [filter.value]
-        });
-      } catch (e) {
-        localStorage.removeItem('dashboardFilter');
-      }
-    }
-  }, []);
-
-  // Save dashboard filter ke localStorage saat berubah
-  useEffect(() => {
-    if (dashboardFilter) {
-      localStorage.setItem('dashboardFilter', JSON.stringify(dashboardFilter));
-      useAppearanceStore.getState().setActiveFilters({
-        [dashboardFilter.column]: [dashboardFilter.value]
-      });
-    } else {
-      localStorage.removeItem('dashboardFilter');
-      useAppearanceStore.getState().clearFilters();
-    }
-  }, [dashboardFilter]);
-
   const handleSaveThresholds = async (t: AgingThresholds) => {
     setThresholds(t);
   };
 
   const tierStyles = useMemo(() => getAgingTierStyles(thresholds), [thresholds]);
 
-  // Handler untuk bar click - single select
+  // Handler untuk bar click — toggle single filter, sync langsung ke Zustand
   const handleBarClick = (column: string, value: string) => {
     setDashboardFilter(prev => {
-      // Toggle: jika klik yang sama, clear filter
       if (prev?.column === column && prev?.value === value) {
+        // Toggle off — clear filter di store
+        useAppearanceStore.getState().clearFilters();
         return null;
       }
-      // Klik baru, replace filter
+      // Set filter baru di store
+      useAppearanceStore.getState().setActiveFilters({ [column]: [value] });
       return { column, value };
     });
   };
 
+  // Clear filter handler
+  const handleClearFilter = () => {
+    setDashboardFilter(null);
+    useAppearanceStore.getState().clearFilters();
+  };
+
   // ─── Deteksi nilai status dinamis dari data GSheet ──────────────────────────
-  // Nilai seperti "Done BAI", "On Progress", "PA Cancel" TIDAK disimpan di DB.
-  // Diambil langsung dari isi kolom Status PA di data records.
   const statusPaValues = useMemo(() => {
     const statusPaCol = cols?.colStatusPa ?? "Status PA";
     const counts: Record<string, number> = {};
@@ -246,20 +205,13 @@ export default function SummaryDashboard() {
       const v = (r.data[statusPaCol] || "").trim();
       if (v) counts[v] = (counts[v] || 0) + 1;
     });
-    // Urutkan by count desc — nilai terbanyak pertama
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
   }, [records, cols]);
 
-  // Deteksi otomatis nilai Status PA
-  // Karena nilai sudah fix (Done BAI, On Progress, PA Cancel), pakai exact match
   const detectedStatus = useMemo(() => {
     const keys = statusPaValues.map(([k]) => k);
-    
-    // Exact match untuk nilai yang sudah diketahui
     const exactMatch = (candidates: string[]) =>
       candidates.find(c => keys.includes(c)) ?? "";
-    
-    // Fallback hardcoded jika deteksi gagal
     return {
       done:     exactMatch(["Done BAI", "done bai", "DONE BAI"]) || "Done BAI",
       progress: exactMatch(["On Progress", "on progress", "ON PROGRESS"]) || "On Progress",
@@ -272,11 +224,8 @@ export default function SummaryDashboard() {
     const tglCol         = cols?.colTglTerbit       ?? "TGL TERBIT PA";
     const statusPaCol    = cols?.colStatusPa        ?? "Status PA";
     const statusPekCol   = cols?.colStatusPekerjaan ?? "Status Pekerjaan";
-    // Gunakan NAMA PRODUK untuk layanan, JENIS PEKERJAAN untuk mutasi
-    const layananCol     = "NAMA PRODUK";
     const jenisMutasiCol = "JENIS PEKERJAAN";
 
-    // Nilai status diambil dari deteksi dinamis GSheet
     const valDone     = detectedStatus.done;
     const valProgress = detectedStatus.progress;
     const valCancel   = detectedStatus.cancel;
@@ -285,48 +234,39 @@ export default function SummaryDashboard() {
     const byLayanan:         Record<string, number> = {};
     const byJenisMutasi:     Record<string, number> = {};
     const byStatusPA:        Record<string, number> = {};
-    const byNamaCustomer:    Record<string, number> = {}; // Top 10 customer
+    const byNamaCustomer:    Record<string, number> = {};
     const byPtlUpdate:       Record<string, number> = {};
     const bySegmentasi:      Record<string, number> = {};
     const agingTiers = { safe: 0, warning: 0, danger: 0, critical: 0 };
 
     records.forEach(r => {
-      // Status Pekerjaan — hanya yang Status PA = On Progress
       if (valProgress && (r.data[statusPaCol] || "").trim() === valProgress) {
         const sp = r.data[statusPekCol] || "Tidak Diketahui";
         byStatusPekerjaan[sp] = (byStatusPekerjaan[sp] || 0) + 1;
       }
 
-      // STATUS PA — semua nilai
       const spa = (r.data[statusPaCol] || "Tidak Diketahui").trim();
       byStatusPA[spa] = (byStatusPA[spa] || 0) + 1;
 
-      // Layanan — gunakan KATEGORI PRODUK (kategori_layanan)
       const layanan = r.data["KATEGORI LAYANAN"] || "Lainnya";
       byLayanan[layanan] = (byLayanan[layanan] || 0) + 1;
 
-      // Jenis Mutasi — gunakan JENIS PEKERJAAN
       const mutasi = r.data[jenisMutasiCol] || "Lainnya";
       byJenisMutasi[mutasi] = (byJenisMutasi[mutasi] || 0) + 1;
 
-      // NAMA CUSTOMER — top 10
       const namaCustomer = r.data["NAMA CUSTOMER"] || "Tidak Diketahui";
       byNamaCustomer[namaCustomer] = (byNamaCustomer[namaCustomer] || 0) + 1;
 
-      // PTL UPDATE — hanya yang ada isinya
       const ptlUpdateRaw = r.data["PTL Update"] || "";
       if (ptlUpdateRaw && ptlUpdateRaw.trim()) {
         const ptlUpdate = ptlUpdateRaw.trim();
         byPtlUpdate[ptlUpdate] = (byPtlUpdate[ptlUpdate] || 0) + 1;
       }
 
-      // SEGMENTASI
       const segmentasi = r.data["SEGMENTASI"] || "Tidak Diketahui";
       bySegmentasi[segmentasi] = (bySegmentasi[segmentasi] || 0) + 1;
 
-      // Aging
-      // Hitung dari TGL TERBIT PA sampai TGL UPLOAD BAI (jika ada) atau hari ini
-      const tglTerbit = r.data[tglCol];
+      const tglTerbit    = r.data[tglCol];
       const tglUploadBAI = r.data["TGL UPLOAD BAI"];
       const aging = calcAging(tglTerbit, thresholds, tglUploadBAI);
       if (aging) agingTiers[aging.tier]++;
@@ -343,7 +283,6 @@ export default function SummaryDashboard() {
       byNamaCustomer, byPtlUpdate, bySegmentasi,
       agingTiers, total, doneBai, onProgress, paCancel, donePct,
       valDone, valProgress, valCancel,
-      // Semua nilai unik Status PA untuk ditampilkan jika perlu
       allStatusPaValues: statusPaValues,
     };
   }, [records, thresholds, cols, detectedStatus, statusPaValues]);
@@ -430,7 +369,7 @@ export default function SummaryDashboard() {
       {/* ── Dashboard Filter Banner ── */}
       {dashboardFilter && (
         <div className="flex items-center justify-between p-3 rounded-xl"
-          style={{ 
+          style={{
             background: "var(--accent-soft)",
             border: "1px solid var(--accent)",
           }}>
@@ -443,10 +382,10 @@ export default function SummaryDashboard() {
               Filter aktif: <b style={{ color: "var(--accent)" }}>{dashboardFilter.column}</b> = <b style={{ color: "var(--accent)" }}>{dashboardFilter.value}</b>
             </span>
           </div>
-          <button 
-            onClick={() => setDashboardFilter(null)}
+          <button
+            onClick={handleClearFilter}
             className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors"
-            style={{ 
+            style={{
               background: "var(--bg-surface)",
               color: "var(--text-secondary)",
               border: "1px solid var(--border)",
@@ -477,10 +416,10 @@ export default function SummaryDashboard() {
             {Object.entries(stats.byStatusPekerjaan)
               .sort((a, b) => b[1] - a[1])
               .map(([sp, count], i) => (
-                <HBar 
-                  key={sp} 
-                  label={sp} 
-                  value={count} 
+                <HBar
+                  key={sp}
+                  label={sp}
+                  value={count}
                   max={maxSP}
                   color={CHART_COLORS[i % CHART_COLORS.length]}
                   pct={totalSP > 0 ? `${Math.round(count / totalSP * 100)}%` : ""}
@@ -499,10 +438,10 @@ export default function SummaryDashboard() {
             {Object.entries(stats.byLayanan)
               .sort((a, b) => b[1] - a[1])
               .map(([lay, count], i) => (
-                <HBar 
-                  key={lay} 
-                  label={lay} 
-                  value={count} 
+                <HBar
+                  key={lay}
+                  label={lay}
+                  value={count}
                   max={maxLayanan}
                   color={CHART_COLORS[(i + 3) % CHART_COLORS.length]}
                   pct={totalLay > 0 ? `${Math.round(count / totalLay * 100)}%` : ""}
@@ -521,10 +460,10 @@ export default function SummaryDashboard() {
             {Object.entries(stats.byJenisMutasi)
               .sort((a, b) => b[1] - a[1])
               .map(([mut, count], i) => (
-                <HBar 
-                  key={mut} 
-                  label={mut} 
-                  value={count} 
+                <HBar
+                  key={mut}
+                  label={mut}
+                  value={count}
                   max={maxMutasi}
                   color={CHART_COLORS[(i + 6) % CHART_COLORS.length]}
                   pct={totalMut > 0 ? `${Math.round(count / totalMut * 100)}%` : ""}
@@ -536,7 +475,7 @@ export default function SummaryDashboard() {
         </SectionCard>
       </div>
 
-      {/* ── Chart Row 2 (NEW) ── */}
+      {/* ── Chart Row 2 ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
         <SectionCard
           title="Top 10 NAMA CUSTOMER"
@@ -547,10 +486,10 @@ export default function SummaryDashboard() {
               .sort((a, b) => b[1] - a[1])
               .slice(0, 10)
               .map(([customer, count], i) => (
-                <HBar 
-                  key={customer} 
-                  label={customer} 
-                  value={count} 
+                <HBar
+                  key={customer}
+                  label={customer}
+                  value={count}
                   max={maxCustomer}
                   color={CHART_COLORS[i % CHART_COLORS.length]}
                   pct={records.length > 0 ? `${Math.round(count / records.length * 100)}%` : ""}
@@ -570,10 +509,10 @@ export default function SummaryDashboard() {
               .sort((a, b) => b[1] - a[1])
               .slice(0, 10)
               .map(([ptl, count], i) => (
-                <HBar 
-                  key={ptl} 
-                  label={ptl} 
-                  value={count} 
+                <HBar
+                  key={ptl}
+                  label={ptl}
+                  value={count}
                   max={maxPtlUpdate}
                   color={CHART_COLORS[(i + 3) % CHART_COLORS.length]}
                   pct={records.length > 0 ? `${Math.round(count / records.length * 100)}%` : ""}
@@ -592,10 +531,10 @@ export default function SummaryDashboard() {
             {Object.entries(stats.bySegmentasi)
               .sort((a, b) => b[1] - a[1])
               .map(([seg, count], i) => (
-                <HBar 
-                  key={seg} 
-                  label={seg} 
-                  value={count} 
+                <HBar
+                  key={seg}
+                  label={seg}
+                  value={count}
                   max={maxSegmentasi}
                   color={CHART_COLORS[(i + 6) % CHART_COLORS.length]}
                   pct={records.length > 0 ? `${Math.round(count / records.length * 100)}%` : ""}
