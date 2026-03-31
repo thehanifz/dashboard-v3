@@ -131,20 +131,45 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
   const [filterPos,           setFilterPos]           = useState({ top: 0, left: 0 });
   const [saving,              setSaving]              = useState(false);
 
+  // ── Build status sort index dari statusMaster.primary ────────────────────────
+  // primary[] sudah diurutkan dari backend sesuai tahapan workflow.
+  // Status yang tidak ada di primary akan muncul di tengah (index = primary.length).
+  const statusSortIndex = useMemo(() => {
+    const primary = statusMaster?.primary ?? [];
+    const map: Record<string, number> = {};
+    primary.forEach((s, i) => { map[s] = i; });
+    return { map, unknownIndex: primary.length };
+  }, [statusMaster]);
 
   const filteredRecords = useMemo(() => {
     let result = [...records];
+
+    // Filter
     if (Object.keys(activeFilters).length > 0) {
       result = result.filter(r =>
         Object.entries(activeFilters).every(([key, vals]) => vals.includes(String(r.data[key] || "")))
       );
     }
+
+    // Search
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(r => Object.values(r.data ?? {}).some(v => String(v).toLowerCase().includes(q)));
     }
+
+    // Sort by status workflow order (statusMaster.primary)
+    if (statusColumn && statusSortIndex.unknownIndex > 0) {
+      result.sort((a, b) => {
+        const sa = (a.data[statusColumn] ?? "").trim();
+        const sb = (b.data[statusColumn] ?? "").trim();
+        const ia = statusSortIndex.map[sa] ?? statusSortIndex.unknownIndex;
+        const ib = statusSortIndex.map[sb] ?? statusSortIndex.unknownIndex;
+        return ia - ib;
+      });
+    }
+
     return result;
-  }, [records, search, activeFilters]);
+  }, [records, search, activeFilters, statusColumn, statusSortIndex]);
 
   const pagination = useTablePagination(filteredRecords);
   const columns    = activePreset?.columns ?? [];
