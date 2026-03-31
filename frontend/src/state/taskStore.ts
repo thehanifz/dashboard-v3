@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import api from "../services/api";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ─────────────────────────────────────────────────────────────────────────
 export interface RecordRow {
   row_id: number;
   data: Record<string, string>;
@@ -18,6 +18,7 @@ interface TaskState {
   columns: string[];
   records: RecordRow[];
   statusMaster: StatusMaster | null;
+  statusMasterError: string | null; // error message jika fetch gagal
   isLoading: boolean;
   lastUpdated: Date | null;
   autoRefreshEnabled: boolean;
@@ -32,14 +33,15 @@ interface TaskState {
   updateCell: (rowId: number, column: string, value: string) => Promise<void>;
 }
 
-// ─── Debounce Timer (module-level, per-row) ──────────────────────────────────
+// ─── Debounce Timer (module-level, per-row) ─────────────────────────────────────
 const statusTimer: Record<number, ReturnType<typeof setTimeout>> = {};
 
-// ─── Store ───────────────────────────────────────────────────────────────────
+// ─── Store ────────────────────────────────────────────────────────────────────────
 export const useTaskStore = create<TaskState>((set, get) => ({
   columns: [],
   records: [],
   statusMaster: null,
+  statusMasterError: null,
   isLoading: false,
   lastUpdated: null,
   autoRefreshEnabled: false,
@@ -62,21 +64,17 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     try {
       const res = await api.get("/status");
       console.log("[taskStore] Status master response:", res.data);
-      set({ statusMaster: res.data });
-    } catch (error) {
-      console.error("Failed to fetch status master:", error);
-      set({
-        statusMaster: {
-          primary: [],
-          mapping: {},
-          status_column: "StatusPekerjaan",
-          detail_column: "Detail Progres",
-        },
-      });
+      set({ statusMaster: res.data, statusMasterError: null });
+    } catch (error: any) {
+      // Tidak pakai hardcode fallback — biarkan null agar komponen
+      // downstream bisa menampilkan error state yang jelas.
+      const msg = error?.message ?? "Gagal memuat status master";
+      console.error("[taskStore] fetchStatusMaster error:", msg);
+      set({ statusMaster: null, statusMasterError: msg });
     }
   },
 
-  // ─── Refresh All (manual & auto) ─────────────────────────────────────────
+  // ─── Refresh All (manual & auto) ───────────────────────────────────────────────
   refreshAll: async () => {
     console.log("[taskStore] refreshAll called");
     set({ isLoading: true });
@@ -99,11 +97,18 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     });
   },
 
-  // ─── Update Status (optimistic + debounce) ────────────────────────────────
+  // ─── Update Status (optimistic + debounce) ────────────────────────────────────────
   updateStatus: async (rowId, status, detail) => {
     const { statusMaster, records } = get();
-    const statusColumn = statusMaster?.status_column ?? "StatusPekerjaan";
-    const detailColumn = statusMaster?.detail_column ?? "Detail Progres";
+    // Pakai nilai dari statusMaster (API) tanpa hardcode fallback.
+    // Jika statusMaster null (error), aksi ini tidak akan mengubah kolom yang salah.
+    const statusColumn = statusMaster?.status_column;
+    const detailColumn = statusMaster?.detail_column;
+
+    if (!statusColumn) {
+      console.warn("[taskStore] updateStatus: statusMaster belum tersedia, skip optimistic update");
+      return;
+    }
 
     set({
       records: records.map((r) =>
@@ -112,8 +117,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
               ...r,
               data: {
                 ...r.data,
-                ...(status ? { [statusColumn]: status } : {}),
-                ...(detail ? { [detailColumn]: detail } : {}),
+                ...(status !== undefined ? { [statusColumn]: status } : {}),
+                ...(detail !== undefined && detailColumn ? { [detailColumn]: detail } : {}),
               },
             }
           : r
@@ -130,7 +135,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }, 400);
   },
 
-  // ─── Update Cell (optimistic + debounce) ──────────────────────────────────
+  // ─── Update Cell (optimistic + debounce) ──────────────────────────────────────────
   updateCell: async (rowId, column, value) => {
     const { records } = get();
 
