@@ -102,14 +102,15 @@ def upgrade() -> None:
     now  = datetime.utcnow().isoformat()
 
     for s in NEW_SETTINGS:
-        # Gunakan INSERT OR IGNORE agar tidak error jika key sudah ada
+        # PostgreSQL: ON CONFLICT DO NOTHING (bukan INSERT OR IGNORE yang hanya SQLite)
         conn.execute(
             sa.text(
                 """
-                INSERT OR IGNORE INTO dashboard_settings
+                INSERT INTO dashboard_settings
                     (key, value, value_type, category, label, description, is_public, is_editable, updated_at)
                 VALUES
                     (:key, :value, :value_type, :category, :label, :description, :is_public, :is_editable, :updated_at)
+                ON CONFLICT (key) DO NOTHING
                 """
             ),
             {**s, "updated_at": now},
