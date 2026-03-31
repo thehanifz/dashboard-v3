@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useTaskStore }      from "../../state/taskStore";
 import { useAuthStore }      from "../../state/authStore";
+import { useAppearanceStore } from "../../state/appearanceStore";
 import { calcAging, getAgingTierStyles, DEFAULT_THRESHOLDS } from "../../utils/aging";
 import type { AgingThresholds }  from "../../utils/aging";
 import {
@@ -8,6 +9,7 @@ import {
   getDashboardColumns,
   type DashboardColumns,
 } from "../../services/settingsApi";
+import { HBar } from "./HBar";
 
 const AGING_COLORS = { safe: "#10b981", warning: "#f59e0b", danger: "#f97316", critical: "#ef4444" } as const;
 const CHART_COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#ec4899","#84cc16","#14b8a6"];
@@ -171,6 +173,12 @@ export default function SummaryDashboard() {
   const [thresholds, setThresholds]       = useState<AgingThresholds>(DEFAULT_THRESHOLDS);
   const [showAgingSettings, setShowAging] = useState(false);
   const [cols, setCols] = useState<DashboardColumns | null>(null);
+  
+  // Dashboard interactive filter
+  const [dashboardFilter, setDashboardFilter] = useState<{
+    column: string;
+    value: string;
+  } | null>(null);
 
   useEffect(() => {
     getAgingThresholds().then(setThresholds).catch(() => {});
@@ -180,11 +188,53 @@ export default function SummaryDashboard() {
     getDashboardColumns().then(setCols).catch(() => {});
   }, []);
 
+  // Load dashboard filter dari localStorage saat mount
+  useEffect(() => {
+    const saved = localStorage.getItem('dashboardFilter');
+    if (saved) {
+      try {
+        const filter = JSON.parse(saved);
+        setDashboardFilter(filter);
+        // Apply ke appearanceStore
+        useAppearanceStore.getState().setActiveFilters({
+          [filter.column]: [filter.value]
+        });
+      } catch (e) {
+        localStorage.removeItem('dashboardFilter');
+      }
+    }
+  }, []);
+
+  // Save dashboard filter ke localStorage saat berubah
+  useEffect(() => {
+    if (dashboardFilter) {
+      localStorage.setItem('dashboardFilter', JSON.stringify(dashboardFilter));
+      useAppearanceStore.getState().setActiveFilters({
+        [dashboardFilter.column]: [dashboardFilter.value]
+      });
+    } else {
+      localStorage.removeItem('dashboardFilter');
+      useAppearanceStore.getState().clearFilters();
+    }
+  }, [dashboardFilter]);
+
   const handleSaveThresholds = async (t: AgingThresholds) => {
     setThresholds(t);
   };
 
   const tierStyles = useMemo(() => getAgingTierStyles(thresholds), [thresholds]);
+
+  // Handler untuk bar click - single select
+  const handleBarClick = (column: string, value: string) => {
+    setDashboardFilter(prev => {
+      // Toggle: jika klik yang sama, clear filter
+      if (prev?.column === column && prev?.value === value) {
+        return null;
+      }
+      // Klik baru, replace filter
+      return { column, value };
+    });
+  };
 
   // ─── Deteksi nilai status dinamis dari data GSheet ──────────────────────────
   // Nilai seperti "Done BAI", "On Progress", "PA Cancel" TIDAK disimpan di DB.
@@ -377,6 +427,46 @@ export default function SummaryDashboard() {
         </div>
       </div>
 
+      {/* ── Dashboard Filter Banner ── */}
+      {dashboardFilter && (
+        <div className="flex items-center justify-between p-3 rounded-xl"
+          style={{ 
+            background: "var(--accent-soft)",
+            border: "1px solid var(--accent)",
+          }}>
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"
+              style={{ color: "var(--accent)" }}>
+              <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clipRule="evenodd" />
+            </svg>
+            <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
+              Filter aktif: <b style={{ color: "var(--accent)" }}>{dashboardFilter.column}</b> = <b style={{ color: "var(--accent)" }}>{dashboardFilter.value}</b>
+            </span>
+          </div>
+          <button 
+            onClick={() => setDashboardFilter(null)}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors"
+            style={{ 
+              background: "var(--bg-surface)",
+              color: "var(--text-secondary)",
+              border: "1px solid var(--border)",
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLElement).style.background = "#fee2e2";
+              (e.currentTarget as HTMLElement).style.color = "#ef4444";
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLElement).style.background = "var(--bg-surface)";
+              (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)";
+            }}>
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            Clear Filter
+          </button>
+        </div>
+      )}
+
       {/* ── Chart Row 1 ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
         <SectionCard
@@ -387,9 +477,15 @@ export default function SummaryDashboard() {
             {Object.entries(stats.byStatusPekerjaan)
               .sort((a, b) => b[1] - a[1])
               .map(([sp, count], i) => (
-                <HBar key={sp} label={sp} value={count} max={maxSP}
+                <HBar 
+                  key={sp} 
+                  label={sp} 
+                  value={count} 
+                  max={maxSP}
                   color={CHART_COLORS[i % CHART_COLORS.length]}
                   pct={totalSP > 0 ? `${Math.round(count / totalSP * 100)}%` : ""}
+                  onClick={() => handleBarClick("Status Pekerjaan", sp)}
+                  isActive={dashboardFilter?.column === "Status Pekerjaan" && dashboardFilter?.value === sp}
                 />
               ))}
           </div>
@@ -403,9 +499,15 @@ export default function SummaryDashboard() {
             {Object.entries(stats.byLayanan)
               .sort((a, b) => b[1] - a[1])
               .map(([lay, count], i) => (
-                <HBar key={lay} label={lay} value={count} max={maxLayanan}
+                <HBar 
+                  key={lay} 
+                  label={lay} 
+                  value={count} 
+                  max={maxLayanan}
                   color={CHART_COLORS[(i + 3) % CHART_COLORS.length]}
                   pct={totalLay > 0 ? `${Math.round(count / totalLay * 100)}%` : ""}
+                  onClick={() => handleBarClick("KATEGORI LAYANAN", lay)}
+                  isActive={dashboardFilter?.column === "KATEGORI LAYANAN" && dashboardFilter?.value === lay}
                 />
               ))}
           </div>
@@ -419,9 +521,15 @@ export default function SummaryDashboard() {
             {Object.entries(stats.byJenisMutasi)
               .sort((a, b) => b[1] - a[1])
               .map(([mut, count], i) => (
-                <HBar key={mut} label={mut} value={count} max={maxMutasi}
+                <HBar 
+                  key={mut} 
+                  label={mut} 
+                  value={count} 
+                  max={maxMutasi}
                   color={CHART_COLORS[(i + 6) % CHART_COLORS.length]}
                   pct={totalMut > 0 ? `${Math.round(count / totalMut * 100)}%` : ""}
+                  onClick={() => handleBarClick("JENIS PEKERJAAN", mut)}
+                  isActive={dashboardFilter?.column === "JENIS PEKERJAAN" && dashboardFilter?.value === mut}
                 />
               ))}
           </div>
@@ -439,9 +547,15 @@ export default function SummaryDashboard() {
               .sort((a, b) => b[1] - a[1])
               .slice(0, 10)
               .map(([customer, count], i) => (
-                <HBar key={customer} label={customer} value={count} max={maxCustomer}
+                <HBar 
+                  key={customer} 
+                  label={customer} 
+                  value={count} 
+                  max={maxCustomer}
                   color={CHART_COLORS[i % CHART_COLORS.length]}
                   pct={records.length > 0 ? `${Math.round(count / records.length * 100)}%` : ""}
+                  onClick={() => handleBarClick("NAMA CUSTOMER", customer)}
+                  isActive={dashboardFilter?.column === "NAMA CUSTOMER" && dashboardFilter?.value === customer}
                 />
               ))}
           </div>
@@ -456,9 +570,15 @@ export default function SummaryDashboard() {
               .sort((a, b) => b[1] - a[1])
               .slice(0, 10)
               .map(([ptl, count], i) => (
-                <HBar key={ptl} label={ptl} value={count} max={maxPtlUpdate}
+                <HBar 
+                  key={ptl} 
+                  label={ptl} 
+                  value={count} 
+                  max={maxPtlUpdate}
                   color={CHART_COLORS[(i + 3) % CHART_COLORS.length]}
                   pct={records.length > 0 ? `${Math.round(count / records.length * 100)}%` : ""}
+                  onClick={() => handleBarClick("PTL Update", ptl)}
+                  isActive={dashboardFilter?.column === "PTL Update" && dashboardFilter?.value === ptl}
                 />
               ))}
           </div>
@@ -472,9 +592,15 @@ export default function SummaryDashboard() {
             {Object.entries(stats.bySegmentasi)
               .sort((a, b) => b[1] - a[1])
               .map(([seg, count], i) => (
-                <HBar key={seg} label={seg} value={count} max={maxSegmentasi}
+                <HBar 
+                  key={seg} 
+                  label={seg} 
+                  value={count} 
+                  max={maxSegmentasi}
                   color={CHART_COLORS[(i + 6) % CHART_COLORS.length]}
                   pct={records.length > 0 ? `${Math.round(count / records.length * 100)}%` : ""}
+                  onClick={() => handleBarClick("SEGMENTASI", seg)}
+                  isActive={dashboardFilter?.column === "SEGMENTASI" && dashboardFilter?.value === seg}
                 />
               ))}
           </div>

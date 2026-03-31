@@ -45,6 +45,7 @@ interface AppearanceState {
   // Filter Engineer
   toggleFilter:  (key: string, value: string) => void;
   clearFilters:  () => void;
+  setActiveFilters: (filters: Record<string, string[]>) => void;
 
   // Filter PTL
   togglePtlFilter:  (key: string, value: string) => void;
@@ -126,6 +127,8 @@ export const useAppearanceStore = create<AppearanceState>()(
         }),
 
       clearFilters: () => set({ activeFilters: {} }),
+
+      setActiveFilters: (filters) => set({ activeFilters: filters }),
 
       // ── Filter PTL ─────────────────────────────────────────────────────────
       togglePtlFilter: (key, value) =>
