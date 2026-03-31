@@ -60,23 +60,18 @@ export async function getAgingThresholds(): Promise<AgingThresholds> {
   };
 }
 
-// ── getDashboardColumns — kolom & nilai status untuk SummaryDashboard ──────────
+// ── getDashboardColumns — nama kolom GSheet untuk SummaryDashboard ─────────────
 /**
- * Semua nama kolom GSheet dan nilai status yang dipakai SummaryDashboard.
- * Dibaca dari DB (settings kategori `columns`) via endpoint public.
- * Setiap field punya fallback string agar tidak crash jika key belum ada di DB.
+ * Hanya menyimpan NAMA KOLOM GSheet — bukan nilai isi dropdown.
+ * Nilai status (Done BAI, On Progress, dll) diambil dinamis dari data GSheet
+ * oleh SummaryDashboard sendiri, tidak disimpan di DB.
  */
 export interface DashboardColumns {
-  // Kolom GSheet
-  colTglTerbit:       string;  // key: col_tgl_terbit   → "TGL TERBIT PA"
-  colStatusPa:        string;  // key: col_status_pa    → "Status PA"
-  colStatusPekerjaan: string;  // key: col_status_pekerjaan → "Status Pekerjaan"
-  colLayanan:         string;  // key: col_layanan      → "LAYANAN"
-  colJenisMutasi:     string;  // key: col_jenis_mutasi → "JENIS MUTASI"
-  // Nilai status (isi sel, bukan nama kolom)
-  valStatusDone:      string;  // key: val_status_done     → "Done BAI"
-  valStatusProgress:  string;  // key: val_status_progress → "On Progress"
-  valStatusCancel:    string;  // key: val_status_cancel   → "PA Cancel"
+  colTglTerbit:       string;  // key: col_tgl_terbit        → "TGL TERBIT PA"
+  colStatusPa:        string;  // key: col_status_pa         → "Status PA"
+  colStatusPekerjaan: string;  // key: col_status_pekerjaan  → "Status Pekerjaan"
+  colLayanan:         string;  // key: col_layanan           → "LAYANAN"
+  colJenisMutasi:     string;  // key: col_jenis_mutasi      → "JENIS MUTASI"
 }
 
 /** Fallback default — dipakai jika API gagal atau key belum ada di DB */
@@ -86,9 +81,6 @@ const COLUMN_DEFAULTS: DashboardColumns = {
   colStatusPekerjaan: "Status Pekerjaan",
   colLayanan:         "LAYANAN",
   colJenisMutasi:     "JENIS MUTASI",
-  valStatusDone:      "Done BAI",
-  valStatusProgress:  "On Progress",
-  valStatusCancel:    "PA Cancel",
 };
 
 /**
@@ -104,9 +96,6 @@ export async function getDashboardColumns(): Promise<DashboardColumns> {
       colStatusPekerjaan: String(settings["col_status_pekerjaan"] ?? COLUMN_DEFAULTS.colStatusPekerjaan),
       colLayanan:         String(settings["col_layanan"]          ?? COLUMN_DEFAULTS.colLayanan),
       colJenisMutasi:     String(settings["col_jenis_mutasi"]     ?? COLUMN_DEFAULTS.colJenisMutasi),
-      valStatusDone:      String(settings["val_status_done"]      ?? COLUMN_DEFAULTS.valStatusDone),
-      valStatusProgress:  String(settings["val_status_progress"]  ?? COLUMN_DEFAULTS.valStatusProgress),
-      valStatusCancel:    String(settings["val_status_cancel"]    ?? COLUMN_DEFAULTS.valStatusCancel),
     };
   } catch {
     return { ...COLUMN_DEFAULTS };
@@ -156,9 +145,9 @@ export async function getDynamicTableConfig(): Promise<DynamicTableConfig> {
 
 // ── getAppInfo — nama, subtitle, versi aplikasi untuk Sidebar ──────────────────
 export interface AppInfo {
-  appName:    string;  // key: app_name    → "Dashboard v3"
-  appSubtitle: string; // key: app_subtitle → "PA PLN Icon+"
-  appVersion: string;  // key: app_version  → "3.2"
+  appName:     string;  // key: app_name     → "Dashboard v3"
+  appSubtitle: string;  // key: app_subtitle → "PA PLN Icon+"
+  appVersion:  string;  // key: app_version  → "3.2"
 }
 
 const APP_INFO_DEFAULTS: AppInfo = {
