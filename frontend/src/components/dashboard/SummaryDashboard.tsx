@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import { useTaskStore }      from "../../state/taskStore";
 import { useAuthStore }      from "../../state/authStore";
 import { useAppearanceStore } from "../../state/appearanceStore";
+import { useAppStore }        from "../../state/appStore";
 import { calcAging, getAgingTierStyles, DEFAULT_THRESHOLDS } from "../../utils/aging";
 import type { AgingThresholds }  from "../../utils/aging";
 import {
@@ -177,16 +178,18 @@ export default function SummaryDashboard() {
 
   const tierStyles = useMemo(() => getAgingTierStyles(thresholds), [thresholds]);
 
-  // Handler untuk bar click — toggle single filter, sync langsung ke Zustand
+  // Handler untuk bar click — set filter lalu auto navigate ke halaman tabel (detail)
   const handleBarClick = (column: string, value: string) => {
     setDashboardFilter(prev => {
       if (prev?.column === column && prev?.value === value) {
-        // Toggle off — clear filter di store
+        // Toggle off — clear filter di store, tetap di halaman ini
         useAppearanceStore.getState().clearFilters();
         return null;
       }
       // Set filter baru di store
       useAppearanceStore.getState().setActiveFilters({ [column]: [value] });
+      // Auto navigate ke halaman tabel
+      useAppStore.getState().setPage("detail");
       return { column, value };
     });
   };
