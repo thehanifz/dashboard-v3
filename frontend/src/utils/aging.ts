@@ -1,6 +1,7 @@
 /**
- * Hitung durasi dari tanggal terbit PA hingga sekarang.
- * Mengabaikan kolom DURASI dari backend — semua dihitung fresh di client.
+ * Hitung durasi dari tanggal terbit PA hingga:
+ * - TGL UPLOAD BAI (jika sudah ada BAI)
+ * - Hari ini (jika belum ada BAI)
  * Threshold tier bisa dikustomisasi via parameter (dari settings API).
  */
 
@@ -11,6 +12,7 @@ export interface AgingResult {
   totalMinutes: number;
   label: string;
   tier: "safe" | "warning" | "danger" | "critical";
+  isClosed: boolean; // true jika sudah ada TGL UPLOAD BAI
 }
 
 export interface AgingThresholds {
@@ -23,15 +25,24 @@ export const DEFAULT_THRESHOLDS: AgingThresholds = { tier1: 30, tier2: 60, tier3
 
 export function calcAging(
   tglTerbitPA: string,
-  thresholds: AgingThresholds = DEFAULT_THRESHOLDS
+  thresholds: AgingThresholds = DEFAULT_THRESHOLDS,
+  tglUploadBAI?: string // Optional: tanggal upload BAI
 ): AgingResult | null {
   if (!tglTerbitPA) return null;
 
   const parsed = new Date(tglTerbitPA.replace(" ", "T"));
   if (isNaN(parsed.getTime())) return null;
 
-  const now  = new Date();
-  const diff = now.getTime() - parsed.getTime();
+  // End date: TGL UPLOAD BAI (jika ada) atau hari ini
+  const endDate = tglUploadBAI ? new Date(tglUploadBAI.replace(" ", "T")) : new Date();
+  
+  // Validasi end date
+  if (tglUploadBAI && isNaN(endDate.getTime())) {
+    // Jika tglUploadBAI invalid, fallback ke hari ini
+    console.warn("[aging] Invalid TGL UPLOAD BAI, using today:", tglUploadBAI);
+  }
+  
+  const diff = endDate.getTime() - parsed.getTime();
   if (diff < 0) return null;
 
   const totalMinutes = Math.floor(diff / 60000);
@@ -39,7 +50,10 @@ export function calcAging(
   const hours   = Math.floor((totalMinutes % 1440) / 60);
   const minutes = totalMinutes % 60;
 
-  const label = `${days} HARI ${hours} JAM ${minutes} MENIT`;
+  const isClosed = !!tglUploadBAI;
+  const label = isClosed 
+    ? `${days} HARI ${hours} JAM ${minutes} MENIT (Closed)`
+    : `${days} HARI ${hours} JAM ${minutes} MENIT`;
 
   let tier: AgingResult["tier"];
   if (days <= thresholds.tier1)      tier = "safe";
@@ -47,7 +61,7 @@ export function calcAging(
   else if (days <= thresholds.tier3) tier = "danger";
   else                               tier = "critical";
 
-  return { days, hours, minutes, totalMinutes, label, tier };
+  return { days, hours, minutes, totalMinutes, label, tier, isClosed };
 }
 
 export function getAgingTierStyles(thresholds: AgingThresholds = DEFAULT_THRESHOLDS) {

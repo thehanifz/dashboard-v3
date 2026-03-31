@@ -10,7 +10,8 @@ export function StatusCell({ row, col }: any) {
 
   if (!statusMaster || !statusMaster.primary) return value;
 
-  const statusColumnName = statusMaster.status_column || "StatusPekerjaan";
+  const statusColumnName = statusMaster.status_column;
+  if (!statusColumnName) return value;
 
   if (col === statusColumnName) {
     return (
@@ -33,6 +34,9 @@ export function StatusCell({ row, col }: any) {
   }
 
   // Detail Progres dropdown
+  const detailColumnName = statusMaster.detail_column;
+  if (!detailColumnName) return value;
+  
   const currentStatusValue = row.data?.[statusColumnName];
   const options = currentStatusValue && statusMaster.mapping
     ? statusMaster.mapping[currentStatusValue] ?? []

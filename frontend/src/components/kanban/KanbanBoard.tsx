@@ -64,7 +64,7 @@ export default function KanbanBoard() {
     return statusMaster.primary.filter(s => !hiddenStatuses.includes(s));
   }, [statusMaster, hiddenStatuses]);
 
-  const statusColumnName = useMemo(() => statusMaster?.status_column || "StatusPekerjaan", [statusMaster]);
+  const statusColumnName = useMemo(() => statusMaster?.status_column, [statusMaster]);
 
   const processedRecords = useMemo(() => {
     let result = [...records];

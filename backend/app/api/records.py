@@ -230,6 +230,8 @@ async def update_ptl_own_sheet(
 # ── Mapping kolom DB → nama tampilan Engineer (frontend tidak berubah) ─────────
 # Key   = nama kolom di tabel pa_records
 # Value = nama kolom yang dikenal frontend (preset, filter, dll)
+# CATATAN: "Status Pekerjaan" dan "Detail Progres" harus match dengan sheet Opsi
+# CATATAN: "Status PA" harus match dengan setting di dashboard_settings (col_status_pa)
 PA_RECORD_COL_DISPLAY = {
     "id_pa":             "ID PA",
     "node":              "NODE",
@@ -252,17 +254,17 @@ PA_RECORD_COL_DISPLAY = {
     "tgl_upload_bai":    "TGL UPLOAD BAI",
     "jenis_pekerjaan":   "JENIS PEKERJAAN",
     "nomor_io":          "NOMOR IO",
-    "status_pa":         "STATUS PA",
-    "kategori_status":   "KATEGORI STATUS",
-    "kategori_progres":  "KATEGORI PROGRES",
-    "detail_progres":    "DETAIL PROGRES",
-    "progress_update":   "PROGRESS UPDATE",
-    "aging_pa":          "AGING PA",
-    "aging_non_sc":      "AGING NON SC",
-    "aging_sc":          "AGING SC",
-    "nama_ptl":          "NAMA PTL",
-    "nama_sales":        "NAMA SALES",
-    "ptl_update":        "PTL UPDATE",
+    "status_pa":         "Status PA",
+    "kategori_status":   "Kategori PA",
+    "kategori_progres":  "Status Pekerjaan",
+    "detail_progres":    "Detail Progres",
+    "progress_update":   "KETERANGAN UPDATE DETAIL",
+    "aging_pa":          "Aging PA",
+    "aging_non_sc":      "Aging Non SC",
+    "aging_sc":          "Aging SC",
+    "nama_ptl":          "Nama PTL",
+    "nama_sales":        "Nama Sales",
+    "ptl_update":        "PTL Update",
 }
 
 DISPLAY_COLUMNS = list(PA_RECORD_COL_DISPLAY.values())

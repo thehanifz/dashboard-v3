@@ -39,8 +39,10 @@ export default function TaskCard({ record, columnColor, cardFieldsOverride }: Pr
 
   if (!statusMaster?.primary) return null;
 
-  const statusColumnName = statusMaster.status_column || "StatusPekerjaan";
-  const detailColumnName = statusMaster.detail_column || "Detail Progres";
+  const statusColumnName = statusMaster.status_column;
+  const detailColumnName = statusMaster.detail_column;
+  
+  if (!statusColumnName || !detailColumnName) return null;
 
   // Kalau fields kosong = tampilkan semua kolom
   const allKeys     = Object.keys(record.data);
@@ -50,7 +52,8 @@ export default function TaskCard({ record, columnColor, cardFieldsOverride }: Pr
   const finalKeys   = visibleKeys.length > 0 ? visibleKeys : allKeys;
 
   // Aging — hanya untuk badge di kartu
-  const aging      = calcAging(record.data["TGL TERBIT PA"]);
+  // Hitung dari TGL TERBIT PA sampai TGL UPLOAD BAI (jika ada) atau hari ini
+  const aging      = calcAging(record.data["TGL TERBIT PA"], undefined, record.data["TGL UPLOAD BAI"]);
   const agingTier  = aging?.tier ?? "safe";
   const agingColor = AGING_COLORS[agingTier];
 

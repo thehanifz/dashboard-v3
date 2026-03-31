@@ -7,7 +7,7 @@ export default function FilterManager({ onClose }: { onClose: () => void }) {
   const { activeFilters, toggleFilter, clearFilters } = useAppearanceStore();
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const statusMaster = useTaskStore((s) => s.statusMaster);
-  const statusColumnName = statusMaster?.status_column || "StatusPekerjaan";
+  const statusColumnName = statusMaster?.status_column;
 
   const filterOptions = useMemo(() => {
     const options: Record<string, Set<string>> = {};

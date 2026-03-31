@@ -200,17 +200,20 @@ export default function SummaryDashboard() {
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
   }, [records, cols]);
 
-  // Deteksi otomatis: Done = nilai dengan kata "done" atau "bai" (case insensitive)
-  // Progress = nilai dengan kata "progress"
-  // Cancel = nilai dengan kata "cancel"
+  // Deteksi otomatis nilai Status PA
+  // Karena nilai sudah fix (Done BAI, On Progress, PA Cancel), pakai exact match
   const detectedStatus = useMemo(() => {
     const keys = statusPaValues.map(([k]) => k);
-    const find = (keywords: string[]) =>
-      keys.find(k => keywords.some(kw => k.toLowerCase().includes(kw))) ?? "";
+    
+    // Exact match untuk nilai yang sudah diketahui
+    const exactMatch = (candidates: string[]) =>
+      candidates.find(c => keys.includes(c)) ?? "";
+    
+    // Fallback hardcoded jika deteksi gagal
     return {
-      done:     find(["done", "bai", "selesai", "complete"]),
-      progress: find(["progress", "proses", "on going", "ongoing"]),
-      cancel:   find(["cancel", "batal"]),
+      done:     exactMatch(["Done BAI", "done bai", "DONE BAI"]) || "Done BAI",
+      progress: exactMatch(["On Progress", "on progress", "ON PROGRESS"]) || "On Progress",
+      cancel:   exactMatch(["PA Cancel", "pa cancel", "PA CANCEL"]) || "PA Cancel",
     };
   }, [statusPaValues]);
 
@@ -219,8 +222,9 @@ export default function SummaryDashboard() {
     const tglCol         = cols?.colTglTerbit       ?? "TGL TERBIT PA";
     const statusPaCol    = cols?.colStatusPa        ?? "Status PA";
     const statusPekCol   = cols?.colStatusPekerjaan ?? "Status Pekerjaan";
-    const layananCol     = cols?.colLayanan         ?? "LAYANAN";
-    const jenisMutasiCol = cols?.colJenisMutasi     ?? "JENIS MUTASI";
+    // Gunakan NAMA PRODUK untuk layanan, JENIS PEKERJAAN untuk mutasi
+    const layananCol     = "NAMA PRODUK";
+    const jenisMutasiCol = "JENIS PEKERJAAN";
 
     // Nilai status diambil dari deteksi dinamis GSheet
     const valDone     = detectedStatus.done;
@@ -231,6 +235,9 @@ export default function SummaryDashboard() {
     const byLayanan:         Record<string, number> = {};
     const byJenisMutasi:     Record<string, number> = {};
     const byStatusPA:        Record<string, number> = {};
+    const byNamaCustomer:    Record<string, number> = {}; // Top 10 customer
+    const byPtlUpdate:       Record<string, number> = {};
+    const bySegmentasi:      Record<string, number> = {};
     const agingTiers = { safe: 0, warning: 0, danger: 0, critical: 0 };
 
     records.forEach(r => {
@@ -244,16 +251,34 @@ export default function SummaryDashboard() {
       const spa = (r.data[statusPaCol] || "Tidak Diketahui").trim();
       byStatusPA[spa] = (byStatusPA[spa] || 0) + 1;
 
-      // Layanan
-      const layanan = (r.data[layananCol] || "Lainnya").split(" - ")[0].trim();
+      // Layanan — gunakan KATEGORI PRODUK (kategori_layanan)
+      const layanan = r.data["KATEGORI LAYANAN"] || "Lainnya";
       byLayanan[layanan] = (byLayanan[layanan] || 0) + 1;
 
-      // Jenis Mutasi
+      // Jenis Mutasi — gunakan JENIS PEKERJAAN
       const mutasi = r.data[jenisMutasiCol] || "Lainnya";
       byJenisMutasi[mutasi] = (byJenisMutasi[mutasi] || 0) + 1;
 
+      // NAMA CUSTOMER — top 10
+      const namaCustomer = r.data["NAMA CUSTOMER"] || "Tidak Diketahui";
+      byNamaCustomer[namaCustomer] = (byNamaCustomer[namaCustomer] || 0) + 1;
+
+      // PTL UPDATE — hanya yang ada isinya
+      const ptlUpdateRaw = r.data["PTL Update"] || "";
+      if (ptlUpdateRaw && ptlUpdateRaw.trim()) {
+        const ptlUpdate = ptlUpdateRaw.trim();
+        byPtlUpdate[ptlUpdate] = (byPtlUpdate[ptlUpdate] || 0) + 1;
+      }
+
+      // SEGMENTASI
+      const segmentasi = r.data["SEGMENTASI"] || "Tidak Diketahui";
+      bySegmentasi[segmentasi] = (bySegmentasi[segmentasi] || 0) + 1;
+
       // Aging
-      const aging = calcAging(r.data[tglCol], thresholds);
+      // Hitung dari TGL TERBIT PA sampai TGL UPLOAD BAI (jika ada) atau hari ini
+      const tglTerbit = r.data[tglCol];
+      const tglUploadBAI = r.data["TGL UPLOAD BAI"];
+      const aging = calcAging(tglTerbit, thresholds, tglUploadBAI);
       if (aging) agingTiers[aging.tier]++;
     });
 
@@ -265,6 +290,7 @@ export default function SummaryDashboard() {
 
     return {
       byStatusPekerjaan, byLayanan, byJenisMutasi, byStatusPA,
+      byNamaCustomer, byPtlUpdate, bySegmentasi,
       agingTiers, total, doneBai, onProgress, paCancel, donePct,
       valDone, valProgress, valCancel,
       // Semua nilai unik Status PA untuk ditampilkan jika perlu
@@ -272,9 +298,12 @@ export default function SummaryDashboard() {
     };
   }, [records, thresholds, cols, detectedStatus, statusPaValues]);
 
-  const maxSP      = Math.max(...Object.values(stats.byStatusPekerjaan), 1);
-  const maxLayanan = Math.max(...Object.values(stats.byLayanan), 1);
-  const maxMutasi  = Math.max(...Object.values(stats.byJenisMutasi), 1);
+  const maxSP         = Math.max(...Object.values(stats.byStatusPekerjaan), 1);
+  const maxLayanan    = Math.max(...Object.values(stats.byLayanan), 1);
+  const maxMutasi     = Math.max(...Object.values(stats.byJenisMutasi), 1);
+  const maxCustomer   = Math.max(...Object.values(stats.byNamaCustomer), 1);
+  const maxPtlUpdate  = Math.max(...Object.values(stats.byPtlUpdate), 1);
+  const maxSegmentasi = Math.max(...Object.values(stats.bySegmentasi), 1);
   const totalSP    = Object.values(stats.byStatusPekerjaan).reduce((a, b) => a + b, 0);
   const totalLay   = Object.values(stats.byLayanan).reduce((a, b) => a + b, 0);
   const totalMut   = Object.values(stats.byJenisMutasi).reduce((a, b) => a + b, 0);
@@ -348,7 +377,7 @@ export default function SummaryDashboard() {
         </div>
       </div>
 
-      {/* ── Chart Row ── */}
+      {/* ── Chart Row 1 ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
         <SectionCard
           title={`Per ${cols?.colStatusPekerjaan ?? "Status Pekerjaan"} On Progress`}
@@ -367,8 +396,8 @@ export default function SummaryDashboard() {
         </SectionCard>
 
         <SectionCard
-          title={`Per ${cols?.colLayanan ?? "Layanan"}`}
-          subtitle="Jenis layanan"
+          title="Per KATEGORI PRODUK"
+          subtitle="Kategori produk layanan"
         >
           <div className="space-y-2.5">
             {Object.entries(stats.byLayanan)
@@ -383,8 +412,8 @@ export default function SummaryDashboard() {
         </SectionCard>
 
         <SectionCard
-          title={`Per ${cols?.colJenisMutasi ?? "Jenis Mutasi"}`}
-          subtitle={`Kolom ${cols?.colJenisMutasi ?? "JENIS MUTASI"}`}
+          title="Per JENIS PEKERJAAN"
+          subtitle="Jenis pekerjaan"
         >
           <div className="space-y-2.5">
             {Object.entries(stats.byJenisMutasi)
@@ -393,6 +422,59 @@ export default function SummaryDashboard() {
                 <HBar key={mut} label={mut} value={count} max={maxMutasi}
                   color={CHART_COLORS[(i + 6) % CHART_COLORS.length]}
                   pct={totalMut > 0 ? `${Math.round(count / totalMut * 100)}%` : ""}
+                />
+              ))}
+          </div>
+        </SectionCard>
+      </div>
+
+      {/* ── Chart Row 2 (NEW) ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+        <SectionCard
+          title="Top 10 NAMA CUSTOMER"
+          subtitle="Customer terbanyak"
+        >
+          <div className="space-y-2.5">
+            {Object.entries(stats.byNamaCustomer)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 10)
+              .map(([customer, count], i) => (
+                <HBar key={customer} label={customer} value={count} max={maxCustomer}
+                  color={CHART_COLORS[i % CHART_COLORS.length]}
+                  pct={records.length > 0 ? `${Math.round(count / records.length * 100)}%` : ""}
+                />
+              ))}
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Per PTL UPDATE"
+          subtitle="PTL yang update"
+        >
+          <div className="space-y-2.5">
+            {Object.entries(stats.byPtlUpdate)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 10)
+              .map(([ptl, count], i) => (
+                <HBar key={ptl} label={ptl} value={count} max={maxPtlUpdate}
+                  color={CHART_COLORS[(i + 3) % CHART_COLORS.length]}
+                  pct={records.length > 0 ? `${Math.round(count / records.length * 100)}%` : ""}
+                />
+              ))}
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Per SEGMENTASI"
+          subtitle="Segmentasi customer"
+        >
+          <div className="space-y-2.5">
+            {Object.entries(stats.bySegmentasi)
+              .sort((a, b) => b[1] - a[1])
+              .map(([seg, count], i) => (
+                <HBar key={seg} label={seg} value={count} max={maxSegmentasi}
+                  color={CHART_COLORS[(i + 6) % CHART_COLORS.length]}
+                  pct={records.length > 0 ? `${Math.round(count / records.length * 100)}%` : ""}
                 />
               ))}
           </div>
