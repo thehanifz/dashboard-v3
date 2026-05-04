@@ -1,5 +1,6 @@
 import { useState } from "react";
 import teskomApi, { AutoFillResult } from "../../services/teskomApi";
+import { useAuthStore } from "../../state/authStore";
 
 interface Props {
   onAutofill: (data: AutoFillResult["autofill"]) => void;
@@ -7,17 +8,25 @@ interface Props {
 }
 
 export default function AutoFillSearch({ onAutofill, onToast }: Props) {
-  const [query, setQuery]   = useState("");
+  const [query, setQuery]     = useState("");
   const [loading, setLoading] = useState(false);
+
+  const { user }  = useAuthStore();
+  const isPtl     = user?.role === "ptl";
+  const sourceLabel = isPtl ? "GSheet PTL" : "database";
 
   const handleSearch = async () => {
     const trimmed = query.trim();
     if (!trimmed) return;
     setLoading(true);
     try {
-      const result = await teskomApi.autofill(trimmed);
+      // Pilih endpoint berdasarkan role
+      const result = isPtl
+        ? await teskomApi.autofillPtl(trimmed)
+        : await teskomApi.autofill(trimmed);
+
       onAutofill(result.autofill);
-      onToast(`Data ID PA "${trimmed}" berhasil dimuat dari GSheet`, "success");
+      onToast(`Data ID PA "${trimmed}" berhasil dimuat dari ${sourceLabel}`, "success");
     } catch (err: any) {
       const msg = err?.response?.data?.detail || `ID PA "${trimmed}" tidak ditemukan`;
       onToast(msg, "error");
@@ -32,10 +41,14 @@ export default function AutoFillSearch({ onAutofill, onToast }: Props) {
         <svg className="w-4 h-4 shrink-0" style={{ color: "var(--accent)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
         </svg>
-        <span className="text-sm font-semibold" style={{ color: "var(--accent)" }}>Auto-fill dari GSheet</span>
+        <span className="text-sm font-semibold" style={{ color: "var(--accent)" }}>
+          Auto-fill dari {sourceLabel}
+        </span>
       </div>
       <p className="text-xs mb-3" style={{ color: "var(--text-secondary)" }}>
-        Masukkan ID PA untuk mengisi form secara otomatis dari data GSheet.
+        {isPtl
+          ? "Masukkan ID PA untuk mengisi form dari GSheet PTL kamu."
+          : "Masukkan ID PA untuk mengisi form dari database."}
       </p>
       <div className="flex gap-2">
         <input
