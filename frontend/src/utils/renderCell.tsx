@@ -1,13 +1,12 @@
-import { StatusCell } from "../components/table/StatusCell";
 import { CellContent } from "../components/table/CellContent";
-import { getColorTheme } from "./colorPalette";
+import { STATUS_COL_PRIMARY, STATUS_COL_DETAIL } from "../constants/columns";
 
 export const renderCell = (
   record: any,
   column: string,
   labelColors: Record<string, string>,
-  statusColumnName: string = "Status Pekerjaan",
-  detailColumnName: string = "Detail Progres"
+  statusColumnName: string = STATUS_COL_PRIMARY,
+  detailColumnName: string  = STATUS_COL_DETAIL
 ) => {
   return (
     <CellContent
