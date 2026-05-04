@@ -10,22 +10,23 @@ import { usePresetStore } from "./presetStore";
 import { usePTLPresetStore } from "./ptlPresetStore";
 import { useAppearanceStore } from "./appearanceStore";
 import { useTaskStore } from "./taskStore";
+import { SESSION_ACCESS_TOKEN, SESSION_USER } from "../constants/storageKeys";
+import { ROLES } from "../constants/roles";
 
-export type UserRole = "engineer" | "ptl" | "mitra" | "superuser";
+// Re-export agar kode yang sudah import dari authStore tidak perlu diubah
+export type { UserRole } from "../constants/roles";
+export type { UserRole as AuthUserRole } from "../constants/roles";
 
 export interface AuthUser {
   username:     string;
   nama_lengkap: string;
-  role:         UserRole;
+  role:         import("../constants/roles").UserRole;
 }
 
-const TOKEN_KEY = "dash_v3_at";
-const USER_KEY  = "dash_v3_user";
-
-const storedToken = sessionStorage.getItem(TOKEN_KEY) ?? null;
+const storedToken = sessionStorage.getItem(SESSION_ACCESS_TOKEN) ?? null;
 const storedUser  = (() => {
   try {
-    const raw = sessionStorage.getItem(USER_KEY);
+    const raw = sessionStorage.getItem(SESSION_USER);
     return raw ? (JSON.parse(raw) as AuthUser) : null;
   } catch { return null; }
 })();
@@ -38,7 +39,7 @@ interface AuthState {
   setToken:   (token: string) => void;
   clearAuth:  () => void;
   isLoggedIn: () => boolean;
-  hasRole:    (...roles: UserRole[]) => boolean;
+  hasRole:    (...roles: import("../constants/roles").UserRole[]) => boolean;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -46,8 +47,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   accessToken: storedToken,
 
   setAuth: (user, accessToken) => {
-    sessionStorage.setItem(TOKEN_KEY, accessToken);
-    sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+    sessionStorage.setItem(SESSION_ACCESS_TOKEN, accessToken);
+    sessionStorage.setItem(SESSION_USER, JSON.stringify(user));
     set({ user, accessToken });
 
     // Load preset & editable columns dari DB setelah login
@@ -55,25 +56,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const role = user.role;
       usePresetStore.getState().loadFromDB();
 
-      if (role === "ptl") {
+      if (role === ROLES.PTL) {
         usePTLPresetStore.getState().loadFromDB();
       }
 
-      if (role === "engineer") {
+      if (role === ROLES.ENGINEER) {
         useAppearanceStore.getState().loadEditableColumnsFromDB();
       }
     }, 100);
   },
 
   setToken: (accessToken) => {
-    sessionStorage.setItem(TOKEN_KEY, accessToken);
+    sessionStorage.setItem(SESSION_ACCESS_TOKEN, accessToken);
     set({ accessToken });
   },
 
   clearAuth: () => {
-    sessionStorage.removeItem(TOKEN_KEY);
-    sessionStorage.removeItem(USER_KEY);
-    useTaskStore.getState().resetLoadedFlag(); // Reset flag agar refresh di login berikutnya
+    sessionStorage.removeItem(SESSION_ACCESS_TOKEN);
+    sessionStorage.removeItem(SESSION_USER);
+    useTaskStore.getState().resetLoadedFlag();
     set({ user: null, accessToken: null });
   },
 
