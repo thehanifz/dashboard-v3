@@ -3,11 +3,9 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
 
-import ErrorBoundary from "./utils/ErrorBoundary";
+import ErrorBoundary from "./components/ui/ErrorBoundary";
 import { initHashNavigation } from "./state/appStore";
 
-// Inisialisasi hash navigation sebelum render
-// agar state & URL sudah sinkron sejak awal
 initHashNavigation();
 
 ReactDOM.createRoot(

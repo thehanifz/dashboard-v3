@@ -1,23 +1,3 @@
-import { StatusCell } from "./StatusCell";
-import { CellContent } from "./CellContent";
-import { getColorTheme } from "../../utils/colorPalette";
-
-export const renderCell = (
-  record: any,
-  column: string,
-  labelColors: Record<string, string>,
-  statusColumnName: string = "Status Pekerjaan",
-  detailColumnName: string = "Detail Progres"
-) => {
-  // Always return the same component type to maintain consistent hook counts
-  // The CellContent handles all cases internally
-  return (
-    <CellContent
-      record={record}
-      column={column}
-      labelColors={labelColors}
-      statusColumnName={statusColumnName}
-      detailColumnName={detailColumnName}
-    />
-  );
-};
+// SHIM — file ini akan dihapus setelah seluruh import sudah diupdate ke utils/
+// Gunakan: import { renderCell } from "../../utils/renderCell";
+export { renderCell } from "../../utils/renderCell";

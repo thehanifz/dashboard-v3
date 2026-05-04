@@ -9,9 +9,10 @@ import { useAuthStore } from "../../state/authStore";
 import { getColorTheme } from "../../utils/colorPalette";
 import { getDynamicTableConfig, type DynamicTableConfig } from "../../services/settingsApi";
 
-import { renderCell }          from "./renderCell";
-import { useTablePagination }  from "./useTablePagination";
-import { useTableResize }      from "./useTableResize";
+import { renderCell }          from "../../utils/renderCell";
+import { useTablePagination }  from "../../hooks/useTablePagination";
+import { useTableResize }      from "../../hooks/useTableResize";
+import { useToast }            from "../../hooks/useToast";
 import { TableHeaderCell }     from "./TableHeaderCell";
 import TableToolbar            from "./TableToolbar";
 import PresetEditorModal       from "../preset/PresetEditorModal";
@@ -19,7 +20,6 @@ import ColumnFilter            from "./ColumnFilter";
 import EditableColumnsModal    from "./EditableColumnsModal";
 import BaiActionButton         from "./BaiActionButton";
 import TeskomActionButton      from "./TeskomActionButton";
-import { useToast }            from "../../utils/useToast";
 
 
 const MIN_COL_WIDTH     = 60;
@@ -28,7 +28,6 @@ const DEFAULT_COL_WIDTH = 150;
 type Props = {
   view?:         "table" | "kanban";
   onViewChange?: (v: "table" | "kanban") => void;
-  /** Kalau true, hanya render TableToolbar saja (tanpa tabel body) — dipakai saat view=kanban */
   toolbarOnly?:  boolean;
 };
 
@@ -46,7 +45,6 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
   const activePreset    = presets.find(p => p.id === activePresetId);
   const pinnedColumns   = activePreset?.pinnedColumns ?? [];
 
-  // ── Load config dari DB (tidak hardcode) ─────────────────────────────────────
   const [tableConfig, setTableConfig] = useState<DynamicTableConfig>({
     colIdPa:            "ID PA",
     colNamaPerusahaan:  "NAMA PERUSAHAAN",
@@ -76,13 +74,11 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
   const { show: showToast } = useToast();
   const editableColumns     = useAppearanceStore(s => s.editableColumns);
 
-  // ── Inline edit state ────────────────────────────────────────────────────────
   const { user }                            = useAuthStore();
   const updateCell                          = useTaskStore(s => s.updateCell);
   const [editingCell, setEditingCell]       = useState<{ rowId: number; col: string } | null>(null);
   const [editingValue, setEditingValue]     = useState("");
 
-  // ── Load preset dan editable columns dari DB saat mount ──────────────────────
   useEffect(() => {
     usePresetStore.getState().loadFromDB();
     useAppearanceStore.getState().loadEditableColumnsFromDB();
@@ -90,13 +86,11 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
 
   const role = user?.role ?? "engineer";
 
-  // PTL editable dari DB (tableConfig), bukan hardcode
   const PTL_EDITABLE = useMemo(
     () => new Set(tableConfig.ptlEditableColumns),
     [tableConfig.ptlEditableColumns]
   );
 
-  // Kolom status dan detail dari statusMaster (tidak hardcode)
   const statusColumn = statusMaster?.status_column ?? "";
   const detailColumn = statusMaster?.detail_column ?? "";
 
@@ -131,9 +125,6 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
   const [filterPos,           setFilterPos]           = useState({ top: 0, left: 0 });
   const [saving,              setSaving]              = useState(false);
 
-  // ── Build status sort index dari statusMaster.primary ────────────────────────
-  // primary[] sudah diurutkan dari backend sesuai tahapan workflow.
-  // Status yang tidak ada di primary akan muncul di tengah (index = primary.length).
   const statusSortIndex = useMemo(() => {
     const primary = statusMaster?.primary ?? [];
     const map: Record<string, number> = {};
@@ -144,20 +135,17 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
   const filteredRecords = useMemo(() => {
     let result = [...records];
 
-    // Filter
     if (Object.keys(activeFilters).length > 0) {
       result = result.filter(r =>
         Object.entries(activeFilters).every(([key, vals]) => vals.includes(String(r.data[key] || "")))
       );
     }
 
-    // Search
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(r => Object.values(r.data ?? {}).some(v => String(v).toLowerCase().includes(q)));
     }
 
-    // Sort by status workflow order (statusMaster.primary)
     if (statusColumn && statusSortIndex.unknownIndex > 0) {
       result.sort((a, b) => {
         const sa = (a.data[statusColumn] ?? "").trim();
@@ -281,7 +269,6 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
                 </thead>
                 <tbody>
                   {pagination.rows.map((r, rowIdx) => {
-                    // Pakai statusMaster?.status_column — tidak ada hardcode fallback
                     const statusCol = statusMaster?.status_column;
                     const status  = statusCol ? r.data?.[statusCol] : undefined;
                     const themeId = status ? (columnColors[status] || "gray") : "gray";
@@ -292,7 +279,6 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
                         className={`th-table-row ${rowIdx % 2 !== 0 ? "th-table-row-alt" : ""}`}
                         style={{ background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)" }}
                       >
-                        {/* Action cell — BAI + Teskom berdampingan */}
                         <td className="sticky left-0" style={{ zIndex: 10, width: 64, minWidth: 64, padding: "4px 8px", textAlign: "center", borderRight: "1px solid var(--border)", borderBottom: "1px solid var(--border)", background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)" }}>
                           <div className="flex items-center justify-center gap-1">
                             <BaiActionButton
@@ -373,7 +359,6 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
                             </td>
                           );
                         })}
-
                       </tr>
                     );
                   })}
@@ -382,7 +367,6 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
             </DndContext>
           </div>
 
-          {/* ── Pagination ── */}
           <div className="shrink-0 flex items-center justify-between px-3 py-2.5 mt-2 rounded-xl"
             style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
           >
