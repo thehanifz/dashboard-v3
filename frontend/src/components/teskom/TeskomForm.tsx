@@ -1,4 +1,4 @@
-// frontend/src/components/teskom/TeskomForm.tsx  ✏️ MODIFIED
+// frontend/src/components/teskom/TeskomForm.tsx
 import { useState, useCallback, useEffect, useRef } from "react";
 import AutoFillSearch from "./AutoFillSearch";
 import PhotoUpload from "./PhotoUpload";
@@ -6,6 +6,7 @@ import FormFields from "./forms/FormFields";
 import { FORM_REGISTRY, Tipe } from "./formRegistry";
 import teskomApi, { AutoFillResult } from "../../services/teskomApi";
 import { useAppStore } from "../../state/appStore";
+import { useAuthStore } from "../../state/authStore";
 
 interface Props {
   onToast: (msg: string, type?: "success" | "error") => void;
@@ -39,7 +40,11 @@ export default function TeskomForm({ onToast }: Props) {
   const [activeTab, setActiveTab]   = useState(TABS[0].id);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // ── Autofill dari tabel dashboard ──
+  // Role-aware autofill: ptl → autofillPtl, engineer/mitra → autofill
+  const { user } = useAuthStore();
+  const isPtl    = user?.role === "ptl";
+
+  // Autofill dari tabel dashboard (deep-link)
   const teskomAutofillId  = useAppStore((s) => s.teskomAutofillId);
   const setTeskomAutofill = useAppStore((s) => s.setTeskomAutofill);
 
@@ -93,15 +98,21 @@ export default function TeskomForm({ onToast }: Props) {
     }));
   }, []);
 
-  // ── Saat halaman dibuka dari tombol tabel — jalankan autofill otomatis ──
+  // ── Autofill berdasarkan role saat halaman dibuka dari tabel ──
   useEffect(() => {
     if (!teskomAutofillId) return;
     const idPa = teskomAutofillId;
     setTeskomAutofill(null); // clear segera agar tidak trigger ulang
-    teskomApi.autofill(idPa)
+
+    const fetchFn = isPtl
+      ? teskomApi.autofillPtl(idPa)
+      : teskomApi.autofill(idPa);
+
+    fetchFn
       .then((result) => {
         handleAutofill(result.autofill);
-        onToast(`Data "${idPa}" berhasil dimuat dari GSheet`, "success");
+        const src = isPtl ? "GSheet PTL" : "database";
+        onToast(`Data "${idPa}" berhasil dimuat dari ${src}`, "success");
       })
       .catch(() => {
         onToast(`Gagal autofill ID PA "${idPa}"`, "error");
@@ -168,7 +179,6 @@ export default function TeskomForm({ onToast }: Props) {
     }
   };
 
-  // Judul dokumentasi dinamis dari nama lokasi
   const judulT = form.nama_t ? `Dokumentasi Termi (${form.nama_t})` : "Foto Dokumentasi Terminating";
   const judulO = form.nama_o ? `Dokumentasi Ori (${form.nama_o})`   : "Foto Dokumentasi Originating";
 
@@ -196,7 +206,12 @@ export default function TeskomForm({ onToast }: Props) {
 
       {/* ── Header ── */}
       <div className="flex items-center justify-between mb-3 shrink-0">
-        <h2 className="font-bold text-base">Form Test Commissioning</h2>
+        <div>
+          <h2 className="font-bold text-base">Form Test Commissioning</h2>
+          <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+            {isPtl ? "Sumber data: GSheet PTL" : "Sumber data: database"}
+          </p>
+        </div>
         <button onClick={handleGenerate} disabled={generating}
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white"
           style={{ background: "var(--accent)", opacity: generating ? 0.6 : 1 }}>

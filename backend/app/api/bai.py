@@ -1,23 +1,28 @@
 """
 bai.py
 API endpoint untuk generate dokumen BAI (Berita Acara Instalasi).
-Data diambil otomatis dari GSheet berdasarkan row_id.
-Khusus tipe Terminating (T), tanpa upload foto.
+
+Sumber data:
+  - engineer / mitra → PostgreSQL (tabel pa_records, lookup by gsheet_row)
+  - ptl             → GSheet milik PTL masing-masing
+
+Auth guard:
+  - POST /generate/{row_id}      → engineer | mitra
+  - POST /generate-ptl/{row_id}  → ptl
 """
 import logging
 from datetime import datetime
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
-from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.core.deps import require_role
 from app.db.database import get_db
-from app.db.models import User
-from app.services.sheet_reader import read_sheet
+from app.db.models import User, PARecord
 from app.services.bai_renderer import render_bai
 from app.services.sync_engine import read_ptl_sheet
 from app.utils.file_helper import create_tmp_dir, cleanup_tmp_dir
@@ -48,8 +53,35 @@ class BaiGeneratePayload(BaseModel):
     tanggal_bai: str | None = None  # YYYY-MM-DD, default = hari ini
 
 
-def _build_bai_context(data: dict, tanggal_bai_str: str) -> dict:
-    """Shared mapping field → context BAI."""
+def _build_bai_context_from_pa_record(record: PARecord, tanggal_bai_str: str) -> dict:
+    """Mapping PARecord (PostgreSQL) → context BAI."""
+    return {
+        "tanggal_bai":       tanggal_bai_str,
+        "no_pa":             record.id_pa or "",
+        "sid":               record.service_id or "",
+        "user":              record.nama_customer or "",
+        "nama_layanan":      record.nama_produk or "",
+        "bandwidth":         record.bandwidth or "",
+        "no_surat":          record.id_permohonan or "",
+        "vendor_instalasi":  "",  # tidak ada di PARecord, biarkan kosong
+        "project_team":      record.nama_ptl or "",
+        "nama_t":            record.alamat or "",
+        "nama_o":            "",  # originating tidak ada di PARecord
+        "sbu_terminating":   "",
+        "kp_terminating":    record.kp_node or "",
+        "pop_terminating":   "",
+        "sbu_originating":   "",
+        "kp_originating":    "",
+        "pop_originating":   "",
+        "regional":          "",
+        "kantor_perwakilan": "",
+        "nomor_io":          record.nomor_io or "",
+        "jenis_mutasi":      record.jenis_pekerjaan or "",
+    }
+
+
+def _build_bai_context_from_sheet(data: dict, tanggal_bai_str: str) -> dict:
+    """Mapping record GSheet PTL → context BAI (khusus PTL)."""
     import re as _re
     keterangan = data.get("KETERANGAN", "")
     bandwidth  = ""
@@ -81,46 +113,48 @@ def _build_bai_context(data: dict, tanggal_bai_str: str) -> dict:
     }
 
 
+# ── POST /bai/generate/{row_id} — BAI dari PostgreSQL (engineer | mitra) ──────
 @router.post("/generate/{row_id}")
-async def generate_bai(row_id: int, payload: BaiGeneratePayload):
+async def generate_bai(
+    row_id: int,
+    payload: BaiGeneratePayload,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("engineer", "mitra")),
+):
     """
-    Generate dokumen BAI dari data GSheet berdasarkan row_id.
-    Tanggal BAI opsional — default hari ini jika tidak diisi.
+    Generate dokumen BAI dari data PostgreSQL berdasarkan gsheet_row.
+    Hanya bisa diakses oleh role engineer dan mitra.
     """
     if row_id < 2:
         raise HTTPException(status_code=400, detail="row_id harus >= 2")
 
-    # Ambil data dari GSheet
-    sheet_data = read_sheet()
-    record = next((r for r in sheet_data["records"] if r["row_id"] == row_id), None)
+    result = await db.execute(
+        select(PARecord).where(PARecord.gsheet_row == row_id)
+    )
+    record = result.scalar_one_or_none()
 
     if not record:
         raise HTTPException(status_code=404, detail=f"Data baris {row_id} tidak ditemukan")
-
-    data = record["data"]
 
     tgl_raw = (payload.tanggal_bai or "").strip()
     if not tgl_raw:
         tgl_raw = datetime.now().strftime("%Y-%m-%d")
     tanggal_bai_str = format_date_id(tgl_raw)
-    context = _build_bai_context(data, tanggal_bai_str)
+    context = _build_bai_context_from_pa_record(record, tanggal_bai_str)
 
-    log.info("[bai] generate row_id=%d no_pa=%s", row_id, context["no_pa"])
+    log.info("[bai] generate row_id=%d user=%s no_pa=%s", row_id, current_user.username, context["no_pa"])
 
     tmp_dir = create_tmp_dir()
     try:
         output_path = render_bai(context=context, tmp_dir=tmp_dir)
-
-        pa_clean   = context["no_pa"].replace("/", "-").replace(" ", "_") or f"row{row_id}"
-        filename   = f"BAI_{pa_clean}.docx"
-
+        pa_clean    = context["no_pa"].replace("/", "-").replace(" ", "_") or f"row{row_id}"
+        filename    = f"BAI_{pa_clean}.docx"
         return FileResponse(
             path=output_path,
             filename=filename,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             background=BackgroundTask(cleanup_tmp_dir, tmp_dir),
         )
-
     except FileNotFoundError as e:
         cleanup_tmp_dir(tmp_dir)
         raise HTTPException(status_code=500, detail=str(e))
@@ -163,7 +197,7 @@ async def generate_bai_ptl(
     if not tgl_raw:
         tgl_raw = datetime.now().strftime("%Y-%m-%d")
     tanggal_bai_str = format_date_id(tgl_raw)
-    context = _build_bai_context(record["data"], tanggal_bai_str)
+    context = _build_bai_context_from_sheet(record["data"], tanggal_bai_str)
 
     log.info("[bai-ptl] generate row_id=%d user=%s no_pa=%s", row_id, current_user.username, context["no_pa"])
 

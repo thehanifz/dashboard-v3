@@ -1,21 +1,31 @@
-# backend/app/api/teskom.py  ✏️ MODIFIED — validasi pakai registry
+# backend/app/api/teskom.py
 """
 teskom.py — API endpoint Test Commissioning
+
+Sumber data:
+  - engineer / mitra → PostgreSQL (tabel pa_records)
+  - ptl             → GSheet milik PTL masing-masing
+
+Auth guard:
+  - GET  /autofill/{id_pa}      → engineer | mitra
+  - GET  /autofill-ptl/{id_pa}  → ptl
+  - POST /generate              → engineer | mitra | ptl
 """
 import re, logging
 from datetime import datetime
 from typing import Optional, List
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from fastapi.responses import FileResponse, JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from starlette.background import BackgroundTask
 
-from fastapi import Depends
 from app.core.config import MAX_UPLOAD_BYTES
 from app.core.deps import require_role
-from app.db.models import User
+from app.db.database import get_db
+from app.db.models import User, PARecord
 from app.services.renderer_registry import is_supported, all_kategori
-from app.services.sheet_reader import find_record_by_id_pa
 from app.services.sync_engine import read_ptl_sheet
 from app.services.doc_renderer import render_doc
 from app.utils.file_helper import create_tmp_dir, cleanup_tmp_dir, validate_image_file
@@ -62,8 +72,32 @@ def check_file_opt(upload: Optional[UploadFile], field_name: str):
         raise HTTPException(status_code=422, detail=f"[{field_name}] {err}")
 
 
-def _build_autofill_response(record: dict) -> dict:
-    """Shared mapping record → autofill payload."""
+def _build_autofill_from_pa_record(record: PARecord) -> dict:
+    """Mapping PARecord (PostgreSQL) → autofill payload."""
+    return {
+        "ok": True,
+        "id_pa": record.id_pa or "",
+        "row_id": record.gsheet_row,
+        "autofill": {
+            "no_pa":              record.id_pa or "",
+            "no_pa_raw":          record.id_pa or "",
+            "sid":                record.service_id or "",
+            "user":               record.nama_customer or "",
+            "nama_layanan":       record.nama_produk or "",
+            "bandwidth":          record.bandwidth or "",
+            "no_surat":           record.id_permohonan or "",
+            "vendor_instalasi":   "",  # tidak ada di PARecord, diisi manual
+            "project_team":       record.nama_ptl or "",
+            "nama_t":             record.alamat or "",
+            "nama_o":             "",  # originating tidak ada di PARecord
+            "alamat_kantor_user": record.alamat or "",
+            "tgl_terbit_pa":      record.tgl_terbit_pa.strftime("%Y-%m-%d") if record.tgl_terbit_pa else "",
+        },
+    }
+
+
+def _build_autofill_from_sheet_record(record: dict) -> dict:
+    """Mapping record GSheet PTL → autofill payload (khusus PTL)."""
     data = record["data"]
     return {
         "ok": True,
@@ -87,23 +121,36 @@ def _build_autofill_response(record: dict) -> dict:
     }
 
 
+# ── GET /teskom/autofill/{id_pa} — autofill dari PostgreSQL (engineer | mitra) ──
 @router.get("/autofill/{id_pa}")
-def autofill_from_gsheet(id_pa: str):
-    record = find_record_by_id_pa(id_pa)
+async def autofill_from_postgres(
+    id_pa: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("engineer", "mitra")),
+):
+    """
+    Autofill Teskom dari PostgreSQL (tabel pa_records).
+    Hanya bisa diakses oleh role engineer dan mitra.
+    """
+    result = await db.execute(
+        select(PARecord).where(PARecord.id_pa == id_pa.strip())
+    )
+    record = result.scalar_one_or_none()
+
     if not record:
         raise HTTPException(status_code=404, detail=f"ID PA '{id_pa}' tidak ditemukan")
-    return JSONResponse(content=_build_autofill_response(record))
+
+    return JSONResponse(content=_build_autofill_from_pa_record(record))
 
 
-# ── GET /teskom/autofill-ptl/{id_pa} — autofill dari GSheet PTL ────────────
+# ── GET /teskom/autofill-ptl/{id_pa} — autofill dari GSheet PTL ──────────────
 @router.get("/autofill-ptl/{id_pa}")
-def autofill_from_ptl_gsheet(
+async def autofill_from_ptl_gsheet(
     id_pa: str,
     current_user: User = Depends(require_role("ptl")),
 ):
     """
     Autofill Teskom dari GSheet milik PTL yang sedang login.
-    Mencari record berdasarkan ID PA di GSheet PTL.
     """
     if not current_user.gsheet_url:
         raise HTTPException(status_code=400, detail="GSheet PTL belum dikonfigurasi")
@@ -125,9 +172,10 @@ def autofill_from_ptl_gsheet(
     if not record:
         raise HTTPException(status_code=404, detail=f"ID PA '{id_pa}' tidak ditemukan di GSheet PTL")
 
-    return JSONResponse(content=_build_autofill_response(record))
+    return JSONResponse(content=_build_autofill_from_sheet_record(record))
 
 
+# ── POST /teskom/generate — generate dokumen (engineer | mitra | ptl) ─────────
 @router.post("/generate")
 async def generate_teskom(
     tipe:               str = Form(...),
@@ -171,8 +219,8 @@ async def generate_teskom(
     foto_speedtest:     Optional[UploadFile] = File(None),
     foto_bert:          List[UploadFile] = File(default=[]),
     foto_otdr:          List[UploadFile] = File(default=[]),
+    current_user: User = Depends(require_role("engineer", "mitra", "ptl")),
 ):
-    # ── Validasi dinamis dari registry ──
     if not is_supported(kategori_layanan, tipe):
         valid = all_kategori()
         raise HTTPException(
