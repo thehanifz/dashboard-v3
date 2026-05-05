@@ -41,7 +41,7 @@ class GeneralUpdatePayload(BaseModel):
 
 @router.get("/")
 async def get_records(
-    current_user: User = Depends(require_role("engineer")),
+    current_user: User = Depends(require_role("engineer", "mitra")),
     db: AsyncSession = Depends(get_db),
 ):
     """Engineer: baca data dari PostgreSQL."""
@@ -104,7 +104,7 @@ async def update_record_status_by_id(
 async def update_record_status(
     row_id: int,
     payload: StatusUpdatePayload,
-    current_user: User = Depends(require_role("engineer")),
+    current_user: User = Depends(require_role("engineer", "mitra")),
     db: AsyncSession = Depends(get_db),
 ):
     """Update status by gsheet row_id (Engineer)."""
@@ -152,7 +152,7 @@ async def update_record_status(
 async def update_record_cells(
     row_id: int,
     payload: GeneralUpdatePayload,
-    current_user: User = Depends(require_role("engineer")),
+    current_user: User = Depends(require_role("engineer", "mitra")),
     db: AsyncSession = Depends(get_db),
 ):
     """Update cell(s) by row_id — Engineer menulis ke PostgreSQL."""
