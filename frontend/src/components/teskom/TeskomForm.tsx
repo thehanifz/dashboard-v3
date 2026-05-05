@@ -117,7 +117,7 @@ export default function TeskomForm({ onToast }: Props) {
       .catch(() => {
         onToast(`Gagal autofill ID PA "${idPa}"`, "error");
       });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [teskomAutofillId, isPtl]); // eslint-disable-line react-hooks/exhaustive-deps
   // sengaja deps kosong — hanya jalan sekali saat mount
 
   // IntersectionObserver — tab aktif ikut scroll
