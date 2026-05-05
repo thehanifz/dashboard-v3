@@ -15,7 +15,7 @@ import re, logging
 from datetime import datetime
 from typing import Optional, List
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Query
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -125,20 +125,31 @@ def _build_autofill_from_sheet_record(record: dict) -> dict:
 @router.get("/autofill/{id_pa}")
 async def autofill_from_postgres(
     id_pa: str,
+    node: str = Query(default="TERMINATING", description="Node: TERMINATING atau ORIGINATING"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("engineer", "mitra")),
 ):
     """
     Autofill Teskom dari PostgreSQL (tabel pa_records).
     Hanya bisa diakses oleh role engineer dan mitra.
+    Query param ?node=TERMINATING (default) atau ?node=ORIGINATING.
     """
-    result = await db.execute(
-        select(PARecord).where(PARecord.id_pa == id_pa.strip())
-    )
-    record = result.scalar_one_or_none()
+    node_upper = node.strip().upper()
+
+    stmt = select(PARecord).where(PARecord.id_pa == id_pa.strip())
+
+    # Filter node jika kolom ada di model
+    if hasattr(PARecord, "node"):
+        stmt = stmt.where(PARecord.node == node_upper)
+
+    result = await db.execute(stmt)
+    record = result.scalars().first()
 
     if not record:
-        raise HTTPException(status_code=404, detail=f"ID PA '{id_pa}' tidak ditemukan")
+        raise HTTPException(
+            status_code=404,
+            detail=f"ID PA '{id_pa}' node '{node_upper}' tidak ditemukan"
+        )
 
     return JSONResponse(content=_build_autofill_from_pa_record(record))
 
