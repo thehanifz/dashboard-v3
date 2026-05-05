@@ -1,7 +1,7 @@
 """
 records/mitra.py
 Endpoint Mitra:
-  GET  /records                 → baca GSheet (filter by nama mitra)
+  GET  /records/                → baca GSheet (filter by nama mitra)
   POST /records/{row_id}/status → update status (validasi ownership)
   POST /records/{row_id}/cells  → update cell (validasi whitelist + ownership)
 """
@@ -43,7 +43,7 @@ def _filter_mitra(sheet_data: dict, user: User) -> dict:
     return {**sheet_data, "records": filtered}
 
 
-@router.get("")
+@router.get("/")
 async def get_records_mitra(
     current_user: User = Depends(require_role("mitra")),
 ):
@@ -63,7 +63,6 @@ async def update_status_mitra(
     if row_id < 2:
         raise HTTPException(status_code=400, detail="row_id harus >= 2")
 
-    # Validasi ownership
     sheet_data = read_sheet()
     record = next((r for r in sheet_data["records"] if r["row_id"] == row_id), None)
     if record:
@@ -71,7 +70,6 @@ async def update_status_mitra(
         if owner != current_user.nama_lengkap.strip().lower():
             raise HTTPException(status_code=403, detail="Akses ditolak — bukan data milikmu")
 
-    # Legacy: JSON payload dalam field detail
     if payload.detail and payload.detail.startswith("{"):
         try:
             updates = json.loads(payload.detail)
@@ -110,7 +108,6 @@ async def update_cells_mitra(
     if row_id < 2:
         raise HTTPException(status_code=400, detail="row_id harus >= 2")
 
-    # Validasi whitelist kolom
     mitra_config       = await get_config(db, "mitra")
     db_editable        = set(mitra_config.editable_columns) if mitra_config else set()
     allowed_mitra_cols = MITRA_EDITABLE_WHITELIST & db_editable
@@ -121,7 +118,6 @@ async def update_cells_mitra(
             detail=f"Mitra tidak diizinkan edit kolom: {invalid_cols}.",
         )
 
-    # Validasi ownership
     sheet_data = read_sheet()
     record = next((r for r in sheet_data["records"] if r["row_id"] == row_id), None)
     if record:
@@ -129,16 +125,13 @@ async def update_cells_mitra(
         if owner != current_user.nama_lengkap.strip().lower():
             raise HTTPException(status_code=403, detail="Akses ditolak — bukan data milikmu")
 
-    # Validasi kolom ada di header GSheet
     if sheet_data["columns"]:
         invalid = [col for col in payload.updates if col not in sheet_data["columns"]]
         if invalid:
             raise HTTPException(status_code=400, detail=f"Kolom tidak valid: {invalid}")
 
-    # Tulis ke GSheet
     update_cells(row_id=row_id, updates=payload.updates)
 
-    # Catat sync_log
     if record:
         id_pa = record["data"].get("ID PA", str(row_id))
         for field, new_val in payload.updates.items():

@@ -1,7 +1,7 @@
 """
 records/engineer.py
 Endpoint Engineer:
-  GET  /records                  → baca data dari PostgreSQL
+  GET  /records/                 → baca data dari PostgreSQL
   POST /records/{row_id}/status  → update status (Engineer)
   POST /records/{row_id}/cells   → update cell umum (Engineer, tulis ke PG)
   POST /records/by-id/{record_id}/status → update via record_id string
@@ -39,7 +39,7 @@ class GeneralUpdatePayload(BaseModel):
     updates: dict[str, str]
 
 
-@router.get("")
+@router.get("/")
 async def get_records(
     current_user: User = Depends(require_role("engineer")),
     db: AsyncSession = Depends(get_db),
@@ -155,7 +155,7 @@ async def update_record_cells(
     current_user: User = Depends(require_role("engineer")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update cell(s) by row_id — Engineer menulis ke PostgreSQL (bukan GSheet)."""
+    """Update cell(s) by row_id — Engineer menulis ke PostgreSQL."""
     if row_id < 2:
         raise HTTPException(status_code=400, detail="row_id harus >= 2")
 
@@ -171,7 +171,6 @@ async def update_record_cells(
 
         old_val = getattr(pa_rec, db_col, None)
 
-        # Konversi tipe data
         if db_col in DATE_COLS:
             if new_val:
                 for fmt in ["%Y-%m-%d %H:%M", "%Y-%m-%d", "%d/%m/%Y"]:
