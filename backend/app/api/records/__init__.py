@@ -15,6 +15,8 @@ from .mitra    import router as _mitra_router
 router = APIRouter(tags=["records"])
 
 # PTL harus di-include PERTAMA agar /ptl-sheet tidak tertangkap oleh /{row_id}
+# engineer_router punya GET "/" — prefix="/" agar tidak crash
+# (FastAPI tidak mengizinkan prefix="" + path="" keduanya kosong sekaligus)
 router.include_router(_ptl_router)
-router.include_router(_engineer_router)
+router.include_router(_engineer_router, prefix="/")
 router.include_router(_mitra_router)

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import api from "../services/api";
 
-// ─── Types ─────────────────────────────────────────────────────────────────────────
+// ─── Types ─────────────────────────────────────────────────────────────────────────────────────
 export interface RecordRow {
   row_id: number;
   data: Record<string, string>;
@@ -57,10 +57,10 @@ export interface SheetRecord {
   data:   Record<string, string>;
 }
 
-// ─── Debounce Timer (module-level, per-row) ─────────────────────────────────────
+// ─── Debounce Timer (module-level, per-row) ────────────────────────────────────────────────
 const statusTimer: Record<number, ReturnType<typeof setTimeout>> = {};
 
-// ─── Store ────────────────────────────────────────────────────────────────────────
+// ─── Store ─────────────────────────────────────────────────────────────────────────────────────
 export const useTaskStore = create<TaskState>((set, get) => ({
   columns: [],
   records: [],
@@ -77,8 +77,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   setRecords: (records) => set({ records }),
 
   fetchRecords: async () => {
-    console.log("[taskStore] Fetching /records...");
-    const res = await api.get("/records");
+    console.log("[taskStore] Fetching /records/...");
+    // Trailing slash wajib — backend route terdaftar sebagai GET /api/records/
+    // redirect_slashes=False di FastAPI → tanpa slash akan 404, bukan redirect
+    const res = await api.get("/records/");
     console.log("[taskStore] Records response:", res.data);
     set({
       columns: res.data.columns ?? [],
@@ -101,7 +103,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }
   },
 
-  // ─── Refresh All (manual & auto) ───────────────────────────────────────────────
+  // ─── Refresh All (manual & auto) ───────────────────────────────────────────────────────────
   refreshAll: async () => {
     console.log("[taskStore] refreshAll called");
     set({ isLoading: true });
@@ -135,7 +137,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     });
   },
 
-  // ─── Update Status (optimistic + debounce) ────────────────────────────────────────
+  // ─── Update Status (optimistic + debounce) ────────────────────────────────────────────────────────
   updateStatus: async (rowId, status, detail) => {
     const { statusMaster, records } = get();
     // Pakai nilai dari statusMaster (API) tanpa hardcode fallback.
@@ -173,7 +175,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }, 400);
   },
 
-  // ─── Update Cell (optimistic + debounce) ──────────────────────────────────────────
+  // ─── Update Cell (optimistic + debounce) ──────────────────────────────────────────────────────────
   updateCell: async (rowId, column, value) => {
     const { records } = get();
 
