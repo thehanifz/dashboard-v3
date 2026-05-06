@@ -8,11 +8,12 @@ interface Props {
 }
 
 export default function AutoFillSearch({ onAutofill, onToast }: Props) {
-  const [query, setQuery]     = useState("");
+  const [query, setQuery]   = useState("");
+  const [node, setNode]     = useState<"TERMINATING" | "ORIGINATING">("TERMINATING");
   const [loading, setLoading] = useState(false);
 
-  const { user }  = useAuthStore();
-  const isPtl     = user?.role === "ptl";
+  const { user }    = useAuthStore();
+  const isPtl       = user?.role === "ptl";
   const sourceLabel = isPtl ? "GSheet PTL" : "database";
 
   const handleSearch = async () => {
@@ -20,13 +21,15 @@ export default function AutoFillSearch({ onAutofill, onToast }: Props) {
     if (!trimmed) return;
     setLoading(true);
     try {
-      // Pilih endpoint berdasarkan role
       const result = isPtl
         ? await teskomApi.autofillPtl(trimmed)
-        : await teskomApi.autofill(trimmed);
+        : await teskomApi.autofill(trimmed, node);
 
       onAutofill(result.autofill);
-      onToast(`Data ID PA "${trimmed}" berhasil dimuat dari ${sourceLabel}`, "success");
+      onToast(
+        `Data ID PA "${trimmed}" (${node}) berhasil dimuat dari ${sourceLabel}`,
+        "success"
+      );
     } catch (err: any) {
       const msg = err?.response?.data?.detail || `ID PA "${trimmed}" tidak ditemukan`;
       onToast(msg, "error");
@@ -67,6 +70,26 @@ export default function AutoFillSearch({ onAutofill, onToast }: Props) {
           onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
           onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
         />
+
+        {/* Node selector — hanya tampil untuk non-PTL */}
+        {!isPtl && (
+          <select
+            value={node}
+            onChange={(e) => setNode(e.target.value as "TERMINATING" | "ORIGINATING")}
+            className="px-3 py-2 rounded-lg text-sm border"
+            style={{
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border)",
+              color: "var(--text-primary)",
+              outline: "none",
+              cursor: "pointer",
+            }}
+          >
+            <option value="TERMINATING">TERMINATING</option>
+            <option value="ORIGINATING">ORIGINATING</option>
+          </select>
+        )}
+
         <button
           onClick={handleSearch}
           disabled={loading || !query.trim()}

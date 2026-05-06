@@ -22,9 +22,11 @@ export interface AutoFillResult {
 }
 
 const teskomApi = {
-  /** Autofill dari GSheet Engineer (engineer / mitra role). */
-  autofill: (idPa: string): Promise<AutoFillResult> =>
-    api.get(`/teskom/autofill/${encodeURIComponent(idPa)}`).then((r) => r.data),
+  /** Autofill dari database (engineer / mitra role). node: TERMINATING | ORIGINATING */
+  autofill: (idPa: string, node: string = "TERMINATING"): Promise<AutoFillResult> =>
+    api
+      .get(`/teskom/autofill/${encodeURIComponent(idPa)}`, { params: { node } })
+      .then((r) => r.data),
 
   /** Autofill dari GSheet PTL milik sendiri (ptl role). */
   autofillPtl: (idPa: string): Promise<AutoFillResult> =>
