@@ -3,16 +3,25 @@
  * Halaman Engineer untuk monitor dan trigger Sync Engine.
  */
 import { useEffect, useState } from "react";
-import { syncApi, SyncLog, SyncMismatch, SyncResult } from "../services/syncApi";
+import { syncApi, SyncLog, SyncMismatch, SyncResult, ImportResult } from "../services/syncApi";
 import { useAppStore } from "../state/appStore";
 
-type Tab = "overview" | "logs" | "mismatches";
+type Tab = "overview" | "import" | "logs" | "mismatches";
 
 export default function SyncDashboardPage() {
-  const { setPage }                           = useAppStore();
+  const { setPage, user }                     = useAppStore();
   const [tab, setTab]                         = useState<Tab>("overview");
+
+  // Sync PTL state
   const [syncing, setSyncing]                 = useState(false);
   const [syncResult, setSyncResult]           = useState<any>(null);
+
+  // Import GSheet state
+  const [importing, setImporting]             = useState(false);
+  const [importResult, setImportResult]       = useState<ImportResult | null>(null);
+  const [importError, setImportError]         = useState("");
+
+  // Logs & mismatches state
   const [logs, setLogs]                       = useState<SyncLog[]>([]);
   const [mismatches, setMismatches]           = useState<SyncMismatch[]>([]);
   const [loadingLogs, setLoadingLogs]         = useState(false);
@@ -62,6 +71,21 @@ export default function SyncDashboardPage() {
     }
   };
 
+  const handleImport = async () => {
+    try {
+      setImporting(true);
+      setImportError("");
+      setImportResult(null);
+      const result = await syncApi.importFromSheet();
+      setImportResult(result);
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail;
+      setImportError(typeof msg === "string" ? msg : "Gagal import dari GSheet");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const handleDismiss = async (id: number) => {
     try {
       await syncApi.dismissMismatch(id);
@@ -73,9 +97,12 @@ export default function SyncDashboardPage() {
 
   const TABS: { id: Tab; label: string }[] = [
     { id: "overview",   label: "Overview" },
+    { id: "import",     label: "Import PA" },
     { id: "logs",       label: "Sync Logs" },
     { id: "mismatches", label: `Mismatches${mismatches.length > 0 ? ` (${mismatches.length})` : ""}` },
   ];
+
+  const isEngineer = user?.role === "engineer";
 
   return (
     <div className="p-4 lg:p-6 space-y-5 max-w-6xl">
@@ -97,33 +124,35 @@ export default function SyncDashboardPage() {
           >
             ← Kembali
           </button>
-          <button
-            onClick={handleRunAll}
-            disabled={syncing}
-            className="rounded-xl px-5 py-2 text-sm font-medium text-white transition flex items-center gap-2"
-            style={{ background: syncing ? "var(--text-muted)" : "var(--accent)", cursor: syncing ? "not-allowed" : "pointer" }}
-          >
-            {syncing ? (
-              <>
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                </svg>
-                Syncing...
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Sync Semua PTL
-              </>
-            )}
-          </button>
+          {tab === "overview" && isEngineer && (
+            <button
+              onClick={handleRunAll}
+              disabled={syncing}
+              className="rounded-xl px-5 py-2 text-sm font-medium text-white transition flex items-center gap-2"
+              style={{ background: syncing ? "var(--text-muted)" : "var(--accent)", cursor: syncing ? "not-allowed" : "pointer" }}
+            >
+              {syncing ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Sync Semua PTL
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Error */}
+      {/* Error global */}
       {error && (
         <div className="rounded-xl px-4 py-3 text-sm border"
           style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444", borderColor: "rgba(239,68,68,0.3)" }}>
@@ -132,7 +161,7 @@ export default function SyncDashboardPage() {
       )}
 
       {/* Sync Result Banner */}
-      {syncResult && (
+      {syncResult && tab === "overview" && (
         <div className="rounded-xl px-4 py-3 border space-y-1"
           style={{ background: "rgba(16,185,129,0.08)", borderColor: "rgba(16,185,129,0.3)" }}>
           <p className="text-sm font-semibold" style={{ color: "#10b981" }}>
@@ -234,6 +263,116 @@ export default function SyncDashboardPage() {
               <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
                 Klik tombol "Sync Semua PTL" untuk mulai
               </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Import PA */}
+      {tab === "import" && (
+        <div className="space-y-4">
+          {/* Info card */}
+          <div className="rounded-2xl border p-5 space-y-3"
+            style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+            <div>
+              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                Import PA dari Google Sheet
+              </p>
+              <p className="text-xs mt-1" style={{ color: "var(--text-secondary)" }}>
+                Membaca data terbaru dari GSheet dan menambahkan ID PA baru ke database.
+              </p>
+            </div>
+            <ul className="text-xs space-y-1" style={{ color: "var(--text-muted)" }}>
+              <li>✓ Hanya INSERT baris yang belum ada di database</li>
+              <li>✓ Data lama tidak diubah</li>
+              <li>✓ <b>TGL UPLOAD BAI</b> akan di-update jika berubah di GSheet</li>
+              <li>✓ Filter: AKTIVASI · RETENDER · UPGRADE · DOWNGRADE · RELOKASI</li>
+            </ul>
+            {isEngineer ? (
+              <button
+                onClick={handleImport}
+                disabled={importing}
+                className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium text-white transition"
+                style={{
+                  background: importing ? "var(--text-muted)" : "var(--accent)",
+                  cursor: importing ? "not-allowed" : "pointer",
+                  width: "fit-content",
+                }}
+              >
+                {importing ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    Mengimport...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Import dari GSheet
+                  </>
+                )}
+              </button>
+            ) : (
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                Hanya Engineer yang dapat menjalankan import.
+              </p>
+            )}
+          </div>
+
+          {/* Error import */}
+          {importError && (
+            <div className="rounded-xl px-4 py-3 text-sm border"
+              style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444", borderColor: "rgba(239,68,68,0.3)" }}>
+              {importError}
+            </div>
+          )}
+
+          {/* Result */}
+          {importResult && (
+            <div className="space-y-3">
+              <div className="rounded-xl px-4 py-3 border"
+                style={{ background: "rgba(16,185,129,0.08)", borderColor: "rgba(16,185,129,0.3)" }}>
+                <p className="text-sm font-semibold" style={{ color: "#10b981" }}>
+                  ✓ Import selesai — {(importResult.duration_ms / 1000).toFixed(1)}s
+                </p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: "Inserted",     value: importResult.inserted,    color: "#10b981" },
+                  { label: "Updated BAI",  value: importResult.updated_bai, color: "#3b82f6" },
+                  { label: "Skipped",      value: importResult.skipped,     color: "var(--text-muted)" },
+                ].map((stat) => (
+                  <div key={stat.label} className="rounded-2xl border p-4 text-center"
+                    style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>{stat.label}</p>
+                    <p className="text-2xl font-bold mt-1" style={{ color: stat.color }}>{stat.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {importResult.errors.length > 0 && (
+                <div className="rounded-xl border p-4"
+                  style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+                  <p className="text-xs font-semibold mb-2" style={{ color: "#f59e0b" }}>
+                    ⚠ {importResult.errors.length} baris gagal diproses
+                  </p>
+                  <ul className="space-y-1">
+                    {importResult.errors.slice(0, 10).map((e, i) => (
+                      <li key={i} className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{e}</li>
+                    ))}
+                    {importResult.errors.length > 10 && (
+                      <li className="text-xs" style={{ color: "var(--text-muted)" }}>
+                        ... dan {importResult.errors.length - 10} error lainnya
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
         </div>

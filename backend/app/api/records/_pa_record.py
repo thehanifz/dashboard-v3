@@ -6,10 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.db.models import PARecord
+from app.services.aging import calculate_aging_days
 
 # ── Mapping: kolom DB PostgreSQL → nama kolom tampilan (frontend / GSheet) ──
-# CATATAN: "Status Pekerjaan" & "Detail Progres" harus match dengan sheet Opsi
-# CATATAN: "Status PA" harus match dengan setting dashboard_settings.col_status_pa
 PA_RECORD_COL_DISPLAY: dict[str, str] = {
     "id_pa":             "ID PA",
     "node":              "NODE",
@@ -57,21 +56,43 @@ DATE_COLS = {"tgl_terbit_pa", "tgl_bai", "tgl_upload_bai"}
 FLOAT_COLS = {"latitude", "longitude", "aging_non_sc", "aging_sc"}
 
 
+def _fmt_date(val) -> str:
+    """Format datetime object ke string. Return '' jika None."""
+    if val is None:
+        return ""
+    if hasattr(val, "strftime"):
+        return (
+            val.strftime("%Y-%m-%d %H:%M")
+            if (val.hour or val.minute)
+            else val.strftime("%Y-%m-%d")
+        )
+    return str(val)
+
+
 def _pa_record_to_dict(rec: PARecord) -> dict:
     """Konversi PARecord SQLAlchemy → format {id, row_id, data} (sama dengan format GSheet)."""
     data: dict[str, str] = {}
+
     for db_col, display_name in PA_RECORD_COL_DISPLAY.items():
+        # Aging PA — dihitung live dari tgl_terbit_pa, bukan dari kolom DB
+        if db_col == "aging_pa":
+            tgl_str = _fmt_date(rec.tgl_terbit_pa)
+            aging = calculate_aging_days(
+                tgl_terbit_str=tgl_str,
+                tgl_upload_bai=rec.tgl_upload_bai,
+                kategori_status=rec.kategori_status,
+            )
+            data[display_name] = str(aging) if aging >= 0 else "-"
+            continue
+
         val = getattr(rec, db_col, None)
         if val is None:
             data[display_name] = ""
         elif hasattr(val, "strftime"):
-            data[display_name] = (
-                val.strftime("%Y-%m-%d %H:%M")
-                if (val.hour or val.minute)
-                else val.strftime("%Y-%m-%d")
-            )
+            data[display_name] = _fmt_date(val)
         else:
             data[display_name] = str(val)
+
     return {
         "id":     f"rec_{rec.gsheet_row}",
         "row_id": rec.gsheet_row,

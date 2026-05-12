@@ -1,44 +1,76 @@
 """
 aging.py
-Hitung aging (durasi berjalan) dari TGL TERBIT PA sampai hari ini.
-Menggantikan kolom DURASI yang tidak update di GSheet.
+Hitung aging (durasi berjalan) dari TGL TERBIT PA.
+
+Dua rumus:
+  - PA on-progress : tgl_terbit_pa → hari ini (live)
+  - PA Done BAI    : tgl_terbit_pa → tgl_upload_bai (beku)
 """
 from datetime import datetime
+from typing import Optional
 
 
-def calculate_aging(tgl_terbit_str: str) -> str:
-    """
-    Hitung aging dari tanggal terbit PA hingga sekarang.
-    Format input: '2025-11-05 10:52' atau '2025-11-05' atau '05/11/2025'
-    Format output: 'X Hari Y Jam Z Menit' atau '-' jika gagal parse
-    """
-    if not tgl_terbit_str or not tgl_terbit_str.strip():
-        return "-"
-
-    tgl_str = tgl_terbit_str.strip()
-    tgl = None
-
+def _parse_tgl(tgl_str: str) -> Optional[datetime]:
+    """Parse string tanggal ke datetime. Return None jika gagal."""
+    if not tgl_str or not tgl_str.strip():
+        return None
     for fmt in ["%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y %H:%M", "%d/%m/%Y"]:
         try:
-            tgl = datetime.strptime(tgl_str, fmt)
-            break
+            return datetime.strptime(tgl_str.strip(), fmt)
         except ValueError:
             continue
+    return None
 
+
+def _resolve_end_date(
+    tgl_upload_bai,
+    kategori_status: Optional[str],
+) -> datetime:
+    """
+    Tentukan tanggal akhir hitung aging.
+    - Done BAI + tgl_upload_bai tersedia → pakai tgl_upload_bai (beku)
+    - Selain itu → hari ini (live)
+    """
+    is_done = (kategori_status or "").strip().lower() == "done bai"
+    if is_done and tgl_upload_bai:
+        # tgl_upload_bai bisa berupa datetime object atau string
+        if isinstance(tgl_upload_bai, datetime):
+            return tgl_upload_bai
+        parsed = _parse_tgl(str(tgl_upload_bai))
+        if parsed:
+            return parsed
+    return datetime.now()
+
+
+def calculate_aging(
+    tgl_terbit_str: str,
+    tgl_upload_bai=None,
+    kategori_status: Optional[str] = None,
+) -> str:
+    """
+    Hitung aging dari tanggal terbit PA.
+    Format output: 'X Hari Y Jam Z Menit' atau '-' jika gagal parse.
+
+    Args:
+        tgl_terbit_str   : string TGL TERBIT PA
+        tgl_upload_bai   : datetime atau string TGL UPLOAD BAI (opsional)
+        kategori_status  : nilai kategori_status dari DB (cek 'Done BAI')
+    """
+    tgl = _parse_tgl(tgl_terbit_str)
     if tgl is None:
         return "-"
 
-    now   = datetime.now()
-    delta = now - tgl
+    end = _resolve_end_date(tgl_upload_bai, kategori_status)
+    delta = end - tgl
 
     if delta.total_seconds() < 0:
         return "-"
 
     total_seconds = int(delta.total_seconds())
-    days          = total_seconds // 86400
-    remaining     = total_seconds % 86400
-    hours         = remaining // 3600
-    minutes       = (remaining % 3600) // 60
+    days     = total_seconds // 86400
+    remaining = total_seconds % 86400
+    hours    = remaining // 3600
+    minutes  = (remaining % 3600) // 60
 
     if days > 0:
         return f"{days} Hari {hours} Jam {minutes} Menit"
@@ -48,26 +80,24 @@ def calculate_aging(tgl_terbit_str: str) -> str:
         return f"{minutes} Menit"
 
 
-def calculate_aging_days(tgl_terbit_str: str) -> int:
+def calculate_aging_days(
+    tgl_terbit_str: str,
+    tgl_upload_bai=None,
+    kategori_status: Optional[str] = None,
+) -> int:
     """
     Kembalikan aging dalam hari (integer) untuk sorting/filtering.
     Return -1 jika gagal parse.
+
+    Args:
+        tgl_terbit_str   : string TGL TERBIT PA
+        tgl_upload_bai   : datetime atau string TGL UPLOAD BAI (opsional)
+        kategori_status  : nilai kategori_status dari DB (cek 'Done BAI')
     """
-    if not tgl_terbit_str or not tgl_terbit_str.strip():
-        return -1
-
-    tgl_str = tgl_terbit_str.strip()
-    tgl = None
-
-    for fmt in ["%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y %H:%M", "%d/%m/%Y"]:
-        try:
-            tgl = datetime.strptime(tgl_str, fmt)
-            break
-        except ValueError:
-            continue
-
+    tgl = _parse_tgl(tgl_terbit_str)
     if tgl is None:
         return -1
 
-    delta = datetime.now() - tgl
+    end = _resolve_end_date(tgl_upload_bai, kategori_status)
+    delta = end - tgl
     return max(0, delta.days)

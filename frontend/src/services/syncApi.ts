@@ -30,14 +30,34 @@ export interface SyncMismatch {
   ptl_user_id: string;
 }
 
+export interface ImportResult {
+  ok: boolean;
+  inserted: number;
+  updated_bai: number;
+  skipped: number;
+  errors: string[];
+  duration_ms: number;
+}
+
 export const syncApi = {
   async runOne(ptlUsername: string): Promise<SyncResult> {
     const res = await api.post<SyncResult>(`/sync/run/${ptlUsername}`);
     return res.data;
   },
 
-  async runAll(): Promise<{ ok: boolean; ptl_count: number; total_synced: number; total_mismatches: number; results: SyncResult[] }> {
+  async runAll(): Promise<{
+    ok: boolean;
+    ptl_count: number;
+    total_synced: number;
+    total_mismatches: number;
+    results: SyncResult[];
+  }> {
     const res = await api.post("/sync/run-all");
+    return res.data;
+  },
+
+  async importFromSheet(): Promise<ImportResult> {
+    const res = await api.post<ImportResult>("/sync/import-from-sheet");
     return res.data;
   },
 

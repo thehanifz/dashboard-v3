@@ -1,13 +1,17 @@
 """
 api/sync.py
-Phase 6 — Sync Engine endpoints.
+Sync Engine endpoints.
 
-POST /api/sync/run/{ptl_username}  → trigger manual sync untuk 1 PTL (Engineer only)
-POST /api/sync/run-all             → trigger sync semua PTL aktif (Engineer only)
-GET  /api/sync/logs                → riwayat sync log (Engineer only)
-GET  /api/sync/mismatches          → daftar mismatch aktif (Engineer only)
-DELETE /api/sync/mismatches/{id}   → dismiss mismatch
+POST /api/sync/run/{ptl_username}   → trigger manual sync 1 PTL (Engineer only)
+POST /api/sync/run-all              → trigger sync semua PTL aktif (Engineer only)
+POST /api/sync/import-from-sheet   → import PA baru dari GSheet ke DB (Engineer only)
+GET  /api/sync/logs                 → riwayat sync log (Engineer only)
+GET  /api/sync/mismatches           → daftar mismatch aktif (Engineer only)
+DELETE /api/sync/mismatches/{id}    → dismiss mismatch
 """
+import time
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +22,7 @@ from app.db.models import (
     RoleEnum, SyncLog, SyncMismatch, SyncTypeEnum, User
 )
 from app.services.sync_engine import run_sync
+from app.services.gsheet_importer import sync_gsheet_to_db
 
 router = APIRouter(tags=["Sync"])
 
@@ -81,15 +86,43 @@ async def sync_all_ptl(
         )
         results.append(summary)
 
-    total_synced    = sum(r.get("synced_fields", 0) for r in results)
-    total_mismatch  = sum(r.get("new_mismatches", 0) for r in results)
+    total_synced   = sum(r.get("synced_fields", 0) for r in results)
+    total_mismatch = sum(r.get("new_mismatches", 0) for r in results)
 
     return {
-        "ok":            True,
-        "ptl_count":     len(ptl_users),
-        "total_synced":  total_synced,
+        "ok":               True,
+        "ptl_count":        len(ptl_users),
+        "total_synced":     total_synced,
         "total_mismatches": total_mismatch,
-        "results":       results,
+        "results":          results,
+    }
+
+
+# ── POST /sync/import-from-sheet ──────────────────────────────────────────────
+@router.post("/import-from-sheet")
+async def import_from_sheet(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Import PA baru dari Google Sheet ke database.
+    - Hanya INSERT baris yang belum ada (berdasarkan gsheet_row).
+    - UPDATE tgl_upload_bai jika nilainya berubah di GSheet.
+    - Tidak mengubah data lain yang sudah ada di DB.
+    """
+    _require_engineer(current_user)
+
+    t0 = time.monotonic()
+    result = await sync_gsheet_to_db(db)
+    duration_ms = round((time.monotonic() - t0) * 1000)
+
+    return {
+        "ok":          True,
+        "inserted":    result["inserted"],
+        "updated_bai": result["updated_bai"],
+        "skipped":     result["skipped"],
+        "errors":      result["errors"],
+        "duration_ms": duration_ms,
     }
 
 
@@ -142,11 +175,11 @@ async def get_mismatches(
 
     return [
         {
-            "id":             m.id,
-            "id_pa":          m.id_pa,
-            "mismatch_type":  m.mismatch_type.value,
-            "detected_at":    m.detected_at.isoformat(),
-            "ptl_user_id":    str(m.ptl_user_id),
+            "id":            m.id,
+            "id_pa":         m.id_pa,
+            "mismatch_type": m.mismatch_type.value,
+            "detected_at":   m.detected_at.isoformat(),
+            "ptl_user_id":   str(m.ptl_user_id),
         }
         for m in items
     ]
@@ -168,7 +201,6 @@ async def dismiss_mismatch(
     if not item:
         raise HTTPException(status_code=404, detail="Mismatch tidak ditemukan")
 
-    from datetime import datetime, timezone
     item.is_dismissed = True
     item.dismissed_by = current_user.username
     item.dismissed_at = datetime.now(timezone.utc)
