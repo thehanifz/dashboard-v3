@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import api from "../services/api";
+import { getCachedRecords, setCachedRecords, getCacheMeta } from "../services/recordCache";
+import type { CacheMeta } from "../services/recordCache";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────────────────────
 export interface RecordRow {
@@ -18,28 +20,32 @@ interface TaskState {
   columns: string[];
   records: RecordRow[];
   statusMaster: StatusMaster | null;
-  statusMasterError: string | null; // error message jika fetch gagal
+  statusMasterError: string | null;
   isLoading: boolean;
   lastUpdated: Date | null;
   autoRefreshEnabled: boolean;
-  autoRefreshInterval: number; // menit
-  hasLoadedData: boolean; // flag: sudah pernah load data records saat sesi ini
-  
+  autoRefreshInterval: number;
+  hasLoadedData: boolean;
+
+  // Cache metadata — ditampilkan di Topbar
+  cacheMeta: CacheMeta | null;
+
   // PTL-specific state
   ptlSheetData: PTLSheetData | null;
   ptlLoading: boolean;
 
   setRecords: (records: RecordRow[]) => void;
-  fetchRecords: () => Promise<void>;
+  fetchRecords: (forceNetwork?: boolean) => Promise<void>;
   fetchStatusMaster: () => Promise<void>;
   refreshAll: () => Promise<void>;
-  refreshStatusOnly: () => Promise<void>; // fetch status master saja (untuk first load)
+  refreshStatusOnly: () => Promise<void>;
   setAutoRefresh: (enabled: boolean, interval?: number) => void;
   updateStatus: (rowId: number, status?: string, detail?: string) => Promise<void>;
   updateCell: (rowId: number, column: string, value: string) => Promise<void>;
-  resetLoadedFlag: () => void; // reset flag untuk refresh di login berikutnya
-  setHasLoadedData: () => void; // set flag hasLoadedData = true
-  
+  resetLoadedFlag: () => void;
+  setHasLoadedData: () => void;
+  loadCacheMeta: () => Promise<void>;
+
   // PTL-specific methods
   setPtlSheetData: (data: PTLSheetData | null) => void;
   setPtlLoading: (loading: boolean) => void;
@@ -71,45 +77,78 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   autoRefreshEnabled: false,
   autoRefreshInterval: 5,
   hasLoadedData: false,
+  cacheMeta: null,
   ptlSheetData: null,
   ptlLoading: false,
 
   setRecords: (records) => set({ records }),
 
-  fetchRecords: async () => {
-    console.log("[taskStore] Fetching /records/...");
-    // Trailing slash wajib — backend route terdaftar sebagai GET /api/records/
-    // redirect_slashes=False di FastAPI → tanpa slash akan 404, bukan redirect
+  /**
+   * fetchRecords — cek IndexedDB dulu sebelum hit network.
+   * @param forceNetwork — kalau true, skip cache dan langsung fetch dari server
+   */
+  fetchRecords: async (forceNetwork = false) => {
+    if (!forceNetwork) {
+      // Coba ambil dari IndexedDB
+      const cached = await getCachedRecords();
+      if (cached) {
+        console.log("[taskStore] Loaded from IndexedDB cache:", cached.records.length, "rows");
+        set({
+          columns: cached.columns,
+          records: cached.records,
+          cacheMeta: cached.meta,
+          hasLoadedData: true,
+          lastUpdated: new Date(cached.meta.lastSyncedAt),
+        });
+        return;
+      }
+      console.log("[taskStore] No cache found, fetching from network...");
+    } else {
+      console.log("[taskStore] Force network fetch...");
+    }
+
+    // Fetch dari server
     const res = await api.get("/records/");
-    console.log("[taskStore] Records response:", res.data);
+    const records: RecordRow[] = res.data.records ?? [];
+    const columns: string[]    = res.data.columns ?? [];
+
+    // Simpan ke IndexedDB
+    await setCachedRecords(records, columns);
+
+    // Ambil meta yang baru disimpan
+    const meta = await getCacheMeta();
+
     set({
-      columns: res.data.columns ?? [],
-      records: res.data.records ?? [],
+      columns,
+      records,
+      cacheMeta: meta,
+      lastUpdated: new Date(),
     });
+    console.log("[taskStore] Fetched from network and cached:", records.length, "rows");
   },
 
   fetchStatusMaster: async () => {
     console.log("[taskStore] Fetching /status...");
     try {
       const res = await api.get("/status");
-      console.log("[taskStore] Status master response:", res.data);
       set({ statusMaster: res.data, statusMasterError: null });
     } catch (error: any) {
-      // Tidak pakai hardcode fallback — biarkan null agar komponen
-      // downstream bisa menampilkan error state yang jelas.
       const msg = error?.message ?? "Gagal memuat status master";
       console.error("[taskStore] fetchStatusMaster error:", msg);
       set({ statusMaster: null, statusMasterError: msg });
     }
   },
 
-  // ─── Refresh All (manual & auto) ───────────────────────────────────────────────────────────
-  refreshAll: async () => {
-    console.log("[taskStore] refreshAll called");
+  // ─── Refresh All ───────────────────────────────────────────────────────────
+  // forceNetwork: true saat user klik tombol Refresh manual
+  refreshAll: async (forceNetwork = false) => {
+    console.log("[taskStore] refreshAll called, forceNetwork:", forceNetwork);
     set({ isLoading: true });
     try {
-      await Promise.all([get().fetchStatusMaster(), get().fetchRecords()]);
-      console.log("[taskStore] refreshAll completed");
+      await Promise.all([
+        get().fetchStatusMaster(),
+        get().fetchRecords(forceNetwork as boolean),
+      ]);
       set({ lastUpdated: new Date(), hasLoadedData: true });
     } catch (err) {
       console.error("[taskStore] refreshAll error:", err);
@@ -120,10 +159,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   refreshStatusOnly: async () => {
-    console.log("[taskStore] refreshStatusOnly called");
     try {
       await get().fetchStatusMaster();
-      console.log("[taskStore] refreshStatusOnly completed");
     } catch (err) {
       console.error("[taskStore] refreshStatusOnly error:", err);
       throw err;
@@ -137,16 +174,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     });
   },
 
-  // ─── Update Status (optimistic + debounce) ────────────────────────────────────────────────────────
+  // ─── Update Status (optimistic + debounce) ────────────────────────────────
   updateStatus: async (rowId, status, detail) => {
     const { statusMaster, records } = get();
-    // Pakai nilai dari statusMaster (API) tanpa hardcode fallback.
-    // Jika statusMaster null (error), aksi ini tidak akan mengubah kolom yang salah.
     const statusColumn = statusMaster?.status_column;
     const detailColumn = statusMaster?.detail_column;
 
     if (!statusColumn) {
-      console.warn("[taskStore] updateStatus: statusMaster belum tersedia, skip optimistic update");
+      console.warn("[taskStore] updateStatus: statusMaster belum tersedia, skip");
       return;
     }
 
@@ -175,10 +210,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }, 400);
   },
 
-  // ─── Update Cell (optimistic + debounce) ──────────────────────────────────────────────────────────
+  // ─── Update Cell (optimistic + debounce) ──────────────────────────────────
   updateCell: async (rowId, column, value) => {
     const { records } = get();
-
     set({
       records: records.map((r) =>
         r.row_id === rowId
@@ -199,6 +233,13 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   resetLoadedFlag: () => set({ hasLoadedData: false }),
   setHasLoadedData: () => set({ hasLoadedData: true }),
+
+  /** Load hanya metadata cache (dipanggil saat init, tanpa load data besar) */
+  loadCacheMeta: async () => {
+    const meta = await getCacheMeta();
+    if (meta) set({ cacheMeta: meta });
+  },
+
   setPtlSheetData: (data) => set({ ptlSheetData: data }),
   setPtlLoading: (loading) => set({ ptlLoading: loading }),
 }));

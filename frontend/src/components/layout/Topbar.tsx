@@ -16,6 +16,18 @@ function timeAgo(date: Date | null): string {
   return `${Math.floor(diff / 3600)} jam lalu`;
 }
 
+/** Format timestamp cache: "Sel 12 Mei · 22:55" */
+function formatSyncTime(isoString: string): string {
+  const d = new Date(isoString);
+  return d.toLocaleString("id-ID", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function Topbar({ onRefresh, sidebarCollapsed, onToggleSidebar }: TopbarProps) {
   const isLoading      = useTaskStore(s => s.isLoading);
   const lastUpdated    = useTaskStore(s => s.lastUpdated);
@@ -23,6 +35,7 @@ export default function Topbar({ onRefresh, sidebarCollapsed, onToggleSidebar }:
   const autoInterval   = useTaskStore(s => s.autoRefreshInterval);
   const setAutoRefresh = useTaskStore(s => s.setAutoRefresh);
   const records        = useTaskStore(s => s.records);
+  const cacheMeta      = useTaskStore(s => s.cacheMeta);
 
   const [label, setLabel]         = useState("Belum dimuat");
   const [showAuto, setShowAuto]   = useState(false);
@@ -72,6 +85,7 @@ export default function Topbar({ onRefresh, sidebarCollapsed, onToggleSidebar }:
 
       {/* Right */}
       <div className="flex items-center gap-2">
+
         {/* Total pill */}
         <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
           style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
@@ -79,12 +93,26 @@ export default function Topbar({ onRefresh, sidebarCollapsed, onToggleSidebar }:
           <svg className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          <span className="font-bold" style={{ color: "var(--text-primary)" }}>{records.length}</span>
+          <span className="font-bold" style={{ color: "var(--text-primary)" }}>{records.length.toLocaleString("id-ID")}</span>
           <span>PA</span>
         </div>
 
-        {/* Last updated */}
-        <div className="hidden md:flex items-center gap-1 text-[11px]" style={{ color: "var(--text-muted)" }}>
+        {/* Cache sync info — tampil kalau ada cacheMeta */}
+        {cacheMeta && (
+          <div
+            className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px]"
+            style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-muted)" }}
+            title={`Cache lokal · ${cacheMeta.totalRows.toLocaleString("id-ID")} baris`}
+          >
+            <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+            <span>Sync {formatSyncTime(cacheMeta.lastSyncedAt)}</span>
+          </div>
+        )}
+
+        {/* Last updated (relative time) */}
+        <div className="hidden lg:flex items-center gap-1 text-[11px]" style={{ color: "var(--text-muted)" }}>
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
@@ -133,7 +161,7 @@ export default function Topbar({ onRefresh, sidebarCollapsed, onToggleSidebar }:
           )}
         </div>
 
-        {/* Refresh button */}
+        {/* Refresh button — force network fetch */}
         <button onClick={onRefresh} disabled={isLoading}
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-colors shadow-sm"
           style={{ background: isLoading ? "var(--text-muted)" : "var(--accent)" }}

@@ -19,15 +19,17 @@ export default function EngineerDashboardPanel() {
   const refreshAll        = useTaskStore((s) => s.refreshAll);
   const refreshStatusOnly = useTaskStore((s) => s.refreshStatusOnly);
   const hasLoadedData     = useTaskStore((s) => s.hasLoadedData);
+  const loadCacheMeta     = useTaskStore((s) => s.loadCacheMeta);
   const theme             = useThemeStore((s) => s.theme);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
+  // Refresh manual (tombol Refresh) — selalu force ke network
   const handleRefresh = useCallback(async () => {
     try {
-      await refreshAll();
+      await refreshAll(true);
       showToast("Data berhasil diperbarui", "success");
     } catch (err) {
       console.error("Gagal refresh data:", err);
@@ -35,15 +37,21 @@ export default function EngineerDashboardPanel() {
     }
   }, [refreshAll, showToast]);
 
-  // Fetch status master saat pertama mount (untuk dropdown)
-  // Refresh records hanya jika belum pernah load data
   useEffect(() => {
     console.log("[EngineerDashboard] Mounting...");
     refreshStatusOnly().catch(console.error);
+
     if (!hasLoadedData) {
-      handleRefresh();
+      // Pertama kali: coba dari cache dulu (forceNetwork = false)
+      refreshAll(false).catch((err) => {
+        console.error("Gagal load data:", err);
+        showToast("Gagal memuat data", "error");
+      });
+    } else {
+      // Sudah ada di store (navigasi balik), cukup refresh meta cache di topbar
+      loadCacheMeta();
     }
-  }, [hasLoadedData]);
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg-app)" }}>
