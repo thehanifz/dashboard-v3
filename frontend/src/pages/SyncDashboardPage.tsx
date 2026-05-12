@@ -5,11 +5,13 @@
 import { useEffect, useState } from "react";
 import { syncApi, SyncLog, SyncMismatch, SyncResult, ImportResult } from "../services/syncApi";
 import { useAppStore } from "../state/appStore";
+import { useAuthStore } from "../state/authStore";
 
 type Tab = "overview" | "import" | "logs" | "mismatches";
 
 export default function SyncDashboardPage() {
-  const { setPage, user }                     = useAppStore();
+  const { setPage }                           = useAppStore();
+  const user                                  = useAuthStore((s) => s.user);
   const [tab, setTab]                         = useState<Tab>("overview");
 
   // Sync PTL state
@@ -102,7 +104,7 @@ export default function SyncDashboardPage() {
     { id: "mismatches", label: `Mismatches${mismatches.length > 0 ? ` (${mismatches.length})` : ""}` },
   ];
 
-  // FIX: case-insensitive agar "Engineer" dan "engineer" sama-sama valid
+  // FIX: ambil dari useAuthStore; case-insensitive untuk "Engineer" dan "engineer"
   const isEngineer = user?.role?.toLowerCase() === "engineer";
 
   return (
