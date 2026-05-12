@@ -19,7 +19,7 @@ from app.db.models import PARecord
 from app.services.aging import calculate_aging, calculate_aging_days
 
 
-# ─── Kolom tampilan (urutan kolom di tabel frontend) ──────────────────────────────
+# ─── Kolom tampilan (urutan kolom di tabel frontend) ─────────────────────────
 PA_RECORD_COL_DISPLAY: list[str] = [
     "ID PA",
     "NODE",
@@ -54,7 +54,7 @@ PA_RECORD_COL_DISPLAY: list[str] = [
     "Aging PA (hari)",
 ]
 
-# ─── Mapping nama-display → atribut PARecord ────────────────────────────────────
+# ─── Mapping nama-display → atribut PARecord ─────────────────────────────────
 DISPLAY_TO_DB_COL: dict[str, str] = {
     "ID PA":                      "id_pa",
     "NODE":                       "node",
@@ -88,12 +88,12 @@ DISPLAY_TO_DB_COL: dict[str, str] = {
     "Aging PA":                   "aging_pa",
 }
 
-# ─── Tipe kolom khusus ────────────────────────────────────────────────────────────────
+# ─── Tipe kolom khusus ────────────────────────────────────────────────────────
 DATE_COLS:  set[str] = {"tgl_terbit_pa", "tgl_bai", "tgl_upload_bai"}
 FLOAT_COLS: set[str] = {"latitude", "longitude"}
 
 
-# ─── Helper ────────────────────────────────────────────────────────────────────────────
+# ─── Helper ───────────────────────────────────────────────────────────────────
 def _fmt_date(dt: Optional[datetime]) -> str:
     """Format datetime ke string 'YYYY-MM-DD HH:MM'. Kosong jika None."""
     if dt is None:
@@ -106,6 +106,7 @@ def _pa_record_to_dict(rec: PARecord) -> dict:
     Konversi satu PARecord ke dict untuk response API.
     Aging dihitung LIVE menggunakan status_pa (kolom "Status PA"),
     bukan kategori_status (kolom "Kategori PA").
+    PARecord tidak punya created_at — gunakan synced_at & updated_at.
     """
     tgl_str = _fmt_date(rec.tgl_terbit_pa)
 
@@ -161,7 +162,7 @@ def _pa_record_to_dict(rec: PARecord) -> dict:
             "Aging PA":                 aging_label,
             "Aging PA (hari)":          aging_days,
         },
-        "created_at": rec.created_at.isoformat() if rec.created_at else None,
+        "synced_at":  rec.synced_at.isoformat()  if rec.synced_at  else None,
         "updated_at": rec.updated_at.isoformat() if rec.updated_at else None,
     }
 
@@ -171,7 +172,7 @@ async def get_engineer_records_from_pg(db: AsyncSession) -> dict:
     result  = await db.execute(select(PARecord).order_by(PARecord.gsheet_row))
     records = result.scalars().all()
     return {
-        "records":      [_pa_record_to_dict(r) for r in records],
-        "total":        len(records),
-        "columns":      PA_RECORD_COL_DISPLAY,
+        "records":  [_pa_record_to_dict(r) for r in records],
+        "total":    len(records),
+        "columns":  PA_RECORD_COL_DISPLAY,
     }
