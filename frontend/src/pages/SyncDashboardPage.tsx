@@ -102,7 +102,8 @@ export default function SyncDashboardPage() {
     { id: "mismatches", label: `Mismatches${mismatches.length > 0 ? ` (${mismatches.length})` : ""}` },
   ];
 
-  const isEngineer = user?.role === "engineer";
+  // FIX: case-insensitive agar "Engineer" dan "engineer" sama-sama valid
+  const isEngineer = user?.role?.toLowerCase() === "engineer";
 
   return (
     <div className="p-4 lg:p-6 space-y-5 max-w-6xl">
