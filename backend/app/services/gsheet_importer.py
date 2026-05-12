@@ -64,7 +64,7 @@ COL_MAP: dict[str, str] = {
     "PTL Update":                 "ptl_update",
 }
 
-DATE_COLS = {"tgl_terbit_pa", "tgl_bai", "tgl_upload_bai"}
+DATE_COLS  = {"tgl_terbit_pa", "tgl_bai", "tgl_upload_bai"}
 FLOAT_COLS = {"latitude", "longitude"}
 
 
@@ -110,13 +110,14 @@ def _row_to_record_kwargs(row_data: dict, gsheet_row: int) -> dict:
         else:
             kwargs[db_col] = val or None
 
-    # Hitung aging dari tgl_terbit_pa — abaikan nilai dari GSheet
+    # Hitung aging dari tgl_terbit_pa.
+    # Gunakan status_pa (kolom "Status PA") — bukan kategori_status (kolom "Kategori PA").
     tgl_terbit = kwargs.get("tgl_terbit_pa")
-    tgl_str = tgl_terbit.strftime("%Y-%m-%d %H:%M") if tgl_terbit else ""
+    tgl_str    = tgl_terbit.strftime("%Y-%m-%d %H:%M") if tgl_terbit else ""
     kwargs["aging_pa"] = calculate_aging_days(
         tgl_str,
         tgl_upload_bai=kwargs.get("tgl_upload_bai"),
-        kategori_status=kwargs.get("kategori_status"),
+        status_pa=kwargs.get("status_pa"),   # ← FIX: pakai status_pa bukan kategori_status
     )
 
     return kwargs
@@ -127,9 +128,9 @@ async def sync_gsheet_to_db(db: AsyncSession) -> dict:
     Baca GSheet → INSERT baris baru + UPDATE tgl_upload_bai yang berubah.
     Return: { inserted, updated_bai, skipped, errors }
     """
-    inserted = 0
+    inserted    = 0
     updated_bai = 0
-    skipped = 0
+    skipped     = 0
     errors: list[str] = []
 
     # 1. Baca GSheet
@@ -143,7 +144,9 @@ async def sync_gsheet_to_db(db: AsyncSession) -> dict:
     logger.info(f"[GSheet Import] Baca {len(records)} baris dari GSheet")
 
     # 2. Ambil semua gsheet_row yang sudah ada di DB (satu query)
-    existing_result = await db.execute(select(PARecord.gsheet_row, PARecord.tgl_upload_bai, PARecord.id))
+    existing_result = await db.execute(
+        select(PARecord.gsheet_row, PARecord.tgl_upload_bai, PARecord.id)
+    )
     existing_rows: dict[int, dict] = {
         row.gsheet_row: {"tgl_upload_bai": row.tgl_upload_bai, "id": row.id}
         for row in existing_result
@@ -179,12 +182,25 @@ async def sync_gsheet_to_db(db: AsyncSession) -> dict:
                     if pa_rec:
                         pa_rec.tgl_upload_bai = new_bai
                         pa_rec.updated_at     = datetime.now()
+
+                        # FIX Bug 3: recalculate aging_pa saat tgl_upload_bai berubah.
+                        # Gunakan status_pa (bukan kategori_status) agar is_done benar.
+                        tgl_str = (
+                            pa_rec.tgl_terbit_pa.strftime("%Y-%m-%d %H:%M")
+                            if pa_rec.tgl_terbit_pa else ""
+                        )
+                        pa_rec.aging_pa = calculate_aging_days(
+                            tgl_str,
+                            tgl_upload_bai=new_bai,
+                            status_pa=pa_rec.status_pa,  # ← FIX: pakai status_pa
+                        )
+
                         updated_bai += 1
                 else:
                     skipped += 1
             else:
                 # Belum ada — INSERT
-                kwargs = _row_to_record_kwargs(data, row_id)
+                kwargs  = _row_to_record_kwargs(data, row_id)
                 new_rec = PARecord(**kwargs)
                 db.add(new_rec)
                 inserted += 1
