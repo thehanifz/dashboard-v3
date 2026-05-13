@@ -1,7 +1,7 @@
 /**
  * Hitung durasi dari tanggal terbit PA hingga:
- * - TGL UPLOAD BAI (jika sudah ada BAI)
- * - Hari ini (jika belum ada BAI)
+ * - TGL UPLOAD BAI (jika Status PA = "Done BAI" DAN tgl_upload_bai ada)
+ * - Hari ini (jika masih On Progress)
  * Threshold tier bisa dikustomisasi via parameter (dari settings API).
  */
 
@@ -35,7 +35,6 @@ function parseDate(str: string): Date | null {
   if (!str || !str.trim()) return null;
 
   // Normalise: pad jam single digit "9:32" → "09:32"
-  // Pattern: YYYY-MM-DD H:MM atau YYYY-MM-DD H:MM:SS
   const padded = str.trim().replace(
     /(\d{4}-\d{2}-\d{2})[ T](\d{1}:)/,
     "$1T0$2"
@@ -57,23 +56,38 @@ function parseDate(str: string): Date | null {
   return null;
 }
 
+/**
+ * calcAging — hitung aging dari TGL TERBIT PA.
+ *
+ * Logika end date:
+ *   - Status PA === "Done BAI" DAN tglUploadBAI valid → aging BEKU di tglUploadBAI
+ *   - Status PA === "Done BAI" tapi tglUploadBAI kosong/invalid → pakai hari ini (fallback)
+ *   - Selain itu (On Progress, PA Cancel, dll) → pakai hari ini (live)
+ */
 export function calcAging(
   tglTerbitPA: string,
   thresholds: AgingThresholds = DEFAULT_THRESHOLDS,
-  tglUploadBAI?: string
+  tglUploadBAI?: string,
+  statusPa?: string
 ): AgingResult | null {
   if (!tglTerbitPA) return null;
 
   const parsed = parseDate(tglTerbitPA);
   if (!parsed) return null;
 
-  // End date: TGL UPLOAD BAI (jika ada & valid) atau hari ini
+  const isDoneBai = (statusPa ?? "").trim().toLowerCase() === "done bai";
+
   let endDate: Date;
-  if (tglUploadBAI) {
+  let isClosed = false;
+
+  if (isDoneBai && tglUploadBAI) {
     const parsedEnd = parseDate(tglUploadBAI);
-    endDate = parsedEnd ?? new Date();
-    if (!parsedEnd) {
-      console.warn("[aging] Invalid TGL UPLOAD BAI, using today:", tglUploadBAI);
+    if (parsedEnd) {
+      endDate  = parsedEnd;
+      isClosed = true;
+    } else {
+      console.warn("[aging] Done BAI tapi TGL UPLOAD BAI invalid, pakai hari ini:", tglUploadBAI);
+      endDate = new Date();
     }
   } else {
     endDate = new Date();
@@ -87,7 +101,6 @@ export function calcAging(
   const hours   = Math.floor((totalMinutes % 1440) / 60);
   const minutes = totalMinutes % 60;
 
-  const isClosed = !!tglUploadBAI;
   const label = isClosed
     ? `${days} HARI ${hours} JAM ${minutes} MENIT (Closed)`
     : `${days} HARI ${hours} JAM ${minutes} MENIT`;

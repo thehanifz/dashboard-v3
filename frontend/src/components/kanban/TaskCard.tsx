@@ -51,9 +51,13 @@ export default function TaskCard({ record, columnColor, cardFieldsOverride }: Pr
     : allKeys;
   const finalKeys   = visibleKeys.length > 0 ? visibleKeys : allKeys;
 
-  // Aging — hanya untuk badge di kartu
-  // Hitung dari TGL TERBIT PA sampai TGL UPLOAD BAI (jika ada) atau hari ini
-  const aging      = calcAging(record.data["TGL TERBIT PA"], undefined, record.data["TGL UPLOAD BAI"]);
+  // Aging — freeze saat Done BAI (pakai tgl_upload_bai), live saat On Progress
+  const aging      = calcAging(
+    record.data["TGL TERBIT PA"],
+    undefined,
+    record.data["TGL UPLOAD BAI"],
+    record.data["Status PA"]
+  );
   const agingTier  = aging?.tier ?? "safe";
   const agingColor = AGING_COLORS[agingTier];
 
@@ -81,7 +85,7 @@ export default function TaskCard({ record, columnColor, cardFieldsOverride }: Pr
             border: `1px solid ${aging ? agingColor + "33" : "var(--border)"}`,
           }}
         >
-          {aging ? `${aging.days}h` : "—"}
+          {aging ? `${aging.days}h${aging.isClosed ? " ✓" : ""}` : "—"}
         </span>
       </div>
 

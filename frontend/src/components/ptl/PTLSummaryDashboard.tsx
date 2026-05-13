@@ -124,7 +124,9 @@ function SectionCard({ title, subtitle, children }: {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function PTLSummaryDashboard({ records, loading }: Props) {
   const [thresholds, setThresholds] = useState<AgingThresholds>(DEFAULT_THRESHOLDS);
-  const tglCol = "TGL TERBIT PA";
+  const tglCol    = "TGL TERBIT PA";
+  const baiCol    = "TGL UPLOAD BAI";
+  const statusCol = "Status PA";
 
   const drillToPtlDetail = useAppStore(s => s.drillToPtlDetail);
 
@@ -144,17 +146,16 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
     const byJenisMutasi:     Record<string, number> = {};
     const byStatusPA:        Record<string, number> = {};
     const agingTiers = { safe: 0, warning: 0, danger: 0, critical: 0 };
-    // Simpan mapping row_id per aging tier untuk drill-down
     const agingRowIds: Record<string, number[]> = { safe: [], warning: [], danger: [], critical: [] };
 
     records.forEach(r => {
       // Status Pekerjaan — hanya yang Status PA = On Progress
-      if ((r.data["Status PA"] || "") === "On Progress") {
+      if ((r.data[statusCol] || "") === "On Progress") {
         const sp = r.data["Status Pekerjaan"] || "Tidak Diketahui";
         byStatusPekerjaan[sp] = (byStatusPekerjaan[sp] || 0) + 1;
       }
 
-      const spa = r.data["Status PA"] || "Tidak Diketahui";
+      const spa = r.data[statusCol] || "Tidak Diketahui";
       byStatusPA[spa] = (byStatusPA[spa] || 0) + 1;
 
       const layanan = (r.data["LAYANAN"] || "Lainnya").split(" - ")[0].trim();
@@ -163,7 +164,13 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
       const mutasi = r.data["JENIS MUTASI"] || "Lainnya";
       byJenisMutasi[mutasi] = (byJenisMutasi[mutasi] || 0) + 1;
 
-      const aging = calcAging(r.data[tglCol], thresholds);
+      // Aging: freeze saat Done BAI, live saat On Progress
+      const aging = calcAging(
+        r.data[tglCol],
+        thresholds,
+        r.data[baiCol],
+        r.data[statusCol]
+      );
       if (aging) {
         agingTiers[aging.tier]++;
         agingRowIds[aging.tier].push(r.row_id);
@@ -201,14 +208,6 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
     });
 
   const drillByLayanan = (value: string) => {
-    // LAYANAN di data mungkin masih "LAYANAN - sub", kita filter prefix-nya
-    const matchingVals = records
-      .map(r => (r.data["LAYANAN"] || ""))
-      .filter((v, _, arr) => {
-        const prefix = v.split(" - ")[0].trim();
-        return prefix === value && arr.indexOf(v) === arr.lastIndexOf(v) || true;
-      });
-    // Ambil semua nilai unik LAYANAN yang prefix-nya cocok
     const uniqVals = [...new Set(
       records
         .map(r => r.data["LAYANAN"] || "")
@@ -259,7 +258,7 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
         />
       </div>
 
-      {/* ── Progress Bar — tidak clickable (sudah ada KPI di atas) ── */}
+      {/* ── Progress Bar ── */}
       <div className="rounded-2xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -335,7 +334,7 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
         </SectionCard>
       </div>
 
-      {/* ── Distribusi Aging — read-only untuk PTL, tiles clickable ── */}
+      {/* ── Distribusi Aging — tiles clickable ── */}
       <div className="rounded-2xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
         <div className="mb-4">
           <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Distribusi Aging PA</h3>
