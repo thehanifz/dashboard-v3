@@ -23,10 +23,12 @@ import PTLColumnVisibilityManager  from "./PTLColumnVisibilityManager";
 import PTLFilterManager            from "./PTLFilterManager";
 import PTLGlobalLabelManager       from "./PTLGlobalLabelManager";
 
-const STATUS_COL = "Status Pekerjaan";
-const ID_PA_COL  = "ID PA";
-const TGL_COL    = "TGL TERBIT PA";
-const DETAIL_COL = "Detail Progres";
+const STATUS_COL    = "Status Pekerjaan";
+const STATUS_PA_COL = "Status PA";
+const ID_PA_COL     = "ID PA";
+const TGL_COL       = "TGL TERBIT PA";
+const TGL_BAI_COL   = "TGL UPLOAD BAI";
+const DETAIL_COL    = "Detail Progres";
 
 const AGING_COLORS: Record<string, string> = {
   safe: "#10b981", warning: "#f59e0b", danger: "#f97316", critical: "#ef4444",
@@ -61,7 +63,13 @@ function PTLCard({ record, columnColor, cardFields, labelColors }: {
     data: { row_id: record.row_id },
   });
 
-  const aging      = calcAging(record.data[TGL_COL]);
+  // Aging — freeze saat Done BAI (pakai tgl_upload_bai), live saat On Progress
+  const aging      = calcAging(
+    record.data[TGL_COL],
+    undefined,
+    record.data[TGL_BAI_COL],
+    record.data[STATUS_PA_COL]
+  );
   const agingTier  = aging?.tier ?? "safe";
   const agingColor = AGING_COLORS[agingTier];
 
@@ -69,7 +77,6 @@ function PTLCard({ record, columnColor, cardFields, labelColors }: {
     transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 999 : "auto",
-    // borderLeft ikut warna kolom (identik Engineer TaskCard)
     borderLeft: `3px solid ${columnColor}`,
   };
 
@@ -101,7 +108,7 @@ function PTLCard({ record, columnColor, cardFields, labelColors }: {
             border:     `1px solid ${aging ? agingColor + "33" : "var(--border)"}`,
           }}
         >
-          {aging ? `${aging.days}h` : "—"}
+          {aging ? `${aging.days}h${aging.isClosed ? " ✓" : ""}` : "—"}
         </span>
       </div>
 
@@ -158,7 +165,6 @@ function PTLColumn({ status, records, columnColor, cardFields, labelColors, onCo
   const { setNodeRef, isOver } = useDroppable({ id: status });
   const [showPicker, setShowPicker] = useState(false);
 
-  // Resolve colorId dari THEME_HEX untuk ColorPicker
   const themeId = Object.entries(THEME_HEX).find(([, hex]) => hex === columnColor)?.[0] ?? "gray";
 
   return (
@@ -177,7 +183,6 @@ function PTLColumn({ status, records, columnColor, cardFields, labelColors, onCo
         flexDirection: "column",
       }}
     >
-      {/* Column Header — full color identik Engineer */}
       <div
         className="px-3 py-3 shrink-0 flex items-center justify-between gap-2 relative"
         style={{
@@ -188,7 +193,6 @@ function PTLColumn({ status, records, columnColor, cardFields, labelColors, onCo
         }}
       >
         <h3 className="font-bold text-sm truncate text-white">{status}</h3>
-
         <div className="flex items-center gap-2 shrink-0">
           <span
             className="text-[11px] font-bold px-2 py-0.5 rounded-full"
@@ -220,7 +224,6 @@ function PTLColumn({ status, records, columnColor, cardFields, labelColors, onCo
         </div>
       </div>
 
-      {/* Cards area — bg tint identik Engineer */}
       <div
         className="flex-1 overflow-y-auto px-2 pb-3 pt-2 space-y-2 custom-scrollbar min-h-[80px]"
         style={{
@@ -266,7 +269,6 @@ export default function PTLKanbanBoard({ records, onUpdateCell }: Props) {
   const [localCardFields, setLocalCardFields] = useState<string[]>([]);
   const [presetReady,     setPresetReady]     = useState(false);
 
-  // Phase 1: skip auto-save pada render pertama setelah load
   const isFirstLoad = useRef(true);
 
   useEffect(() => {
@@ -280,7 +282,6 @@ export default function PTLKanbanBoard({ records, onUpdateCell }: Props) {
     }
   }, [presetLoading, dbPreset]);
 
-  // presetReady dihapus dari deps — cegah race condition
   useEffect(() => {
     if (!presetReady) return;
     if (isFirstLoad.current) return;
@@ -298,11 +299,9 @@ export default function PTLKanbanBoard({ records, onUpdateCell }: Props) {
   const [showFilter,   setShowFilter]   = useState(false);
   const [showLabelMgr, setShowLabelMgr] = useState(false);
 
-  // Urutan status: ikut statusMaster.primary (identik Engineer), fallback ke order insertion
   const statuses = useMemo(() => {
     if (statusMaster?.primary?.length) {
       const inData = new Set(records.map(r => r.data[STATUS_COL]).filter(Boolean));
-      // Filter: hanya status yang ada di data PTL, tapi URUTAN tetap dari statusMaster
       return statusMaster.primary.filter(s => inData.has(s));
     }
     const seen = new Set<string>();
@@ -365,11 +364,9 @@ export default function PTLKanbanBoard({ records, onUpdateCell }: Props) {
     try { await onUpdateCell(rowId, STATUS_COL, newStatus); } catch {}
   };
 
-  // Resolve columnColor dari THEME_HEX (identik Engineer)
   const resolveColumnColor = (status: string, idx: number): string => {
     const colorId = ptlColumnColors[status];
     if (colorId && THEME_HEX[colorId]) return THEME_HEX[colorId];
-    // Default: cycle melalui theme colors
     const defaultKeys = Object.keys(THEME_HEX);
     return THEME_HEX[defaultKeys[idx % defaultKeys.length]];
   };
@@ -379,14 +376,11 @@ export default function PTLKanbanBoard({ records, onUpdateCell }: Props) {
   };
 
   return (
-    // CSS variable untuk column width agar bisa dipakai di PTLColumn
     <div className="flex flex-col h-full" style={{ "--ptl-col-width": `${ptlColumnWidth}px` } as any}>
 
-      {/* Toolbar — urutan: Search → Sort → | → Filter → Kolom → Kartu → Warna → | → Ukuran → Stats */}
       <div className="px-4 py-2.5 shrink-0 flex flex-wrap items-center gap-2"
         style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
 
-        {/* Search */}
         <div className="relative">
           <svg className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
             fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
@@ -398,7 +392,6 @@ export default function PTLKanbanBoard({ records, onUpdateCell }: Props) {
             className="th-input pl-8 pr-3 py-1.5 text-xs w-44" />
         </div>
 
-        {/* Sort */}
         <select value={sortBy} onChange={e => setSortBy(e.target.value as any)} className="th-select text-xs py-1.5">
           <option value="id_asc">ID ↑</option>
           <option value="id_desc">ID ↓</option>
@@ -410,7 +403,6 @@ export default function PTLKanbanBoard({ records, onUpdateCell }: Props) {
 
         <div className="h-4 w-px mx-1" style={{ background: "var(--border)" }} />
 
-        {/* Filter */}
         <button onClick={() => setShowFilter(true)}
           className="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-2.5"
           style={ptlActiveFilterCount > 0 ? { background: "var(--accent-soft)", borderColor: "var(--accent)", color: "var(--accent)" } : {}}>
@@ -424,7 +416,6 @@ export default function PTLKanbanBoard({ records, onUpdateCell }: Props) {
           )}
         </button>
 
-        {/* Kolom Status */}
         <button onClick={() => setShowColMgr(true)} className="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-2.5">
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
@@ -432,7 +423,6 @@ export default function PTLKanbanBoard({ records, onUpdateCell }: Props) {
           <span className="hidden sm:inline">Kolom</span>
         </button>
 
-        {/* Isi Kartu */}
         <button onClick={() => setShowFieldMgr(true)} className="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-2.5">
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
@@ -440,7 +430,6 @@ export default function PTLKanbanBoard({ records, onUpdateCell }: Props) {
           <span className="hidden sm:inline">Kartu</span>
         </button>
 
-        {/* Warna Label */}
         <button onClick={() => setShowLabelMgr(true)} className="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-2.5">
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
@@ -450,7 +439,6 @@ export default function PTLKanbanBoard({ records, onUpdateCell }: Props) {
 
         <div className="h-4 w-px mx-1" style={{ background: "var(--border)" }} />
 
-        {/* Ukuran Kolom */}
         <div className="relative">
           <button onClick={() => setShowSlider(v => !v)} className="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-2.5">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -474,13 +462,11 @@ export default function PTLKanbanBoard({ records, onUpdateCell }: Props) {
           )}
         </div>
 
-        {/* Stats */}
         <div className="ml-auto flex items-center gap-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
           <span>{processed.length} / {records.length} kartu</span>
         </div>
       </div>
 
-      {/* Board */}
       <DndContext onDragEnd={onDragEnd}>
         <div className="flex gap-3 overflow-x-auto overflow-y-hidden flex-1 p-4 custom-scrollbar">
           {visibleStatuses.map((status, idx) => (
@@ -497,7 +483,6 @@ export default function PTLKanbanBoard({ records, onUpdateCell }: Props) {
         </div>
       </DndContext>
 
-      {/* Modals */}
       {showFieldMgr && (
         <PTLCardFieldManager
           records={records}

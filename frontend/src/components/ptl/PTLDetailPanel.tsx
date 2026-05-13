@@ -277,7 +277,6 @@ export default function PTLDetailPanel() {
   const [saving, setSaving]                     = useState(false);
   const [thresholds, setThresholds]             = useState<AgingThresholds>(DEFAULT_THRESHOLDS);
 
-  // Persistent table settings from localStorage
   const { pageSize, tablePage, setPageSize, setTablePage } = useTableSettings(20);
 
   const [activeFilters, setActiveFilters]       = useState<Record<string, string[]>>({});
@@ -287,7 +286,6 @@ export default function PTLDetailPanel() {
   const [showCreatePreset, setShowCreatePreset] = useState(false);
   const [editingPresetId, setEditingPresetId]   = useState<number | null>(null);
   const [showEditableColumns, setShowEditableColumns] = useState(false);
-  // Banner info drill-down
   const [drillLabel, setDrillLabel]             = useState<string | null>(null);
 
   const { theme }                   = useThemeStore();
@@ -296,7 +294,6 @@ export default function PTLDetailPanel() {
 
   const { ptlEditableColumns, loadPtlEditableColumnsFromDB } = useAppearanceStore();
 
-  // ── Data dari store (cache) ──
   const ptlSheetData          = useTaskStore((s) => s.ptlSheetData);
   const setPtlSheetData       = useTaskStore((s) => s.setPtlSheetData);
   const ptlLoading            = useTaskStore((s) => s.ptlLoading);
@@ -304,12 +301,10 @@ export default function PTLDetailPanel() {
   const statusMaster          = useTaskStore((s) => s.statusMaster);
   const refreshAll            = useTaskStore((s) => s.refreshAll);
 
-  // ── Drill filter dari appStore ──
   const ptlDrillFilter     = useAppStore(s => s.ptlDrillFilter);
   const clearPtlDrillFilter = useAppStore(s => s.clearPtlDrillFilter);
   const setPage            = useAppStore(s => s.setPage);
 
-  // ── Preset dari DB ──
   const {
     presets,
     activePreset,
@@ -343,7 +338,6 @@ export default function PTLDetailPanel() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
-  // Sync local records dengan store data
   useEffect(() => {
     console.log("[PTLDetail] ptlSheetData changed:", ptlSheetData);
     if (ptlSheetData?.records) {
@@ -352,26 +346,19 @@ export default function PTLDetailPanel() {
     }
   }, [ptlSheetData]);
 
-  // Load editable columns & thresholds
   useEffect(() => { loadPtlEditableColumnsFromDB(); }, []);
   useEffect(() => {
     getAgingThresholds().then(setThresholds).catch(() => {});
   }, []);
 
-  // ── Consume drill filter saat masuk dari dashboard ──
   useEffect(() => {
     if (!ptlDrillFilter) return;
-
     const { column, values, label } = ptlDrillFilter;
-
     if (column === "__aging_tier") {
-      // Aging tier filter — computed, bukan kolom langsung
-      // Filter akan ditangani di filteredRecords dengan key __aging_tier
       setActiveFilters({ ["__aging_tier"]: values });
     } else {
       setActiveFilters({ [column]: values });
     }
-
     setDrillLabel(label ?? `${column} = ${values.join(", ")}`);
     setTablePage(1);
     clearPtlDrillFilter();
@@ -382,23 +369,19 @@ export default function PTLDetailPanel() {
   const idPaCol    = allColumns.find(c => c === "ID PA") ?? "ID PA";
   const namaCol    = allColumns.find(c => c.toLowerCase().includes("perusahaan")) ?? "";
   const tglCol     = "TGL TERBIT PA";
+  const baiCol     = "TGL UPLOAD BAI";
+  const statusPaCol = "Status PA";
 
   const statusCol = statusMaster?.status_column ?? "Status Pekerjaan";
   const detailCol = statusMaster?.detail_column ?? "Detail Progres";
 
-  // Helper: refresh PTL data from API
   const refreshPtlData = useCallback(async () => {
     try {
-      // Fetch status master + PTL sheet data in parallel
       const [statusRes, sheetRes] = await Promise.all([
         api.get("/status"),
         api.get<PTLSheetData>("/records/ptl-sheet")
       ]);
-      
-      // Update status master di store
       useTaskStore.getState().fetchStatusMaster();
-      
-      // Update PTL sheet data di store
       setPtlSheetData(sheetRes.data);
       if (sheetRes.data.records) {
         setLocalRecords(sheetRes.data.records);
@@ -409,7 +392,6 @@ export default function PTLDetailPanel() {
     }
   }, [showToast, setPtlSheetData]);
 
-  // Fetch data saat pertama mount jika belum ada di store
   useEffect(() => {
     if (!ptlSheetData?.records && !ptlLoading) {
       console.log("[PTLDetail] No data in store, fetching...");
@@ -417,7 +399,6 @@ export default function PTLDetailPanel() {
     }
   }, [ptlSheetData, ptlLoading, refreshPtlData]);
 
-  // ── Optimistic update cell ─────────────────────────────────────────────────
   const handleUpdateCell = useCallback(async (rowId: number, col: string, value: string) => {
     setLocalRecords(prev =>
       prev.map(r => r.row_id === rowId ? { ...r, data: { ...r.data, [col]: value } } : r)
@@ -425,7 +406,6 @@ export default function PTLDetailPanel() {
     setSaving(true);
     try {
       await api.post(`/records/ptl-sheet/${rowId}/cells`, { updates: { [col]: value } });
-      // Refresh data dari API setelah update
       await refreshPtlData();
     } catch (err: any) {
       setLocalRecords(prev =>
@@ -488,7 +468,6 @@ export default function PTLDetailPanel() {
   const filteredRecords = useMemo(() => {
     let result = [...records];
 
-    // Filter normal (kolom data)
     const normalFilters = Object.fromEntries(
       Object.entries(activeFilters).filter(([k]) => k !== "__aging_tier")
     );
@@ -498,11 +477,16 @@ export default function PTLDetailPanel() {
       );
     }
 
-    // Filter aging tier virtual
+    // Filter aging tier virtual — pakai tglUploadBAI + statusPa agar freeze konsisten
     if (activeFilters["__aging_tier"]) {
       const tiers = activeFilters["__aging_tier"];
       result = result.filter(r => {
-        const aging = calcAging(r.data[tglCol], thresholds);
+        const aging = calcAging(
+          r.data[tglCol],
+          thresholds,
+          r.data[baiCol],
+          r.data[statusPaCol]
+        );
         return aging ? tiers.includes(aging.tier) : false;
       });
     }
@@ -526,7 +510,6 @@ export default function PTLDetailPanel() {
       if (next.length === 0) delete upd[key]; else upd[key] = next;
       return upd;
     });
-    // Hapus drill label saat user mengubah filter manual
     setDrillLabel(null);
   };
 
@@ -535,7 +518,6 @@ export default function PTLDetailPanel() {
     setDrillLabel(null);
   };
 
-  // ── Drag reorder kolom ──
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -548,7 +530,6 @@ export default function PTLDetailPanel() {
     }
   };
 
-  // ── Resize kolom ──
   const onColResize = (e: React.MouseEvent, col: string) => {
     e.preventDefault(); e.stopPropagation();
     const startX = e.clientX;
@@ -634,7 +615,6 @@ export default function PTLDetailPanel() {
             totalCount={records.length}
           />
 
-          {/* ── KANBAN VIEW ── */}
           {view === "kanban" && (
             <div className="flex-1 overflow-hidden">
               {ptlLoading && localRecords.length === 0
@@ -644,11 +624,9 @@ export default function PTLDetailPanel() {
             </div>
           )}
 
-          {/* ── TABLE VIEW ── */}
           {view === "table" && (
             <div className="flex-1 overflow-hidden flex flex-col px-4 pt-3 pb-4 gap-2.5">
 
-              {/* Banner drill-down dari dashboard */}
               {drillLabel && (
                 <DrillBanner label={drillLabel} onClear={handleResetFilter} />
               )}
@@ -801,7 +779,6 @@ export default function PTLDetailPanel() {
                     </DndContext>
                   </div>
 
-                  {/* Pagination */}
                   <div className="flex items-center justify-between px-3 py-2 rounded-xl shrink-0"
                     style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
                     <span className="text-xs" style={{ color: "var(--text-muted)" }}>
