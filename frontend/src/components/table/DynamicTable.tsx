@@ -21,7 +21,6 @@ import { TablePagination }      from "./TablePagination";
 import TableToolbar              from "./TableToolbar";
 import PresetEditorModal         from "../preset/PresetEditorModal";
 import ColumnFilter              from "./ColumnFilter";
-import EditableColumnsModal      from "./EditableColumnsModal";
 
 const MIN_COL_WIDTH     = 60;
 const DEFAULT_COL_WIDTH = 150;
@@ -42,7 +41,7 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
   const addPreset       = usePresetStore(s => s.addPreset);
   const reorderColumns  = usePresetStore(s => s.reorderColumns);
   const updatePreset    = usePresetStore(s => s.updatePreset);
-  const { columnColors, labelColors } = useAppearanceStore();
+  const { columnColors, labelColors, editableColumns, toggleEditableColumn } = useAppearanceStore();
   const { user }        = useAuthStore();
 
   /* ── Config dari API ───────────────────────────────────────────────────── */
@@ -80,7 +79,6 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
 
   /* ── UI State ──────────────────────────────────────────────────────────── */
   const [showEditor,          setShowEditor]          = useState(false);
-  const [showEditableColumns, setShowEditableColumns] = useState(false);
   const [activeFilterCol,     setActiveFilterCol]     = useState<string | null>(null);
   const [filterPos,           setFilterPos]           = useState({ top: 0, left: 0 });
   const [saving]              = useState(false);
@@ -145,7 +143,6 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
         onEditPreset={() => setShowEditor(true)}
         filterCount={filterCount}
         onResetFilter={() => useAppearanceStore.getState().clearFilters()}
-        onOpenEditableColumns={() => setShowEditableColumns(true)}
         filteredCount={filteredRecords.length}
         totalCount={records.length}
       />
@@ -207,6 +204,8 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
                                 isPinned={pinnedColumns.includes(col)}
                                 pinnedLeft={pinnedLeft}
                                 onPin={handleTogglePin}
+                                isEditable={editableColumns.includes(col)}
+                                onToggleEditable={toggleEditableColumn}
                               />
                             );
                           })}
@@ -245,7 +244,6 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
       {showEditor && activePreset && (
         <PresetEditorModal presetId={activePreset.id} scope="engineer" onClose={() => setShowEditor(false)} />
       )}
-      {showEditableColumns && <EditableColumnsModal onClose={() => setShowEditableColumns(false)} />}
       {activeFilterCol && (
         <ColumnFilter
           column={activeFilterCol}

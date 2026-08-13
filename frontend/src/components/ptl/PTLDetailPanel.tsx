@@ -27,7 +27,6 @@ import ToastContainer        from "../ui/ToastContainer";
 import PTLKanbanBoard        from "./PTLKanbanBoard";
 import ColumnFilter          from "../table/ColumnFilter";
 import PresetEditorModal     from "../preset/PresetEditorModal";
-import EditableColumnsModal  from "../table/EditableColumnsModal";
 import { TableHeaderCell }   from "../table/TableHeaderCell";
 import TableToolbar          from "../table/TableToolbar";
 import EditableCell          from "../table/EditableCell";
@@ -285,14 +284,13 @@ export default function PTLDetailPanel() {
   const [presetDropdownOpen, setPresetDropdown] = useState(false);
   const [showCreatePreset, setShowCreatePreset] = useState(false);
   const [editingPresetId, setEditingPresetId]   = useState<number | null>(null);
-  const [showEditableColumns, setShowEditableColumns] = useState(false);
   const [drillLabel, setDrillLabel]             = useState<string | null>(null);
 
   const { theme }                   = useThemeStore();
   const { user }                    = useAuthStore();
   const { toasts, show: showToast } = useToast();
 
-  const { ptlEditableColumns, loadPtlEditableColumnsFromDB } = useAppearanceStore();
+  const { ptlEditableColumns, togglePtlEditableColumn, loadPtlEditableColumnsFromDB } = useAppearanceStore();
 
   const ptlSheetData          = useTaskStore((s) => s.ptlSheetData);
   const setPtlSheetData       = useTaskStore((s) => s.setPtlSheetData);
@@ -610,7 +608,6 @@ export default function PTLDetailPanel() {
             onEditPreset={id => setEditingPresetId(id as number)}
             filterCount={filterCount}
             onResetFilter={handleResetFilter}
-            onOpenEditableColumns={() => setShowEditableColumns(true)}
             filteredCount={filteredRecords.length}
             totalCount={records.length}
           />
@@ -678,6 +675,8 @@ export default function PTLDetailPanel() {
                                       )
                                     : undefined}
                                   onPin={handleTogglePin}
+                                  isEditable={ptlEditableColumns.includes(col)}
+                                  onToggleEditable={togglePtlEditableColumn}
                                 />
                               ))}
                             </SortableContext>
@@ -840,13 +839,6 @@ export default function PTLDetailPanel() {
         />
       )}
 
-      {showEditableColumns && (
-        <EditableColumnsModal
-          scope="ptl"
-          allCols={columns}
-          onClose={() => setShowEditableColumns(false)}
-        />
-      )}
     </div>
   );
 }

@@ -12,11 +12,13 @@ type Props = {
   isPinned?:   boolean;
   pinnedLeft?: number;   // left offset untuk sticky header
   onPin?:      (col: string) => void;
+  isEditable?: boolean;
+  onToggleEditable?: (col: string) => void;
 };
 
 export function TableHeaderCell({
   column, width, minWidth, onResize, onAutoFit, onFilter, isFiltered,
-  isPinned = false, pinnedLeft, onPin,
+  isPinned = false, pinnedLeft, onPin, isEditable = false, onToggleEditable,
 }: Props) {
   const {
     attributes, listeners, setNodeRef,
@@ -66,6 +68,9 @@ export function TableHeaderCell({
         .group:hover .filter-btn:hover { opacity: 1 !important; color: var(--accent) !important; background: var(--accent-soft); }
         .group:hover .pin-btn { opacity: 0.5 !important; }
         .group:hover .pin-btn:hover { opacity: 1 !important; color: var(--accent) !important; background: var(--accent-soft); }
+        .group:hover .edit-column-btn { opacity: 0.5 !important; }
+        .group:hover .edit-column-btn:hover { opacity: 1 !important; color: var(--accent) !important; background: var(--accent-soft); }
+        .group:focus-within .edit-column-btn { opacity: 0.5 !important; }
       `}</style>
 
       <div className="flex items-center justify-between gap-1 overflow-hidden">
@@ -112,6 +117,27 @@ export function TableHeaderCell({
               <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clipRule="evenodd" />
             </svg>
           </button>
+
+          {/* Editable-column toggle */}
+          {onToggleEditable && (
+            <button
+              onPointerDown={e => e.stopPropagation()}
+              onClick={() => onToggleEditable(column)}
+              className="p-0.5 rounded transition-all shrink-0 edit-column-btn"
+              style={{
+                color:   isEditable ? "var(--accent)" : "var(--text-muted)",
+                opacity: isEditable ? 1 : 0,
+              }}
+              title={isEditable ? "Nonaktifkan edit kolom" : "Aktifkan edit kolom"}
+              aria-label={isEditable ? `Nonaktifkan edit kolom ${column}` : `Aktifkan edit kolom ${column}`}
+              aria-pressed={isEditable}
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a2.121 2.121 0 0 1 3 3L10.582 16.766a4.5 4.5 0 0 1-1.897 1.13l-3.164.949.949-3.164a4.5 4.5 0 0 1 1.13-1.897l9.262-9.297Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 7.125 17.25 4.875" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 
