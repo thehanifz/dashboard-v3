@@ -38,7 +38,6 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
   const presets         = usePresetStore(s => s.presets) ?? [];
   const activePresetId  = usePresetStore(s => s.activePresetId);
   const setActivePreset = usePresetStore(s => s.setActivePreset);
-  const addPreset       = usePresetStore(s => s.addPreset);
   const reorderColumns  = usePresetStore(s => s.reorderColumns);
   const updatePreset    = usePresetStore(s => s.updatePreset);
   const { columnColors, labelColors, editableColumns, toggleEditableColumn } = useAppearanceStore();
@@ -78,7 +77,7 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
   const { show: showToast } = useToast();
 
   /* ── UI State ──────────────────────────────────────────────────────────── */
-  const [showEditor,          setShowEditor]          = useState(false);
+  const [editorMode,          setEditorMode]          = useState<"create" | "edit" | null>(null);
   const [activeFilterCol,     setActiveFilterCol]     = useState<string | null>(null);
   const [filterPos,           setFilterPos]           = useState({ top: 0, left: 0 });
   const [saving]              = useState(false);
@@ -139,8 +138,8 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
         presets={presets.map(p => ({ id: p.id, name: p.name, columns: p.columns ?? [] }))}
         activePreset={activePreset ? { id: activePreset.id, name: activePreset.name, columns: activePreset.columns ?? [] } : null}
         onSelectPreset={id => setActivePreset(id as string)}
-        onCreatePreset={() => { addPreset("Preset Baru", []); setShowEditor(true); }}
-        onEditPreset={() => setShowEditor(true)}
+        onCreatePreset={() => setEditorMode("create")}
+        onEditPreset={() => setEditorMode("edit")}
         filterCount={filterCount}
         onResetFilter={() => useAppearanceStore.getState().clearFilters()}
         filteredCount={filteredRecords.length}
@@ -158,7 +157,7 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
               </svg>
               <p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>Belum ada preset</p>
               <p className="text-xs mt-1 mb-4" style={{ color: "var(--text-muted)" }}>Buat preset untuk mulai menampilkan data</p>
-              <button onClick={() => { addPreset("Preset Pertama", []); setShowEditor(true); }} className="btn-primary text-sm">
+              <button onClick={() => setEditorMode("create")} className="btn-primary text-sm">
                 + Buat Preset
               </button>
             </div>
@@ -241,8 +240,12 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
         </>
       )}
 
-      {showEditor && activePreset && (
-        <PresetEditorModal presetId={activePreset.id} scope="engineer" onClose={() => setShowEditor(false)} />
+      {editorMode && (editorMode === "create" || activePreset) && (
+        <PresetEditorModal
+          presetId={editorMode === "edit" ? activePreset?.id : undefined}
+          scope="engineer"
+          onClose={() => setEditorMode(null)}
+        />
       )}
       {activeFilterCol && (
         <ColumnFilter

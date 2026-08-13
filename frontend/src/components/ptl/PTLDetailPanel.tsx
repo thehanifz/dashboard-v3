@@ -159,93 +159,6 @@ function PtlTeskomButton({ idPa }: { idPa: string }) {
   );
 }
 
-// ─── Preset Create Modal ──────────────────────────────────────────────────────
-function PTLPresetCreateModal({ allCols, onCreate, onClose }: {
-  allCols: string[];
-  onCreate: (name: string, columns: string[]) => Promise<void>;
-  onClose: () => void;
-}) {
-  const [name,     setName]     = useState("");
-  const [selected, setSelected] = useState<string[]>(allCols);
-  const [saving,   setSaving]   = useState(false);
-
-  const toggleCol = (col: string) =>
-    setSelected(prev => prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]);
-
-  const handleSave = async () => {
-    if (!name.trim() || selected.length === 0) return;
-    setSaving(true);
-    try { await onCreate(name.trim(), selected); onClose(); }
-    finally { setSaving(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)" }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden flex flex-col"
-        style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", maxHeight: "85vh" }}>
-        <div className="flex items-center justify-between px-5 py-4 shrink-0"
-          style={{ borderBottom: "1px solid var(--border)" }}>
-          <h3 className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>Buat Preset Baru</h3>
-          <button onClick={onClose} className="p-1 rounded-lg" style={{ color: "var(--text-muted)" }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--bg-surface2)"}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "transparent"}>
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 custom-scrollbar space-y-4">
-          <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>Nama Preset</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="mis. Preset Utama"
-              className="w-full px-3 py-2 rounded-lg text-sm border"
-              style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-primary)", outline: "none" }}
-              onFocus={e => e.target.style.borderColor = "var(--accent)"}
-              onBlur={e => e.target.style.borderColor = "var(--border)"} />
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-                Pilih Kolom ({selected.length}/{allCols.length})
-              </label>
-              <div className="flex gap-1.5">
-                <button onClick={() => setSelected([...allCols])}
-                  className="text-[10px] px-2 py-0.5 rounded" style={{ color: "var(--accent)", background: "var(--accent-soft)" }}>Semua</button>
-                <button onClick={() => setSelected([])}
-                  className="text-[10px] px-2 py-0.5 rounded" style={{ color: "var(--text-muted)", background: "var(--bg-surface2)" }}>Hapus</button>
-              </div>
-            </div>
-            <div className="space-y-1 max-h-64 overflow-y-auto custom-scrollbar">
-              {allCols.map(col => (
-                <label key={col} className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer"
-                  style={{ background: selected.includes(col) ? "var(--accent-soft)" : "transparent" }}>
-                  <input type="checkbox" checked={selected.includes(col)} onChange={() => toggleCol(col)}
-                    className="rounded" style={{ accentColor: "var(--accent)" }} />
-                  <span className="text-xs truncate" style={{ color: "var(--text-primary)" }}>{col}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="flex gap-2 px-5 py-4 shrink-0" style={{ borderTop: "1px solid var(--border)" }}>
-          <button onClick={onClose} disabled={saving}
-            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium"
-            style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
-            Batal
-          </button>
-          <button onClick={handleSave} disabled={saving || !name.trim() || selected.length === 0}
-            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2"
-            style={{ background: "var(--accent)", opacity: saving || !name.trim() || selected.length === 0 ? 0.5 : 1 }}>
-            {saving && <span className="spinner w-3 h-3" />}
-            Simpan
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Drill Banner ─────────────────────────────────────────────────────────────
 function DrillBanner({ label, onClear }: { label: string; onClear: () => void }) {
   return (
@@ -308,7 +221,6 @@ export default function PTLDetailPanel() {
     activePreset,
     activePresetId,
     setActivePresetId,
-    createPreset,
     updatePreset,
     loading: presetLoading,
     refetch: refetchPresets,
@@ -571,15 +483,6 @@ export default function PTLDetailPanel() {
     setActiveFilterCol(prev => prev === col ? null : col);
   };
 
-  const handleCreatePreset = async (name: string, cols: string[]) => {
-    try {
-      await createPreset({ name, columns: cols });
-      showToast("Preset berhasil dibuat", "success");
-    } catch {
-      showToast("Gagal membuat preset", "error");
-    }
-  };
-
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg-app)" }}>
       <Sidebar collapsed={sidebarCollapsed} onToast={showToast} />
@@ -822,9 +725,11 @@ export default function PTLDetailPanel() {
       )}
 
       {showCreatePreset && (
-        <PTLPresetCreateModal
+        <PresetEditorModal
+          scope="ptl"
           allCols={allColumns}
-          onCreate={handleCreatePreset}
+          initialColumns={allColumns}
+          onSaved={refetchPresets}
           onClose={() => setShowCreatePreset(false)}
         />
       )}

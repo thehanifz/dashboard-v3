@@ -15,16 +15,20 @@ import { usePresets }     from "../../hooks/usePresets";
 import { useToast }       from "../../utils/useToast";
 
 type Props = {
-  presetId: string | number;
+  presetId?: string | number;
   scope:    "engineer" | "ptl";
   onClose:  () => void;
   /** Kolom dari sheet PTL — wajib kalau scope="ptl" */
   allCols?: string[];
+  /** Kolom awal saat membuat preset baru. */
+  initialColumns?: string[];
   /** Dipanggil setelah save/delete berhasil — untuk trigger refetch di parent */
   onSaved?: () => void;
 };
 
-export default function PresetEditorModal({ presetId, scope, onClose, allCols, onSaved }: Props) {
+export default function PresetEditorModal({
+  presetId, scope, onClose, allCols, initialColumns, onSaved,
+}: Props) {
 
   // ── Engineer store ─────────────────────────────────────────────────────────
   const engRecords       = useTaskStore((s) => s.records) ?? [];
@@ -32,19 +36,25 @@ export default function PresetEditorModal({ presetId, scope, onClose, allCols, o
   const engUpdateColumns = usePresetStore((s) => s.updatePresetColumns);
   const engRename        = usePresetStore((s) => s.renamePreset);
   const engDelete        = usePresetStore((s) => s.deletePreset);
+  const engAddPreset     = usePresetStore((s) => s.addPreset);
 
   // ── PTL hook ───────────────────────────────────────────────────────────────
-  const { presets: ptlPresets, updatePreset: ptlUpdate, deletePreset: ptlDelete } = usePresets("ptl");
+  const {
+    presets: ptlPresets, createPreset: ptlCreate,
+    updatePreset: ptlUpdate, deletePreset: ptlDelete,
+  } = usePresets("ptl");
 
   const { show: showToast } = useToast();
 
   // ── Resolve preset aktif ───────────────────────────────────────────────────
+  const isCreate = presetId === undefined;
   const preset = useMemo(() => {
+    if (isCreate) return null;
     if (scope === "engineer") {
       return engPresets.find((p) => p.id === (presetId as string)) ?? null;
     }
     return ptlPresets.find((p) => p.id === (presetId as number)) ?? null;
-  }, [scope, presetId, engPresets, ptlPresets]);
+  }, [isCreate, scope, presetId, engPresets, ptlPresets]);
 
   // ── Local state ────────────────────────────────────────────────────────────
   const [localName,       setLocalName]       = useState("");
@@ -54,12 +64,19 @@ export default function PresetEditorModal({ presetId, scope, onClose, allCols, o
   const [saving,          setSaving]          = useState(false);
 
   useEffect(() => {
+    if (isCreate) {
+      const columns = initialColumns ?? [];
+      setLocalName("");
+      setSelectedCols(columns);
+      setInitialSnapshot(new Set(columns));
+      return;
+    }
     if (preset) {
       setLocalName(preset.name);
       setSelectedCols(preset.columns ?? []);
       setInitialSnapshot(new Set(preset.columns ?? []));
     }
-  }, [preset?.id]);
+  }, [isCreate, preset?.id]);
 
   // ── Kolom tersedia ─────────────────────────────────────────────────────────
   const availableColumns = useMemo(() => {
@@ -85,10 +102,15 @@ export default function PresetEditorModal({ presetId, scope, onClose, allCols, o
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleSave = async () => {
-    if (!preset) return;
+    const name = localName.trim();
+    if (!name || selectedCols.length === 0) return;
     setSaving(true);
     try {
-      if (scope === "engineer") {
+      if (isCreate && scope === "engineer") {
+        engAddPreset(name, selectedCols);
+      } else if (isCreate) {
+        await ptlCreate({ name, columns: selectedCols });
+      } else if (scope === "engineer") {
         if (localName.trim()) engRename(presetId as string, localName.trim());
         engUpdateColumns(presetId as string, selectedCols);
       } else {
@@ -97,7 +119,7 @@ export default function PresetEditorModal({ presetId, scope, onClose, allCols, o
           columns: selectedCols,
         });
       }
-      showToast({ title: "Preset disimpan", type: "success" });
+      showToast({ title: isCreate ? "Preset dibuat" : "Preset disimpan", type: "success" });
       onSaved?.();
       onClose();
     } catch {
@@ -146,7 +168,7 @@ export default function PresetEditorModal({ presetId, scope, onClose, allCols, o
     setSelectedCols(Array.from(s));
   };
 
-  if (!preset) return null;
+  if (!isCreate && !preset) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -158,7 +180,7 @@ export default function PresetEditorModal({ presetId, scope, onClose, allCols, o
         <div className="bg-gray-50 border-b shrink-0 z-20">
           <div className="p-4 flex justify-between items-center border-b border-gray-200">
             <div>
-              <h2 className="text-lg font-bold text-gray-800">Edit Kolom Preset</h2>
+              <h2 className="text-lg font-bold text-gray-800">{isCreate ? "Buat Preset Baru" : "Edit Kolom Preset"}</h2>
               <p className="text-xs text-gray-500">Atur kolom yang ingin ditampilkan · selected dulu, lalu A–Z</p>
             </div>
             <button onClick={onClose} className="text-gray-400 hover:text-red-500 transition-colors p-1">
@@ -257,24 +279,26 @@ export default function PresetEditorModal({ presetId, scope, onClose, allCols, o
 
         {/* FOOTER */}
         <div className="p-4 border-t bg-white shrink-0 flex justify-between items-center gap-3 rounded-b-xl z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-          <button onClick={handleDelete} disabled={saving}
-            className="px-5 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50">
-            <div className="flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              <span>Hapus Preset</span>
-            </div>
-          </button>
+          {!isCreate && (
+            <button onClick={handleDelete} disabled={saving}
+              className="px-5 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span>Hapus Preset</span>
+              </div>
+            </button>
+          )}
 
           <div className="flex gap-2">
             <button onClick={onClose} disabled={saving}
               className="px-5 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded transition-colors disabled:opacity-50">
               Batal
             </button>
-            <button onClick={handleSave} disabled={saving}
+            <button onClick={handleSave} disabled={saving || !localName.trim() || selectedCols.length === 0}
               className="px-6 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded shadow-md hover:shadow-lg transition-all transform active:scale-95 disabled:opacity-60">
-              {saving ? "Menyimpan..." : "Simpan Perubahan"}
+              {saving ? "Menyimpan..." : isCreate ? "Buat Preset" : "Simpan Perubahan"}
             </button>
           </div>
         </div>
