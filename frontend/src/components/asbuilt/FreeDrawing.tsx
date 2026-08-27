@@ -429,22 +429,38 @@ export default function FreeDrawing({ onToast }: Props) {
   const groupSelected = () => {
     const canvas = fabricRef.current;
     if (!canvas) return;
+    const active = canvas.getActiveObject();
+    if (!active || active.type !== "activeSelection") return;
+
     const objects = canvas.getActiveObjects().filter((obj) => !obj.get("dataGrid"));
     if (objects.length < 2) return;
-    const selection = canvas.getActiveObject();
-    if (!selection || selection.type !== "activeSelection") return;
-    const group = new FabricGroup(selection.removeAll());
+
+    // Fabric 7's supported flow is: ActiveSelection.removeAll() -> Group -> canvas.add().
+    // Suppress intermediate history events so Group becomes one undoable action.
+    restoringRef.current = true;
+    const group = new FabricGroup(active.removeAll());
     canvas.add(group);
     canvas.setActiveObject(group);
+    restoringRef.current = false;
     canvas.requestRenderAll();
+    syncSelection();
+    pushHistory();
   };
 
   const ungroupSelected = () => {
     const canvas = fabricRef.current;
-    const active = canvas?.getActiveObject() as any;
-    if (!canvas || !active || active.type !== "group" || typeof active.toActiveSelection !== "function") return;
-    active.toActiveSelection();
+    const active = canvas?.getActiveObject();
+    if (!canvas || !active || active.type !== "group") return;
+
+    // Fabric 7: remove the Group, then put its children into a new ActiveSelection.
+    restoringRef.current = true;
+    canvas.remove(active);
+    const selection = new ActiveSelection(active.removeAll(), { canvas });
+    canvas.setActiveObject(selection);
+    restoringRef.current = false;
     canvas.requestRenderAll();
+    syncSelection();
+    pushHistory();
   };
 
   const align = (direction: "left" | "center" | "right" | "top" | "middle" | "bottom") => {
@@ -488,19 +504,58 @@ export default function FreeDrawing({ onToast }: Props) {
   const exportDrawing = (format: "png" | "svg") => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    const previousZoom = canvas.getZoom();
+
+    const objects = canvas.getObjects().filter((obj) => !obj.get("dataGrid"));
+    if (!objects.length) {
+      onToast("Tidak ada object untuk diekspor", "error");
+      return;
+    }
+
+    // Export only the actual drawing content, with a fixed 10px margin.
+    const bounds = objects.reduce(
+      (acc, obj) => {
+        const rect = obj.getBoundingRect();
+        return {
+          left: Math.min(acc.left, rect.left),
+          top: Math.min(acc.top, rect.top),
+          right: Math.max(acc.right, rect.left + rect.width),
+          bottom: Math.max(acc.bottom, rect.top + rect.height),
+        };
+      },
+      { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity },
+    );
+
+    const margin = 10;
+    const left = Math.max(0, bounds.left - margin);
+    const top = Math.max(0, bounds.top - margin);
+    const right = Math.min(canvas.getWidth(), bounds.right + margin);
+    const bottom = Math.min(canvas.getHeight(), bounds.bottom + margin);
+    const width = Math.max(1, right - left);
+    const height = Math.max(1, bottom - top);
+
     const previousBackground = canvas.backgroundColor;
-    canvas.setZoom(1);
     canvas.set({ backgroundColor: background });
     canvas.requestRenderAll();
+
     if (format === "png") {
-      const data = canvas.toDataURL({ format: "png", multiplier: 2 });
+      const data = canvas.toDataURL({
+        format: "png",
+        left,
+        top,
+        width,
+        height,
+        multiplier: 2,
+      });
       const a = document.createElement("a");
       a.href = data;
       a.download = "free-drawing.png";
       a.click();
     } else {
-      const svg = canvas.toSVG();
+      const svg = canvas.toSVG({
+        viewBox: { x: left, y: top, width, height },
+        width: `${width}px`,
+        height: `${height}px`,
+      });
       const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -509,7 +564,7 @@ export default function FreeDrawing({ onToast }: Props) {
       a.click();
       URL.revokeObjectURL(url);
     }
-    canvas.setZoom(previousZoom);
+
     canvas.set({ backgroundColor: previousBackground });
     canvas.requestRenderAll();
   };
@@ -565,20 +620,24 @@ export default function FreeDrawing({ onToast }: Props) {
 
   const addIconAtPoint = async (icon: IconAsset, clientX: number, clientY: number) => {
     const canvas = fabricRef.current;
-    const canvasEl = canvasElementRef.current;
-    if (!canvas || !canvasEl) return;
-    const rect = canvasEl.getBoundingClientRect();
-    const scaleX = canvasSize.width / rect.width;
-    const scaleY = canvasSize.height / rect.height;
+    if (!canvas) return;
+
     try {
       const image = await FabricImage.fromURL(icon.url, { crossOrigin: "anonymous" });
       image.set({
-        left: Math.max(0, (clientX - rect.left) * scaleX - 40),
-        top: Math.max(0, (clientY - rect.top) * scaleY - 40),
         scaleX: 0.45,
         scaleY: 0.45,
         dataIcon: icon.filename,
       });
+
+      // Fabric 7 resolves the pointer against the current viewport transform,
+      // so drag/drop remains accurate at any zoom or pan level.
+      const scenePoint = canvas.getScenePoint({ clientX, clientY } as any);
+      image.set({
+        left: Math.max(0, scenePoint.x - image.getScaledWidth() / 2),
+        top: Math.max(0, scenePoint.y - image.getScaledHeight() / 2),
+      });
+
       canvas.add(image);
       canvas.setActiveObject(image);
       canvas.requestRenderAll();
@@ -761,10 +820,6 @@ export default function FreeDrawing({ onToast }: Props) {
               <div className="space-y-2">
                 <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>X<input type="number" value={Math.round(selected.left || 0)} onChange={(e) => updateSelected({ left: Number(e.target.value) })} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
                 <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Y<input type="number" value={Math.round(selected.top || 0)} onChange={(e) => updateSelected({ top: Number(e.target.value) })} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="text-[9px]" style={{ color: "var(--text-muted)" }}>W<input type="number" value={Math.round((selected.width || 0) * (selected.scaleX || 1))} onChange={(e) => updateSelected({ scaleX: Number(e.target.value) / Math.max(1, selected.width || 1) })} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
-                  <label className="text-[9px]" style={{ color: "var(--text-muted)" }}>H<input type="number" value={Math.round((selected.height || 0) * (selected.scaleY || 1))} onChange={(e) => updateSelected({ scaleY: Number(e.target.value) / Math.max(1, selected.height || 1) })} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
-                </div>
                 <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Rotation<input type="number" value={Math.round(selected.angle || 0)} onChange={(e) => updateSelected({ angle: Number(e.target.value) })} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
                 <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Opacity<input type="range" min={0} max={1} step={0.05} value={selected.opacity ?? 1} onChange={(e) => updateSelected({ opacity: Number(e.target.value) })} className="w-full mt-1" /></label>
                 <div className="grid grid-cols-2 gap-1">
@@ -781,6 +836,17 @@ export default function FreeDrawing({ onToast }: Props) {
             <div className="space-y-2">
               <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Text</p>
               <textarea value={selected.text || ""} onChange={(e) => updateSelected({ text: e.target.value })} className="w-full min-h-20 px-2 py-1.5 rounded-lg border text-xs resize-y" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} />
+              <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Font Size (px)
+                <input
+                  type="number"
+                  min={8}
+                  max={240}
+                  value={Math.round(Number(selected.fontSize) || 18)}
+                  onChange={(e) => updateSelected({ fontSize: Math.max(8, Math.min(240, Number(e.target.value) || 18)) })}
+                  className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs"
+                  style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+                />
+              </label>
               <div className="flex gap-1">
                 <button type="button" onClick={() => updateSelected({ fontWeight: selected.fontWeight === "bold" ? "normal" : "bold" })} className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ background: selected.fontWeight === "bold" ? "var(--accent-soft)" : "var(--bg-surface2)", color: "var(--text-secondary)" }}><Bold size={14} /></button>
                 <button type="button" onClick={() => updateSelected({ fontStyle: selected.fontStyle === "italic" ? "normal" : "italic" })} className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ background: selected.fontStyle === "italic" ? "var(--accent-soft)" : "var(--bg-surface2)", color: "var(--text-secondary)" }}><Italic size={14} /></button>
