@@ -1,11 +1,30 @@
 import api from "./api";
 
+export interface IconAsset {
+  filename: string;
+  url: string;
+}
+
 export interface TemplateDetail {
   filename: string;
   fields: string[];
 }
 
 const asbuiltApi = {
+  listIcons: async (): Promise<IconAsset[]> => {
+    const files = await api.get<string[]>("/asbuilt/icons").then((r) => r.data);
+    return files.map((filename) => ({
+      filename,
+      url: `/api/asbuilt/icons/${encodeURIComponent(filename)}`,
+    }));
+  },
+
+  uploadIcon: (file: File): Promise<{ ok: boolean; filename: string }> => {
+    const form = new FormData();
+    form.append("iconFile", file);
+    return api.post("/asbuilt/icons/upload", form).then((r) => r.data);
+  },
+
   listTemplates: (): Promise<string[]> =>
     api.get("/asbuilt/templates").then((r) => r.data),
 

@@ -12,6 +12,7 @@ import { useAppStore } from "../state/appStore";
 
 import TemplateFillGenerator   from "../components/asbuilt/TemplateFillGenerator";
 import TopologyDiagramGenerator from "../components/asbuilt/TopologyDiagramGenerator";
+import FreeDrawing from "../components/asbuilt/FreeDrawing";
 import asbuiltApi from "../services/asbuiltApi";
 import { useEffect, useRef } from "react";
 import { downloadSvgAsPng } from "../utils/svgTopologyRenderer";
@@ -31,6 +32,12 @@ const GENERATOR_REGISTRY: GeneratorEntry[] = [
     label:     "Topology Generator",
     icon:      "🔌",
     Component: TopologyDiagramGenerator,
+  },
+  {
+    id:        "free-drawing",
+    label:     "Free Drawing",
+    icon:      "✏️",
+    Component: FreeDrawing,
   },
 ];
 
