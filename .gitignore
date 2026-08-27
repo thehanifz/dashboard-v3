@@ -1,6 +1,6 @@
 # ── Secrets & Credentials ─────────────────────────────────────────────────────
 .env
-.env.*
+
 *.env
 credentials.json
 *-credentials.json
