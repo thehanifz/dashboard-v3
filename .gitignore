@@ -53,3 +53,5 @@ Thumbs.db
 *.docx
 docx/
 temp/
+*.csv
+*.json
