@@ -6,6 +6,7 @@ import {
   FabricImage,
   FabricText,
   IText,
+  Textbox,
   Group as FabricGroup,
   Line,
   PencilBrush,
@@ -77,7 +78,7 @@ export default function FreeDrawing({ onToast }: Props) {
   const historyRef = useRef<HistoryState[]>([]);
   const historyIndexRef = useRef(-1);
   const restoringRef = useRef(false);
-  const clipboardRef = useRef<FabricObject | FabricObject[] | null>(null);
+  const clipboardRef = useRef<FabricObject[] | null>(null);
 
   const [icons, setIcons] = useState<IconAsset[]>([]);
   const [loadingIcons, setLoadingIcons] = useState(true);
@@ -278,12 +279,29 @@ export default function FreeDrawing({ onToast }: Props) {
   const addText = () => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    const text = new IText("Teks Baru", {
+    const text = new Textbox("Teks Baru", {
       left: 100,
       top: 100,
+      width: 260,
       fill: strokeColor,
       fontSize,
       fontFamily: "Arial",
+      scaleX: 1,
+      scaleY: 1,
+    });
+
+    // Text size is controlled only by Font Size in the properties panel.
+    // On-canvas resizing changes the textbox width (wrapping), not the font scale.
+    text.setControlsVisibility({
+      tl: false,
+      tr: false,
+      bl: false,
+      br: false,
+      mt: false,
+      mb: false,
+      ml: true,
+      mr: true,
+      mtr: true,
     });
     canvas.add(text);
     canvas.setActiveObject(text);
@@ -367,29 +385,48 @@ export default function FreeDrawing({ onToast }: Props) {
 
   const copy = async () => {
     const canvas = fabricRef.current;
-    const active = canvas?.getActiveObject();
-    if (!active) return;
-    clipboardRef.current = await active.clone();
-    onToast("Object disalin", "success");
+    if (!canvas) return;
+
+    // Always copy the actual selected objects. Cloning ActiveSelection itself
+    // can serialize the selection wrapper instead of the objects the user picked.
+    const activeObjects = canvas
+      .getActiveObjects()
+      .filter((obj) => !obj.get("dataGrid"));
+    if (!activeObjects.length) return;
+
+    clipboardRef.current = await Promise.all(activeObjects.map((obj) => obj.clone()));
+    onToast(`${activeObjects.length} object disalin`, "success");
   };
 
   const paste = async () => {
     const canvas = fabricRef.current;
-    if (!canvas || !clipboardRef.current) return;
-    const cloned = await (Array.isArray(clipboardRef.current)
-      ? Promise.all(clipboardRef.current.map((item) => item.clone()))
-      : clipboardRef.current.clone());
-    if (Array.isArray(cloned)) {
-      const group = new FabricGroup(cloned);
-      group.set({ left: (group.left || 0) + 20, top: (group.top || 0) + 20 });
-      canvas.add(group);
-      canvas.setActiveObject(group);
+    const clipboard = clipboardRef.current;
+    if (!canvas || !clipboard?.length) return;
+
+    // Paste every copied object independently, preserving the original
+    // relative positions. Multi-selection is recreated only after all objects
+    // have been added; it is never converted into a Group.
+    restoringRef.current = true;
+    const clonedObjects = await Promise.all(clipboard.map((item) => item.clone()));
+    clonedObjects.forEach((obj) => {
+      obj.set({
+        left: (obj.left || 0) + 20,
+        top: (obj.top || 0) + 20,
+      });
+      obj.setCoords();
+      canvas.add(obj);
+    });
+    restoringRef.current = false;
+
+    canvas.discardActiveObject();
+    if (clonedObjects.length === 1) {
+      canvas.setActiveObject(clonedObjects[0]);
     } else {
-      cloned.set({ left: (cloned.left || 0) + 20, top: (cloned.top || 0) + 20 });
-      canvas.add(cloned);
-      canvas.setActiveObject(cloned);
+      canvas.setActiveObject(new ActiveSelection(clonedObjects, { canvas }));
     }
     canvas.requestRenderAll();
+    syncSelection();
+    pushHistory();
   };
 
   const deleteSelected = () => {
@@ -611,7 +648,19 @@ export default function FreeDrawing({ onToast }: Props) {
   const updateSelected = (patch: Record<string, unknown>) => {
     const canvas = fabricRef.current;
     if (!canvas || !selected) return;
-    selected.set(patch as any);
+
+    if (objectIsText(selected) && Object.prototype.hasOwnProperty.call(patch, "fontSize")) {
+      // Never let a previous canvas scale affect the effective text size.
+      // Font size is an absolute px value controlled by the panel.
+      selected.set({
+        ...patch,
+        scaleX: 1,
+        scaleY: 1,
+      } as any);
+    } else {
+      selected.set(patch as any);
+    }
+
     selected.setCoords();
     canvas.requestRenderAll();
     pushHistory();
