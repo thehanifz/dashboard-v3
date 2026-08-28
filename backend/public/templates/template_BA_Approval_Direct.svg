@@ -3097,8 +3097,8 @@
 			<v:textBlock v:margins="rect(3.99999,3.99999,3.99999,3.99999)" v:tabSpace="42.5196"/>
 			<v:textRect cx="70.0513" cy="294.241" width="140.12" height="25.0991"/>
 			<rect x="0" y="281.692" width="140.102" height="25.0991" class="st9"/>
-			<text x="46.9" y="291.24" class="st13" v:langID="1033"><v:paragraph v:horizAlign="1"/><v:tabList/>Originating<v:newlineChar/><tspan
-						x="14.25" dy="1.2em" class="st12">{field_Alamat_Originating}</tspan></text>		</g>
+			<text x="70.0513" y="291.24" class="st13" v:langID="1033" text-anchor="middle"><v:paragraph v:horizAlign="1"/><v:tabList/>Originating<v:newlineChar/><tspan
+						x="70.0513" dy="1.2em" class="st12">{field_Alamat_Originating}</tspan></text>		</g>
 		<g id="shape16-52" v:mID="16" v:groupContext="shape" transform="translate(171.112,-243)">
 			<title>Sheet.16</title>
 			<desc>Clear Channel TIPE 3A GITET 500 KV INDRAMAYU – GITET 500KV MA...</desc>
@@ -3106,8 +3106,8 @@
 			<v:textBlock v:margins="rect(3.99999,3.99999,3.99999,3.99999)"/>
 			<v:textRect cx="166.871" cy="288.79" width="333.75" height="36"/>
 			<rect x="0" y="270.791" width="333.741" height="36" class="st9"/>
-			<text x="119.66" y="285.79" class="st13" v:langID="1033"><v:paragraph v:horizAlign="1"/><v:tabList/>{field_Nama_Layanan}<v:newlineChar/><tspan
-						x="49.39" dy="1.2em" class="st12">{field_Alamat_Originating} </tspan>- {field_Alamat_Terminating}</text>		</g>
+			<text x="166.871" y="285.79" class="st13" v:langID="1033" text-anchor="middle"><v:paragraph v:horizAlign="1"/><v:tabList/>{field_Nama_Layanan}<v:newlineChar/><tspan
+						x="166.871" dy="1.2em" class="st12">{field_Alamat_Originating} </tspan>- {field_Alamat_Terminating}</text>		</g>
 		<g id="shape17-56" v:mID="17" v:groupContext="shape" transform="translate(19.382,-18.75)">
 			<title>Sheet.17</title>
 			<rect x="0" y="37.5" width="637.794" height="269.291" class="st14"/>
@@ -3119,7 +3119,7 @@
 			<v:textBlock v:margins="rect(3.99999,3.99999,3.99999,3.99999)"/>
 			<v:textRect cx="87.75" cy="288.365" width="175.52" height="36.8503"/>
 			<rect x="0" y="269.94" width="175.5" height="36.8503" class="st9"/>
-			<text x="31.56" y="291.36" class="st11" v:langID="1033"><v:paragraph v:horizAlign="1"/><v:tabList/>{field_Alamat_Terminating}</text>		</g>
+			<text x="87.75" y="291.36" class="st11" v:langID="1033" text-anchor="middle"><v:paragraph v:horizAlign="1"/><v:tabList/>{field_Alamat_Terminating}</text>		</g>
 		<g id="shape21-61" v:mID="21" v:groupContext="shape" transform="translate(288.852,-128.556)">
 			<title>Sheet.21</title>
 			<desc>ADSS</desc>
@@ -3135,7 +3135,7 @@
 			<v:textBlock v:margins="rect(3.99999,3.99999,3.99999,3.99999)"/>
 			<v:textRect cx="73.4341" cy="288.365" width="146.87" height="36.8503"/>
 			<rect x="0" y="269.94" width="146.868" height="36.8503" class="st9"/>
-			<text x="19.35" y="291.36" class="st11" v:langID="1033"><v:paragraph v:horizAlign="1"/><v:tabList/>{field_Alamat_Originating}</text>		</g>
+			<text x="73.4341" y="291.36" class="st11" v:langID="1033" text-anchor="middle"><v:paragraph v:horizAlign="1"/><v:tabList/>{field_Alamat_Originating}</text>		</g>
 		<g id="shape23-67" v:mID="23" v:groupContext="shape" transform="translate(524.25,-245.556)">
 			<title>Sheet.23</title>
 			<desc>Originating GITET 500KV INDRAMAYU</desc>
@@ -3143,8 +3143,8 @@
 			<v:textBlock v:margins="rect(3.99999,3.99999,3.99999,3.99999)" v:tabSpace="42.5196"/>
 			<v:textRect cx="70.0513" cy="294.241" width="140.12" height="25.0991"/>
 			<rect x="0" y="281.692" width="140.102" height="25.0991" class="st9"/>
-			<text x="44.82" y="291.24" class="st13" v:langID="1033"><v:paragraph v:horizAlign="1"/><v:tabList/>Terminating<v:newlineChar/><tspan
-						x="12.17" dy="1.2em" class="st12">{field_Alamat_Terminating}</tspan></text>		</g>
+			<text x="70.0513" y="291.24" class="st13" v:langID="1033" text-anchor="middle"><v:paragraph v:horizAlign="1"/><v:tabList/>Terminating<v:newlineChar/><tspan
+						x="70.0513" dy="1.2em" class="st12">{field_Alamat_Terminating}</tspan></text>		</g>
 		<g id="shape24-71" v:mID="24" v:groupContext="shape" transform="translate(109.456,-27.0406)">
 			<title>Sheet.24</title>
 			<rect x="0" y="100.5" width="457.794" height="206.291" class="st14"/>
