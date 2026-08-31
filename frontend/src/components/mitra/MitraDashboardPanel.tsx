@@ -16,6 +16,7 @@ import Topbar          from "../layout/Topbar";
 import Sidebar         from "../layout/Sidebar";
 import ToastContainer  from "../ui/ToastContainer";
 import MobileRecordList from "../table/MobileRecordList";
+import MobileFilterSheet from "../table/MobileFilterSheet";
 
 type DashView = "summary" | "kanban" | "table";
 const DEFAULT_COL_WIDTH = 150;
@@ -27,6 +28,8 @@ export default function MitraDashboardPanel() {
   const [editingCell, setEditingCell]           = useState<{ rowId: number; col: string } | null>(null);
   const [editingValue, setEditingValue]         = useState("");
   const [page, setPage]                         = useState(1);
+  const [activeFilters, setActiveFilters]       = useState<Record<string, string[]>>({});
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const PAGE_SIZE                               = 20;
 
   const { toasts, show: showToast } = useToast();
@@ -61,15 +64,33 @@ export default function MitraDashboardPanel() {
   }, [hasLoadedData]);
 
   const filteredRecords = useMemo(() => {
-    if (!search.trim()) return records;
-    const q = search.toLowerCase();
-    return records.filter((r) =>
-      Object.values(r.data ?? {}).some((v) => String(v).toLowerCase().includes(q))
-    );
-  }, [records, search]);
+    let result = [...records];
+
+    if (Object.keys(activeFilters).length > 0) {
+      result = result.filter(record =>
+        Object.entries(activeFilters).every(([key, values]) =>
+          values.includes(String(record.data?.[key] ?? ""))
+        )
+      );
+    }
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter((r) =>
+        Object.values(r.data ?? {}).some((v) => String(v).toLowerCase().includes(q))
+      );
+    }
+
+    return result;
+  }, [records, search, activeFilters]);
 
   const totalPage    = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE));
+  const filterCount = Object.keys(activeFilters).length;
   const pagedRecords = filteredRecords.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  useEffect(() => {
+    if (page > totalPage) setPage(totalPage);
+  }, [page, totalPage]);
 
   const canEdit = (col: string) => editableColumns.includes(col);
 
@@ -130,7 +151,8 @@ export default function MitraDashboardPanel() {
                 {records.length} pekerjaan · {editableColumns.length} kolom bisa diedit
               </p>
             </div>
-            <div className="relative">
+            <div className="w-full md:w-auto flex items-center gap-2">
+            <div className="relative flex-1 md:flex-none">
               <svg className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
                 fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
                 style={{ color: "var(--text-muted)" }}>
@@ -141,9 +163,25 @@ export default function MitraDashboardPanel() {
                 placeholder="Cari data..."
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                className="th-input pl-8 pr-3 py-1.5 text-xs w-48"
+                className="th-input pl-8 pr-3 py-2 md:py-1.5 text-xs w-full md:w-48"
               />
             </div>
+            <button
+              type="button"
+              onClick={() => setMobileFilterOpen(true)}
+              className="md:hidden inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium shrink-0"
+              style={{
+                background: filterCount > 0 ? "var(--accent-soft)" : "var(--bg-surface)",
+                color: filterCount > 0 ? "var(--accent)" : "var(--text-secondary)",
+                border: `1px solid ${filterCount > 0 ? "var(--accent)" : "var(--border)"}`,
+              }}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4-2A1 1 0 018 17v-3.586L3.293 6.707A1 1 0 013 6V4z" />
+              </svg>
+              Filter{filterCount > 0 ? ` ${filterCount}` : ""}
+            </button>
+          </div>
           </div>
 
           {/* Loading */}
@@ -171,7 +209,7 @@ export default function MitraDashboardPanel() {
 
           {/* Mobile: card list — urutan kolom mengikuti konfigurasi Mitra. */}
           {loaded && displayColumns.length > 0 && (
-            <div className="md:hidden flex-1 min-h-0 overflow-auto custom-scrollbar pb-3">
+            <div className="md:hidden flex-1 min-h-0 overflow-y-auto custom-scrollbar pb-3">
               <MobileRecordList
                 records={pagedRecords}
                 columns={displayColumns}
@@ -290,7 +328,7 @@ export default function MitraDashboardPanel() {
 
           {/* Pagination */}
           {filteredRecords.length > PAGE_SIZE && (
-            <div className="flex items-center justify-between px-3 py-2 rounded-xl shrink-0"
+            <div className="flex items-center justify-between px-3 py-2 rounded-xl shrink-0 md:mx-0 mx-3"
               style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
               <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                 <b style={{ color: "var(--text-primary)" }}>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredRecords.length)}</b> dari <b style={{ color: "var(--text-primary)" }}>{filteredRecords.length}</b>
@@ -307,6 +345,25 @@ export default function MitraDashboardPanel() {
 
         </main>
       </div>
+
+      <MobileFilterSheet
+        open={mobileFilterOpen}
+        columns={displayColumns}
+        records={records}
+        activeFilters={activeFilters}
+        onToggle={(column, value) => {
+          setActiveFilters(prev => {
+            const current = prev[column] ?? [];
+            const next = current.includes(value) ? current.filter(item => item !== value) : [...current, value];
+            const updated = { ...prev };
+            if (next.length === 0) delete updated[column]; else updated[column] = next;
+            return updated;
+          });
+          setPage(1);
+        }}
+        onReset={() => { setActiveFilters({}); setPage(1); }}
+        onClose={() => setMobileFilterOpen(false)}
+      />
 
       <ToastContainer toasts={toasts} />
     </div>

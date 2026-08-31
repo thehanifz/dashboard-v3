@@ -32,6 +32,7 @@ import TableToolbar          from "../table/TableToolbar";
 import { TablePagination }   from "../table/TablePagination";
 import EditableCell          from "../table/EditableCell";
 import MobileRecordList       from "../table/MobileRecordList";
+import MobileFilterSheet      from "../table/MobileFilterSheet";
 import api                   from "../../services/api";
 import baiApi                from "../../services/baiApi";
 
@@ -513,12 +514,13 @@ export default function PTLDetailPanel() {
             onEditPreset={id => setEditingPresetId(id as number)}
             filterCount={filterCount}
             onResetFilter={handleResetFilter}
+            onOpenMobileFilter={() => setMobileFilterOpen(true)}
             filteredCount={filteredRecords.length}
             totalCount={records.length}
           />
 
           {/* Mobile: selalu gunakan card list. Kanban tidak ditampilkan di mobile. */}
-          <div className="md:hidden flex-1 overflow-auto custom-scrollbar px-3 pb-3">
+          <div className="md:hidden flex-1 min-h-0 overflow-y-auto custom-scrollbar px-3 pb-3">
             {drillLabel && (
               <div className="mb-2.5">
                 <DrillBanner label={drillLabel} onClear={handleResetFilter} />
@@ -554,7 +556,10 @@ export default function PTLDetailPanel() {
               />
             )}
 
-            {filteredRecords.length > 0 && (
+          </div>
+
+          {filteredRecords.length > 0 && (
+            <div className="md:hidden shrink-0 px-3 pb-3">
               <TablePagination
                 page={tablePage}
                 pageSize={pageSize}
@@ -563,8 +568,8 @@ export default function PTLDetailPanel() {
                 setPage={setTablePage}
                 setPageSize={setPageSize}
               />
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Desktop: behavior existing tetap dipertahankan, termasuk Kanban. */}
           <div className="hidden md:flex flex-1 overflow-hidden flex-col">
@@ -766,6 +771,22 @@ export default function PTLDetailPanel() {
       </div>
 
       <ToastContainer toasts={toasts} />
+
+      <MobileFilterSheet
+        open={mobileFilterOpen}
+        columns={columns}
+        records={records}
+        activeFilters={activeFilters}
+        onToggle={(col, val) => {
+          toggleFilter(col, val);
+          setTablePage(1);
+        }}
+        onReset={() => {
+          handleResetFilter();
+          setTablePage(1);
+        }}
+        onClose={() => setMobileFilterOpen(false)}
+      />
 
       {activeFilterCol && (
         <ColumnFilter
