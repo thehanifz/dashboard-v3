@@ -15,6 +15,7 @@ import { useToast }            from "../../utils/useToast";
 import Topbar          from "../layout/Topbar";
 import Sidebar         from "../layout/Sidebar";
 import ToastContainer  from "../ui/ToastContainer";
+import MobileRecordList from "../table/MobileRecordList";
 
 type DashView = "summary" | "kanban" | "table";
 const DEFAULT_COL_WIDTH = 150;
@@ -35,7 +36,9 @@ export default function MitraDashboardPanel() {
   const hasLoadedData               = useTaskStore((s) => s.hasLoadedData);
   const records                     = useTaskStore((s) => s.records) ?? [];
   const updateCell                  = useTaskStore((s) => s.updateCell);
+  const updateStatus                = useTaskStore((s) => s.updateStatus);
   const isLoading                   = useTaskStore((s) => s.isLoading);
+  const statusMaster                = useTaskStore((s) => s.statusMaster);
 
   const {
     visibleColumns,
@@ -115,7 +118,7 @@ export default function MitraDashboardPanel() {
           onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
         />
 
-        <main className="flex-1 overflow-hidden p-4 space-y-4">
+        <main className="flex-1 min-h-0 overflow-hidden p-4 space-y-4 flex flex-col">
 
           {/* Header info */}
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -152,7 +155,7 @@ export default function MitraDashboardPanel() {
 
           {/* Keterangan editable columns */}
           {loaded && editableColumns.length > 0 && (
-            <div className="flex flex-wrap gap-2 items-center">
+            <div className="hidden md:flex flex-wrap gap-2 items-center">
               <span className="text-xs" style={{ color: "var(--text-muted)" }}>Kolom yang bisa diedit:</span>
               {editableColumns.map((col) => (
                 <span key={col} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
@@ -166,9 +169,33 @@ export default function MitraDashboardPanel() {
             </div>
           )}
 
-          {/* Tabel */}
+          {/* Mobile: card list — urutan kolom mengikuti konfigurasi Mitra. */}
           {loaded && displayColumns.length > 0 && (
-            <div className="rounded-2xl border overflow-auto custom-scrollbar"
+            <div className="md:hidden flex-1 min-h-0 overflow-auto custom-scrollbar pb-3">
+              <MobileRecordList
+                records={pagedRecords}
+                columns={displayColumns}
+                statusMaster={statusMaster}
+                canEditColumn={col => editableColumns.includes(col)}
+                onCommit={async (rowId, col, value) => {
+                  try {
+                    await updateCell(rowId, col, value);
+                    showToast("Data berhasil disimpan", "success");
+                  } catch {
+                    showToast("Gagal menyimpan data", "error");
+                    throw new Error("update failed");
+                  }
+                }}
+                onStatusChange={async (rowId, status, detail) => {
+                  await updateStatus(rowId, status, detail);
+                }}
+              />
+            </div>
+          )}
+
+          {/* Desktop: tabel existing. */}
+          {loaded && displayColumns.length > 0 && (
+            <div className="hidden md:block rounded-2xl border overflow-auto custom-scrollbar"
               style={{ background: "var(--bg-surface)", borderColor: "var(--border)", maxHeight: "calc(100vh - 260px)" }}>
               <table className="text-xs border-collapse" style={{ tableLayout: "fixed", width: "max-content", minWidth: "100%" }}>
                 <thead className="sticky top-0 z-10 th-table-head">

@@ -45,20 +45,24 @@ export default function EngineerDetailPanel() {
         />
 
         <main className="flex-1 overflow-hidden flex flex-col">
-          {view === "table" ? (
-            /* Tabel — DynamicTable full dengan toolbar + body */
-            <div className="flex-1 overflow-hidden">
+          {/* Mobile selalu menggunakan card list dari DynamicTable. Kanban hanya desktop. */}
+          <div className="md:hidden flex-1 overflow-hidden">
+            <DynamicTable view="table" onViewChange={setView} />
+          </div>
+
+          {/* Desktop mempertahankan behavior Tabel/Kanban existing. */}
+          <div className="hidden md:flex flex-1 overflow-hidden flex-col">
+            {view === "table" ? (
               <DynamicTable view={view} onViewChange={setView} />
-            </div>
-          ) : (
-            /* Kanban — toolbar dari DynamicTable (toolbarOnly) + KanbanBoard */
-            <div className="flex-1 overflow-hidden flex flex-col">
-              <DynamicTable view={view} onViewChange={setView} toolbarOnly />
-              <div className="flex-1 overflow-hidden">
-                <KanbanBoard />
+            ) : (
+              <div className="flex-1 overflow-hidden flex flex-col">
+                <DynamicTable view={view} onViewChange={setView} toolbarOnly />
+                <div className="flex-1 overflow-hidden">
+                  <KanbanBoard />
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </main>
       </div>
 

@@ -29,7 +29,9 @@ import ColumnFilter          from "../table/ColumnFilter";
 import PresetEditorModal     from "../preset/PresetEditorModal";
 import { TableHeaderCell }   from "../table/TableHeaderCell";
 import TableToolbar          from "../table/TableToolbar";
+import { TablePagination }   from "../table/TablePagination";
 import EditableCell          from "../table/EditableCell";
+import MobileRecordList       from "../table/MobileRecordList";
 import api                   from "../../services/api";
 import baiApi                from "../../services/baiApi";
 
@@ -515,17 +517,68 @@ export default function PTLDetailPanel() {
             totalCount={records.length}
           />
 
-          {view === "kanban" && (
-            <div className="flex-1 overflow-hidden">
-              {ptlLoading && localRecords.length === 0
-                ? <div className="p-6 text-xs" style={{ color: "var(--text-muted)" }}>Memuat data...</div>
-                : <PTLKanbanBoard records={records} onUpdateCell={handleUpdateCell} />
-              }
-            </div>
-          )}
+          {/* Mobile: selalu gunakan card list. Kanban tidak ditampilkan di mobile. */}
+          <div className="md:hidden flex-1 overflow-auto custom-scrollbar px-3 pb-3">
+            {drillLabel && (
+              <div className="mb-2.5">
+                <DrillBanner label={drillLabel} onClear={handleResetFilter} />
+              </div>
+            )}
 
-          {view === "table" && (
-            <div className="flex-1 overflow-hidden flex flex-col px-4 pt-3 pb-4 gap-2.5">
+            {!activePreset ? (
+              <div className="flex min-h-40 flex-col items-center justify-center rounded-2xl p-6 text-center"
+                style={{ background: "var(--bg-surface)", border: "2px dashed var(--border)" }}>
+                <p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+                  {presetLoading ? "Memuat preset..." : "Belum ada preset kolom"}
+                </p>
+              </div>
+            ) : (
+              <MobileRecordList
+                records={pagedRecords}
+                columns={columns}
+                statusMaster={statusMaster}
+                canEditColumn={col => ptlEditableColumns.includes(col) && col !== statusCol && col !== detailCol}
+                onCommit={handleUpdateCell}
+                onStatusChange={handleUpdateStatus}
+                renderActions={record => (
+                  <>
+                    <PtlBaiButton
+                      rowId={record.row_id}
+                      idPa={record.data[idPaCol] ?? ""}
+                      namaPerusahaan={namaCol ? (record.data[namaCol] ?? "") : ""}
+                      onToast={showToast}
+                    />
+                    <PtlTeskomButton idPa={record.data[idPaCol] ?? ""} />
+                  </>
+                )}
+              />
+            )}
+
+            {filteredRecords.length > 0 && (
+              <TablePagination
+                page={tablePage}
+                pageSize={pageSize}
+                totalPage={totalPage}
+                total={filteredRecords.length}
+                setPage={setTablePage}
+                setPageSize={setPageSize}
+              />
+            )}
+          </div>
+
+          {/* Desktop: behavior existing tetap dipertahankan, termasuk Kanban. */}
+          <div className="hidden md:flex flex-1 overflow-hidden flex-col">
+            {view === "kanban" && (
+              <div className="flex-1 overflow-hidden">
+                {ptlLoading && localRecords.length === 0
+                  ? <div className="p-6 text-xs" style={{ color: "var(--text-muted)" }}>Memuat data...</div>
+                  : <PTLKanbanBoard records={records} onUpdateCell={handleUpdateCell} />
+                }
+              </div>
+            )}
+
+            {view === "table" && (
+              <div className="flex-1 overflow-hidden flex flex-col px-4 pt-3 pb-4 gap-2.5">
 
               {drillLabel && (
                 <DrillBanner label={drillLabel} onClear={handleResetFilter} />
@@ -708,6 +761,7 @@ export default function PTLDetailPanel() {
               )}
             </div>
           )}
+          </div>
         </main>
       </div>
 

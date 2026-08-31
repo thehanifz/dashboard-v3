@@ -21,6 +21,9 @@ import { TablePagination }      from "./TablePagination";
 import TableToolbar              from "./TableToolbar";
 import PresetEditorModal         from "../preset/PresetEditorModal";
 import ColumnFilter              from "./ColumnFilter";
+import MobileRecordList          from "./MobileRecordList";
+import BaiActionButton            from "./BaiActionButton";
+import TeskomActionButton         from "./TeskomActionButton";
 
 const MIN_COL_WIDTH     = 60;
 const DEFAULT_COL_WIDTH = 150;
@@ -41,6 +44,8 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
   const reorderColumns  = usePresetStore(s => s.reorderColumns);
   const updatePreset    = usePresetStore(s => s.updatePreset);
   const { columnColors, labelColors, editableColumns, toggleEditableColumn } = useAppearanceStore();
+  const updateCell = useTaskStore(s => s.updateCell);
+  const updateStatus = useTaskStore(s => s.updateStatus);
   const { user }        = useAuthStore();
 
   /* ── Config dari API ───────────────────────────────────────────────────── */
@@ -163,7 +168,39 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
             </div>
           ) : (
             <>
-              <div className="flex-1 overflow-auto custom-scrollbar rounded-2xl"
+              <div className="md:hidden flex-1 overflow-auto custom-scrollbar px-3 pb-3">
+                <MobileRecordList
+                  records={pagination.rows}
+                  columns={columns}
+                  statusMaster={statusMaster}
+                  canEditColumn={editor.canEditCell}
+                  onCommit={async (rowId, col, value) => {
+                    try {
+                      await updateCell(rowId, col, value);
+                      showToast("Data berhasil disimpan", "success");
+                    } catch {
+                      showToast("Gagal menyimpan data", "error");
+                      throw new Error("update failed");
+                    }
+                  }}
+                  onStatusChange={async (rowId, status, detail) => {
+                    await updateStatus(rowId, status, detail);
+                  }}
+                  renderActions={record => (
+                    <>
+                      <BaiActionButton
+                        rowId={record.row_id}
+                        idPa={record.data[tableConfig.colIdPa] || ""}
+                        namaPerusahaan={record.data[tableConfig.colNamaPerusahaan] || ""}
+                        onToast={showToast}
+                      />
+                      <TeskomActionButton idPa={record.data[tableConfig.colIdPa] || ""} />
+                    </>
+                  )}
+                />
+              </div>
+
+              <div className="hidden md:block flex-1 overflow-auto custom-scrollbar rounded-2xl"
                 style={{ border: "1px solid var(--border)" }}>
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                   <table className="text-xs"

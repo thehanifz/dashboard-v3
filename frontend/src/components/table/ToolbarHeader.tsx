@@ -14,7 +14,7 @@ export function ToolbarHeader({ title, recordCount, userName, saving, onRefresh,
   const showViewTab = view !== undefined && onViewChange !== undefined;
 
   return (
-    <div className="px-5 pt-4 pb-3 flex items-center justify-between gap-4">
+    <div className="px-3 md:px-5 pt-3 md:pt-4 pb-3 flex items-center justify-between gap-3 md:gap-4">
 
       {/* Kiri: icon + judul + meta */}
       <div className="flex items-center gap-3 min-w-0">
@@ -51,7 +51,7 @@ export function ToolbarHeader({ title, recordCount, userName, saving, onRefresh,
 
       {/* Kanan: view switcher (optional) */}
       {showViewTab && (
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="hidden md:flex items-center gap-2 shrink-0">
           <button
             onClick={onRefresh}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"

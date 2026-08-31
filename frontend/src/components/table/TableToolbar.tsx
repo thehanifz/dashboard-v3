@@ -53,11 +53,10 @@ export default function TableToolbar({
         view={view} onViewChange={onViewChange}
       />
 
-      {view !== "kanban" && (
-        <div className="px-5 pb-3 flex items-center gap-2 flex-wrap">
+      <div className={`px-3 md:px-5 pb-3 flex items-center gap-2 flex-wrap ${view === "kanban" ? "md:hidden" : ""}`}>
 
           {/* Search */}
-          <div className="relative">
+          <div className="relative w-full md:w-auto">
             <svg className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
               fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
               style={{ color: "var(--text-muted)" }}>
@@ -66,7 +65,7 @@ export default function TableToolbar({
             <input
               type="text" placeholder="Cari data..." value={search}
               onChange={e => onSearch(e.target.value)}
-              className="th-input pl-8 pr-3 py-1.5 text-xs w-44"
+              className="th-input pl-8 pr-3 py-2 md:py-1.5 text-xs w-full md:w-44"
             />
           </div>
 
@@ -103,8 +102,7 @@ export default function TableToolbar({
               {filteredCount} / {totalCount} baris
             </span>
           </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
