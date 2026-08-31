@@ -73,7 +73,7 @@ function HBar({ label, value, max, color, pct, onClick }: {
   const w = max > 0 ? (value / max) * 100 : 0;
   return (
     <div
-      className="flex items-center gap-3 rounded-lg px-1"
+      className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-lg px-1 sm:flex-nowrap sm:gap-3"
       onClick={onClick}
       style={{
         cursor: onClick ? "pointer" : undefined,
@@ -91,11 +91,11 @@ function HBar({ label, value, max, color, pct, onClick }: {
       }}
       title={onClick ? `Klik untuk filter: ${label}` : undefined}
     >
-      <span className="text-xs w-36 truncate shrink-0" style={{ color: "var(--text-secondary)" }} title={label}>{label}</span>
-      <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: "var(--border)" }}>
+      <span className="text-xs w-full sm:w-36 truncate shrink-0" style={{ color: "var(--text-secondary)" }} title={label}>{label}</span>
+      <div className="order-3 sm:order-none basis-full sm:basis-auto flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: "var(--border)" }}>
         <div className="h-full rounded-full transition-all" style={{ width: `${w}%`, background: color }} />
       </div>
-      <span className="text-xs font-bold w-5 text-right font-mono-data" style={{ color: "var(--text-primary)" }}>{value}</span>
+      <span className="text-xs font-bold w-6 sm:w-5 text-right font-mono-data ml-auto sm:ml-0" style={{ color: "var(--text-primary)" }}>{value}</span>
       {pct && <span className="text-[10px] w-8 text-right" style={{ color: "var(--text-muted)" }}>{pct}</span>}
       {onClick && (
         <svg className="w-3 h-3 shrink-0 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -111,7 +111,7 @@ function SectionCard({ title, subtitle, children }: {
   title: string; subtitle?: string; children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+    <div className="rounded-2xl p-4 md:p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
       <div className="mb-4">
         <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{title}</h3>
         {subtitle && <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{subtitle}</p>}
@@ -237,7 +237,7 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
   }
 
   return (
-    <div className="p-4 md:p-5 space-y-4 overflow-auto h-full custom-scrollbar view-enter pb-20 md:pb-5">
+    <div className="p-3 sm:p-4 md:p-5 space-y-3 md:space-y-4 overflow-auto h-full custom-scrollbar view-enter pb-24 md:pb-5">
 
       {/* ── KPI Cards — by Status PA ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
@@ -259,7 +259,7 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
       </div>
 
       {/* ── Progress Bar ── */}
-      <div className="rounded-2xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+      <div className="rounded-2xl p-4 md:p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Progress Penyelesaian</h3>
@@ -335,7 +335,7 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
       </div>
 
       {/* ── Distribusi Aging — tiles clickable ── */}
-      <div className="rounded-2xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+      <div className="rounded-2xl p-4 md:p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
         <div className="mb-4">
           <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Distribusi Aging PA</h3>
           <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>

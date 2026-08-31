@@ -78,22 +78,22 @@ export function HBar({ label, value, max, color, pct, onClick, isActive }: HBarP
 
   return (
     <div 
-      className="flex items-center gap-3"
+      className="flex flex-wrap items-center gap-x-2 gap-y-1.5 sm:flex-nowrap sm:gap-3"
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       style={baseStyle}
     >
-      <span className="text-xs w-36 truncate shrink-0" style={labelStyle}>
+      <span className="text-xs w-full sm:w-36 truncate shrink-0" style={labelStyle}>
         {label}
       </span>
-      <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: "var(--border)" }}>
+      <div className="order-3 sm:order-none basis-full sm:basis-auto flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: "var(--border)" }}>
         <div 
           className="h-full rounded-full"
           style={barStyle} 
         />
       </div>
-      <span className="text-xs font-bold w-5 text-right font-mono-data" style={valueStyle}>
+      <span className="text-xs font-bold w-6 sm:w-5 text-right font-mono-data ml-auto sm:ml-0" style={valueStyle}>
         {value}
       </span>
       {pct && (

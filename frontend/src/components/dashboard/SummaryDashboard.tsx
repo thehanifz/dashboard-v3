@@ -38,7 +38,7 @@ function SectionCard({ title, subtitle, action, children }: {
   title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+    <div className="rounded-2xl p-4 md:p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
       <div className="flex items-start justify-between mb-4">
         <div>
           <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{title}</h3>
@@ -296,7 +296,7 @@ export default function SummaryDashboard() {
   const isEngineer = user?.role === "engineer";
 
   return (
-    <div className="p-4 md:p-5 space-y-4 overflow-auto h-full custom-scrollbar view-enter pb-20 md:pb-5">
+    <div className="p-3 sm:p-4 md:p-5 space-y-3 md:space-y-4 overflow-auto h-full custom-scrollbar view-enter pb-24 md:pb-5">
 
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
@@ -327,7 +327,7 @@ export default function SummaryDashboard() {
       </div>
 
       {/* ── Progress Bar ── */}
-      <div className="rounded-2xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+      <div className="rounded-2xl p-4 md:p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Progress Penyelesaian</h3>
