@@ -1,21 +1,31 @@
 /**
  * App.tsx
- * Root component — hanya handle auth guard dan routing level atas.
- *
- * Sebelumnya tiap role punya blok routing sendiri di sini.
- * Sekarang semua role di-handle oleh MainPage.tsx,
- * sehingga App.tsx tetap ringkas dan mudah di-maintain.
+ * Root component — auth bootstrap + routing level atas.
  */
+import { useEffect } from "react";
 import { useAuthStore } from "./state/authStore";
-import { useAppStore }  from "./state/appStore";
+import { useAppStore } from "./state/appStore";
 
-import LoginPage   from "./pages/LoginPage";
+import LoginPage from "./pages/LoginPage";
 import ProfilePage from "./pages/ProfilePage";
-import MainPage    from "./pages/MainPage";
+import MainPage from "./pages/MainPage";
 import SettingsPage from "./pages/SettingsPage";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { isLoggedIn } = useAuthStore();
+  const { authReady, isLoggedIn, initializeSession } = useAuthStore();
+
+  useEffect(() => {
+    void initializeSession();
+  }, [initializeSession]);
+
+  if (!authReady) {
+    return (
+      <div className="h-screen flex items-center justify-center" style={{ background: "var(--bg-app, #0f172a)" }}>
+        <div className="text-sm" style={{ color: "var(--text-muted, #94a3b8)" }}>Memulihkan sesi...</div>
+      </div>
+    );
+  }
+
   if (!isLoggedIn()) return <LoginPage />;
   return <>{children}</>;
 }
@@ -26,7 +36,7 @@ export default function App() {
   return (
     <AuthGuard>
       <div className="h-screen overflow-hidden flex flex-col">
-                  {page === "profile" ? <ProfilePage /> : page === "settings" ? <SettingsPage /> : <MainPage />}
+        {page === "profile" ? <ProfilePage /> : page === "settings" ? <SettingsPage /> : <MainPage />}
       </div>
     </AuthGuard>
   );

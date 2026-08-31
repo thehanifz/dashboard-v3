@@ -22,8 +22,8 @@ export const authApi = {
     await api.post("/auth/logout");
   },
 
-  refresh: async (): Promise<{ access_token: string }> => {
-    const res = await api.post<{ access_token: string }>("/auth/refresh");
+  refresh: async (): Promise<LoginResponse> => {
+    const res = await api.post<LoginResponse>("/auth/refresh");
     return res.data;
   },
 

@@ -79,6 +79,20 @@ class RefreshToken(Base):
     user: Mapped["User"] = relationship(back_populates="refresh_tokens")
 
 
+# ── superuser refresh_tokens ─────────────────────────────────────────────────
+class SuperuserRefreshToken(Base):
+    """Refresh token persisten untuk superuser yang tidak memiliki row di users."""
+    __tablename__ = "superuser_refresh_tokens"
+
+    id         : Mapped[int]                = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username   : Mapped[str]                = mapped_column(String(50), nullable=False, index=True)
+    token_hash : Mapped[str]                = mapped_column(String(255), nullable=False, unique=True, index=True)
+    issued_at  : Mapped[datetime]            = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at : Mapped[datetime]            = mapped_column(DateTime(timezone=True), nullable=False)
+    is_revoked : Mapped[bool]               = mapped_column(Boolean, default=False, nullable=False)
+    revoked_at : Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 # ── role_table_config ─────────────────────────────────────────────────────────
 class RoleTableConfig(Base):
     __tablename__ = "role_table_config"

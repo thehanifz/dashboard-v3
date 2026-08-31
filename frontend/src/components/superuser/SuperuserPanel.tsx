@@ -81,7 +81,7 @@ export default function SuperuserPanel() {
             </svg>
           </div>
           <div>
-            <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Dashboard v3</p>
+            <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>OverSee</p>
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>Superuser Panel</p>
           </div>
         </div>
