@@ -9,7 +9,7 @@ import { usePresetStore } from "./presetStore";
 import { usePTLPresetStore } from "./ptlPresetStore";
 import { useAppearanceStore } from "./appearanceStore";
 import { useTaskStore } from "./taskStore";
-import { SESSION_ACCESS_TOKEN, SESSION_USER } from "../constants/storageKeys";
+import { SESSION_ACCESS_TOKEN, SESSION_USER, SESSION_LOGOUT_INTENT } from "../constants/storageKeys";
 import { ROLES } from "../constants/roles";
 
 export type { UserRole } from "../constants/roles";
@@ -43,7 +43,9 @@ interface AuthState {
   user: AuthUser | null;
   accessToken: string | null;
   authReady: boolean;
+  isLoggingOut: boolean;
 
+  beginLogout: () => void;
   setAuth: (user: AuthUser, token: string) => void;
   setToken: (token: string) => void;
   clearAuth: () => void;
@@ -58,11 +60,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: storedUser,
   accessToken: storedToken,
   authReady: !!storedToken && !!storedUser,
+  isLoggingOut: false,
+
+  beginLogout: () => {
+    sessionStorage.setItem(SESSION_LOGOUT_INTENT, "1");
+    set({ isLoggingOut: true });
+  },
 
   setAuth: (user, accessToken) => {
     sessionStorage.setItem(SESSION_ACCESS_TOKEN, accessToken);
     sessionStorage.setItem(SESSION_USER, JSON.stringify(user));
-    set({ user, accessToken, authReady: true });
+    sessionStorage.removeItem(SESSION_LOGOUT_INTENT);
+    set({ user, accessToken, authReady: true, isLoggingOut: false });
 
     // Load preset & editable columns dari DB setelah login / session recovery.
     setTimeout(() => {
@@ -95,6 +104,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (initializePromise) return initializePromise;
 
     initializePromise = (async () => {
+      // Setelah logout, jangan pernah memulihkan session menggunakan refresh
+      // cookie yang mungkin masih berada di browser akibat race/network delay.
+      const logoutIntent = sessionStorage.getItem(SESSION_LOGOUT_INTENT);
+      if (logoutIntent) {
+        sessionStorage.removeItem(SESSION_LOGOUT_INTENT);
+        get().clearAuth();
+        set({ authReady: true, isLoggingOut: false });
+        return;
+      }
+
       // Existing tab/session masih punya access token + user. Tidak perlu
       // melakukan refresh tanpa alasan; interceptor akan refresh bila expired.
       if (get().accessToken && get().user) {

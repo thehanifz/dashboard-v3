@@ -39,10 +39,15 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    if (useAuthStore.getState().isLoggingOut) {
+      return Promise.reject(error);
+    }
+
     if (
       originalRequest.url?.includes("/auth/login") ||
       originalRequest.url?.includes("/auth/refresh") ||
-      originalRequest.url?.includes("/auth/me")
+      originalRequest.url?.includes("/auth/me") ||
+      originalRequest.url?.includes("/auth/logout")
     ) {
       return Promise.reject(error);
     }
@@ -63,7 +68,19 @@ api.interceptors.response.use(
     isRefreshing = true;
 
     try {
+      // Logout selalu menang sebelum refresh dimulai.
+      if (useAuthStore.getState().isLoggingOut) {
+        throw new axios.CanceledError("Logout sedang diproses");
+      }
+
       const { data } = await api.post<{ access_token: string }>("/auth/refresh");
+
+      // Refresh bisa selesai bersamaan dengan klik Logout. Jangan hidupkan
+      // kembali token yang baru saja dinyatakan tidak valid oleh user.
+      if (useAuthStore.getState().isLoggingOut) {
+        throw new axios.CanceledError("Logout sedang diproses");
+      }
+
       const newToken = data.access_token;
       useAuthStore.getState().setToken(newToken);
       originalRequest.headers["Authorization"] = `Bearer ${newToken}`;
@@ -71,8 +88,10 @@ api.interceptors.response.use(
       return api(originalRequest);
     } catch (refreshError) {
       processQueue(refreshError, null);
-      useAuthStore.getState().clearAuth();
-      window.location.href = "/";
+      if (!useAuthStore.getState().isLoggingOut) {
+        useAuthStore.getState().clearAuth();
+        window.location.href = "/";
+      }
       return Promise.reject(refreshError);
     } finally {
       isRefreshing = false;
