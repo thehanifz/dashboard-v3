@@ -196,6 +196,7 @@ export default function PTLDetailPanel() {
 
   const [activeFilters, setActiveFilters]       = useState<Record<string, string[]>>({});
   const [activeFilterCol, setActiveFilterCol]   = useState<string | null>(null);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [filterPos, setFilterPos]               = useState({ top: 0, left: 0 });
   const [presetDropdownOpen, setPresetDropdown] = useState(false);
   const [showCreatePreset, setShowCreatePreset] = useState(false);

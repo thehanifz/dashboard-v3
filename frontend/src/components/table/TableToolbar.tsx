@@ -42,7 +42,7 @@ export default function TableToolbar({
   view, onViewChange,
   search, onSearch,
   presets, activePreset, presetLoading, onSelectPreset, onCreatePreset, onEditPreset,
-  filterCount, onResetFilter,
+  filterCount, onResetFilter, onOpenMobileFilter,
   filteredCount, totalCount,
 }: Props) {
   return (
