@@ -1,6 +1,6 @@
 # ── Secrets & Credentials ─────────────────────────────────────────────────────
 .env
-.env.*
+
 *.env
 credentials.json
 *-credentials.json
@@ -47,9 +47,13 @@ Thumbs.db
 *.log
 *.sqlite3
 *.db
-
+logs/
 
 # ── Files ─────────────────────────────────────────────────────────────────────
-*.docx
+
 docx/
+*.docx
 temp/
+*.csv
+*.json
+*.png

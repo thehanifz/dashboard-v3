@@ -39,6 +39,8 @@ MITRA_COLUMN_NAME   = os.getenv("MITRA_COLUMN_NAME", "MITRA TERMINATING")  # DEP
 # ── AsBuilt ───────────────────────────────────────────────────────────────────
 SVG_TEMPLATE_DIR: Path = BASE_DIR / "public" / "templates"
 SVG_TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
+FREE_DRAWING_ICON_DIR: Path = BASE_DIR.parent / "frontend" / "public" / "icons"
+FREE_DRAWING_ICON_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Teskom ────────────────────────────────────────────────────────────────────
 MAX_UPLOAD_MB    = int(os.getenv("MAX_UPLOAD_MB", 10))
