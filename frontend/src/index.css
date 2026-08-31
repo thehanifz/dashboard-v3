@@ -338,3 +338,120 @@ thead th { box-shadow: inset 0 -2px 0 var(--border), 0 2px 4px rgba(0,0,0,0.06);
     line-height: 1;
   }
 }
+
+/* ─── Mobile dashboard KPI compact layout ───────────────────────────────── */
+@media (max-width: 767px) {
+  .kpi-card {
+    padding: 8px 7px;
+    border-radius: 12px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .kpi-card .kpi-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    margin-bottom: 0;
+  }
+  .kpi-card .kpi-icon svg,
+  .kpi-card .kpi-icon > span svg {
+    width: 14px;
+    height: 14px;
+  }
+  .kpi-card .kpi-value {
+    font-size: 1.25rem;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .kpi-card .kpi-label {
+    margin-top: 4px;
+    font-size: 9px;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .kpi-card .kpi-sub {
+    display: none;
+  }
+  .dashboard-kpi-grid,
+  .kpi-grid {
+    min-width: 0;
+  }
+
+  /* Free Drawing becomes canvas-first on mobile. */
+  .free-drawing-toolbar {
+    min-height: 48px;
+  }
+  .free-drawing-toolbar > div:first-child {
+    min-width: 0;
+  }
+  .free-drawing-toolbar button {
+    flex: 0 0 auto;
+  }
+  .free-drawing-left,
+  .free-drawing-right {
+    display: none !important;
+  }
+  .free-drawing-left.mobile-open,
+  .free-drawing-right.mobile-open {
+    display: flex !important;
+    position: fixed;
+    z-index: 60;
+    left: 8px;
+    right: 8px;
+    bottom: 58px;
+    width: auto !important;
+    max-height: min(72vh, 560px);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: var(--shadow-lg);
+  }
+  .free-drawing-left.mobile-open {
+    top: auto;
+  }
+  .free-drawing-right.mobile-open {
+    top: auto;
+  }
+  .free-drawing-left.mobile-open > div:first-child,
+  .free-drawing-right.mobile-open > div:first-child {
+    border-radius: 16px 16px 0 0;
+  }
+  .free-drawing-left.mobile-open,
+  .free-drawing-right.mobile-open {
+    overflow: hidden;
+  }
+  .free-drawing-left.mobile-open .overflow-y-auto,
+  .free-drawing-right.mobile-open {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .free-drawing-left.mobile-open .overflow-y-auto {
+    min-height: 0;
+  }
+  .free-drawing-left.mobile-open {
+    background: var(--bg-surface);
+  }
+  .free-drawing-right.mobile-open {
+    background: var(--bg-surface);
+  }
+  .free-drawing-toolbar + .lg\:hidden {
+    z-index: 71;
+  }
+}
+
+@media (max-width: 379px) {
+  .kpi-card { padding: 8px 8px; }
+  .kpi-card .kpi-value { font-size: 1.15rem; }
+  .kpi-card .kpi-label { font-size: 8px; }
+}
+
+@media (max-width: 767px) {
+  .free-drawing-toolbar + div.flex-1 main,
+  .free-drawing-toolbar ~ div.flex-1 main {
+    touch-action: pan-x pan-y pinch-zoom;
+  }
+  .free-drawing-toolbar ~ div.flex-1 main canvas {
+    touch-action: none;
+  }
+}

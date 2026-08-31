@@ -1,15 +1,18 @@
-OverSee — Mobile UI Patch: Dashboard, Profile, As-Built
+OverSee Mobile KPI + Free Drawing Patch
 
 Changes:
-- Responsive Dashboard KPI/chart layout for small screens.
-- Responsive HBar: labels can occupy full width on mobile; bar moves to a second row.
-- PTL summary chart receives the same mobile treatment.
-- Profile uses compact mobile spacing and safe bottom padding for fixed navigation.
-- As-Built Library/Generate switch from desktop split panes to a stacked mobile workspace; desktop stays split-pane.
-- Topology and Template Fill generators use stacked form/preview panels on mobile.
-- Main As-Built content spacing is adjusted for mobile bottom navigation.
-- No backend/API/permission logic changes.
+- Compact 4-column KPI layout on normal mobile widths; 2x2 below 380px.
+- Applied to Engineer and PTL dashboards.
+- Mobile Free Drawing uses a compact quick toolbar, More tools sheet, Tools/Properties sheets, canvas-first layout, and two-finger pan/pinch zoom support.
+- Mobile canvas auto-fits to the available viewport to avoid page-level horizontal scrolling.
+- Desktop 3-panel Free Drawing layout remains available at lg and above.
 
-Validation:
-- Source changes were reviewed statically.
-- Full npm build could not be completed in the isolated environment because installing frontend dependencies timed out, so use the project's normal npm run build on the target server.
+Files included:
+- frontend/src/components/asbuilt/FreeDrawing.tsx
+- frontend/src/components/dashboard/SummaryDashboard.tsx
+- frontend/src/components/dashboard/HBar.tsx
+- frontend/src/components/ptl/PTLSummaryDashboard.tsx
+- frontend/src/index.css
+
+Validation note:
+The build command was attempted in the isolated extraction environment but its Vite executable was not available there. Run `npm run build` in the project venv/environment on the deployment host.

@@ -18,6 +18,10 @@ import {
   AlignCenter,
   AlignLeft,
   AlignRight,
+  MoreHorizontal,
+  Settings2,
+  Wrench,
+  Maximize2,
   ArrowDown,
   ArrowRight,
   ArrowUp,
@@ -98,6 +102,8 @@ export default function FreeDrawing({ onToast }: Props) {
   const [fillColor, setFillColor] = useState("#ffffff");
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [fontSize, setFontSize] = useState(18);
+  const [mobilePanel, setMobilePanel] = useState<"tools" | "properties" | null>(null);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
 
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
 
@@ -224,6 +230,37 @@ export default function FreeDrawing({ onToast }: Props) {
     canvas.on("mouse:move", onMouseMove);
     canvas.on("mouse:up", onMouseUp);
 
+    // Mobile: two-finger pan + pinch zoom. Fabric continues to handle one-finger object gestures.
+    const gesture = { active: false, distance: 0, lastX: 0, lastY: 0, startZoom: 0 };
+    const distance = (a: Touch, b: Touch) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    const center = (a: Touch, b: Touch) => ({ x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 });
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      e.preventDefault();
+      const c = center(e.touches[0], e.touches[1]);
+      gesture.active = true;
+      gesture.distance = distance(e.touches[0], e.touches[1]);
+      gesture.lastX = c.x;
+      gesture.lastY = c.y;
+      gesture.startZoom = zoomRef.current;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!gesture.active || e.touches.length !== 2) return;
+      e.preventDefault();
+      const c = center(e.touches[0], e.touches[1]);
+      const d = distance(e.touches[0], e.touches[1]);
+      const scale = gesture.distance > 0 ? d / gesture.distance : 1;
+      const nextZoom = Math.min(2, Math.max(0.15, +(gesture.startZoom * scale).toFixed(2)));
+      setZoom(nextZoom);
+      canvas.relativePan({ x: (c.x - gesture.lastX) / Math.max(0.15, zoomRef.current), y: (c.y - gesture.lastY) / Math.max(0.15, zoomRef.current) } as any);
+      gesture.lastX = c.x;
+      gesture.lastY = c.y;
+    };
+    const onTouchEnd = () => { gesture.active = false; };
+    canvasEl.addEventListener("touchstart", onTouchStart, { passive: false });
+    canvasEl.addEventListener("touchmove", onTouchMove, { passive: false });
+    canvasEl.addEventListener("touchend", onTouchEnd, { passive: false });
+
     historyRef.current = [];
     historyIndexRef.current = -1;
     setIsDirty(false);
@@ -240,6 +277,9 @@ export default function FreeDrawing({ onToast }: Props) {
       canvas.off("mouse:down", onMouseDown);
       canvas.off("mouse:move", onMouseMove);
       canvas.off("mouse:up", onMouseUp);
+      canvasEl.removeEventListener("touchstart", onTouchStart);
+      canvasEl.removeEventListener("touchmove", onTouchMove);
+      canvasEl.removeEventListener("touchend", onTouchEnd);
       void canvas.dispose();
       fabricRef.current = null;
     };
@@ -538,6 +578,28 @@ export default function FreeDrawing({ onToast }: Props) {
     setZoom(Number(nextZoom.toFixed(2)));
   };
 
+  // Keep the canvas inside the mobile viewport without requiring horizontal page scrolling.
+  useEffect(() => {
+    const main = canvasElementRef.current?.parentElement?.parentElement;
+    if (!main || typeof window === "undefined" || typeof ResizeObserver === "undefined") return;
+    const media = window.matchMedia("(max-width: 1023px)");
+    const applyMobileFit = () => {
+      if (!media.matches) return;
+      const availableWidth = Math.max(220, main.clientWidth - 32);
+      const availableHeight = Math.max(220, main.clientHeight - 32);
+      const nextZoom = Math.min(1.5, Math.max(0.15, Math.min(availableWidth / canvasSize.width, availableHeight / canvasSize.height)));
+      setZoom(Number(nextZoom.toFixed(2)));
+    };
+    applyMobileFit();
+    const observer = new ResizeObserver(applyMobileFit);
+    observer.observe(main);
+    media.addEventListener?.("change", applyMobileFit);
+    return () => {
+      observer.disconnect();
+      media.removeEventListener?.("change", applyMobileFit);
+    };
+  }, [canvasSize.height, canvasSize.width]);
+
   const exportDrawing = (format: "png" | "svg") => {
     const canvas = fabricRef.current;
     if (!canvas) return;
@@ -736,43 +798,82 @@ export default function FreeDrawing({ onToast }: Props) {
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ color: "var(--text-primary)" }}>
-      <div className="shrink-0 flex items-center gap-1 px-3 py-2 border-b" style={{ borderColor: "var(--border)" }}>
-        {toolbarButton(tool === "select", "Select", <MousePointer2 size={15} />, () => setToolMode("select"))}
-        {toolbarButton(tool === "text", "Text", <Type size={15} />, addText)}
-        {toolbarButton(tool === "rect", "Rectangle", <Square size={15} />, () => addShape("rect"))}
-        {toolbarButton(tool === "roundRect", "Rounded rectangle", <RectangleHorizontal size={15} />, () => addShape("roundRect"))}
-        {toolbarButton(tool === "circle", "Circle", <CircleIcon size={15} />, () => addShape("circle"))}
-        {toolbarButton(tool === "line", "Line", <Minus size={15} />, () => addLine(false))}
-        {toolbarButton(tool === "arrow", "Arrow", <ArrowRight size={15} />, () => addLine(true))}
-        {toolbarButton(tool === "draw", "Freehand", <Pencil size={15} />, () => setToolMode("draw"))}
-        <span className="w-px h-5 mx-1" style={{ background: "var(--border)" }} />
-        {toolbarButton(false, "Undo", <Undo2 size={15} />, () => void undo(), historyIndex <= 0)}
-        {toolbarButton(false, "Redo", <Redo2 size={15} />, () => void redo(), historyIndex >= historyRef.current.length - 1)}
-        {toolbarButton(false, "Copy", <Copy size={15} />, () => void copy(), !selected)}
-        {toolbarButton(false, "Paste", <Layers size={15} />, () => void paste(), !clipboardRef.current)}
-        {toolbarButton(false, "Duplicate", <Copy size={15} />, () => void duplicate(), !selected)}
-        {toolbarButton(false, "Delete", <Trash2 size={15} />, deleteSelected, !selected)}
-        {toolbarButton(false, "Group", <Group size={15} />, groupSelected, !selected)}
-        {toolbarButton(false, "Ungroup", <Ungroup size={15} />, ungroupSelected, !selected)}
-        <span className="w-px h-5 mx-1" style={{ background: "var(--border)" }} />
-        {toolbarButton(false, "Bring to front", <BringToFront size={15} />, bringToFront, !selected)}
-        {toolbarButton(false, "Send to back", <SendToBack size={15} />, sendToBack, !selected)}
-        <div className="ml-auto flex items-center gap-1">
+      <div className="shrink-0 flex items-center gap-1 px-3 py-2 border-b free-drawing-toolbar" style={{ borderColor: "var(--border)" }}>
+        <div className="flex items-center gap-1 min-w-0 overflow-x-auto lg:overflow-visible custom-scrollbar">
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="lg:hidden">{toolbarButton(tool === "select", "Select", <MousePointer2 size={15} />, () => setToolMode("select"))}</span>
+            <span className="lg:hidden">{toolbarButton(tool === "draw", "Freehand", <Pencil size={15} />, () => setToolMode("draw"))}</span>
+            <span className="lg:hidden">{toolbarButton(tool === "text", "Text", <Type size={15} />, addText)}</span>
+            <span className="lg:hidden">{toolbarButton(tool === "rect", "Rectangle", <Square size={15} />, () => addShape("rect"))}</span>
+            <span className="lg:hidden">{toolbarButton(false, "More tools", <MoreHorizontal size={15} />, () => setMobileMoreOpen(true))}</span>
+
+            <span className="hidden lg:inline-flex">{toolbarButton(tool === "select", "Select", <MousePointer2 size={15} />, () => setToolMode("select"))}</span>
+            <span className="hidden lg:inline-flex">{toolbarButton(tool === "text", "Text", <Type size={15} />, addText)}</span>
+            <span className="hidden lg:inline-flex">{toolbarButton(tool === "rect", "Rectangle", <Square size={15} />, () => addShape("rect"))}</span>
+            <span className="hidden lg:inline-flex">{toolbarButton(tool === "roundRect", "Rounded rectangle", <RectangleHorizontal size={15} />, () => addShape("roundRect"))}</span>
+            <span className="hidden lg:inline-flex">{toolbarButton(tool === "circle", "Circle", <CircleIcon size={15} />, () => addShape("circle"))}</span>
+            <span className="hidden lg:inline-flex">{toolbarButton(tool === "line", "Line", <Minus size={15} />, () => addLine(false))}</span>
+            <span className="hidden lg:inline-flex">{toolbarButton(tool === "arrow", "Arrow", <ArrowRight size={15} />, () => addLine(true))}</span>
+            <span className="hidden lg:inline-flex">{toolbarButton(tool === "draw", "Freehand", <Pencil size={15} />, () => setToolMode("draw"))}</span>
+            <span className="hidden lg:inline-flex w-px h-5 mx-1" style={{ background: "var(--border)" }} />
+            <span className="hidden lg:inline-flex">{toolbarButton(false, "Undo", <Undo2 size={15} />, () => void undo(), historyIndex <= 0)}</span>
+            <span className="hidden lg:inline-flex">{toolbarButton(false, "Redo", <Redo2 size={15} />, () => void redo(), historyIndex >= historyRef.current.length - 1)}</span>
+            <span className="hidden lg:inline-flex">{toolbarButton(false, "Copy", <Copy size={15} />, () => void copy(), !selected)}</span>
+            <span className="hidden lg:inline-flex">{toolbarButton(false, "Paste", <Layers size={15} />, () => void paste(), !clipboardRef.current)}</span>
+            <span className="hidden lg:inline-flex">{toolbarButton(false, "Duplicate", <Copy size={15} />, () => void duplicate(), !selected)}</span>
+            <span className="hidden lg:inline-flex">{toolbarButton(false, "Delete", <Trash2 size={15} />, deleteSelected, !selected)}</span>
+            <span className="hidden lg:inline-flex">{toolbarButton(false, "Group", <Group size={15} />, groupSelected, !selected)}</span>
+            <span className="hidden lg:inline-flex">{toolbarButton(false, "Ungroup", <Ungroup size={15} />, ungroupSelected, !selected)}</span>
+            <span className="hidden lg:inline-flex w-px h-5 mx-1" style={{ background: "var(--border)" }} />
+            <span className="hidden lg:inline-flex">{toolbarButton(false, "Bring to front", <BringToFront size={15} />, bringToFront, !selected)}</span>
+            <span className="hidden lg:inline-flex">{toolbarButton(false, "Send to back", <SendToBack size={15} />, sendToBack, !selected)}</span>
+          </div>
+        </div>
+        <div className="ml-auto flex items-center gap-1 shrink-0">
           {toolbarButton(false, "Zoom out", <ZoomOut size={15} />, () => setZoom((v) => Math.max(0.15, +(v - 0.1).toFixed(2))))}
           <span className="text-[10px] w-10 text-center" style={{ color: "var(--text-muted)" }}>{Math.round(zoom * 100)}%</span>
           {toolbarButton(false, "Zoom in", <ZoomIn size={15} />, () => setZoom((v) => Math.min(2, +(v + 0.1).toFixed(2))))}
-          {toolbarButton(false, "Fit canvas", <MousePointer2 size={15} />, fitCanvas)}
-          <button onClick={() => exportDrawing("svg")} className="ml-2 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5" style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
+          {toolbarButton(false, "Fit canvas", <Maximize2 size={15} />, fitCanvas)}
+          <button onClick={() => exportDrawing("svg")} className="hidden lg:flex ml-2 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold items-center gap-1.5" style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
             <Download size={13} /> SVG
           </button>
-          <button onClick={() => exportDrawing("png")} className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 text-white" style={{ background: "var(--accent)" }}>
+          <button onClick={() => exportDrawing("png")} className="hidden lg:flex px-2.5 py-1.5 rounded-lg text-[11px] font-semibold items-center gap-1.5 text-white" style={{ background: "var(--accent)" }}>
             <Download size={13} /> PNG
           </button>
         </div>
       </div>
 
+      {mobileMoreOpen && (
+        <div className="lg:hidden fixed inset-0 z-[70] bg-black/40 flex items-end" onClick={() => setMobileMoreOpen(false)}>
+          <div className="w-full rounded-t-2xl p-4 space-y-3" style={{ background: "var(--bg-surface)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div><p className="text-sm font-bold">More tools</p><p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Aksi lanjutan Free Drawing</p></div>
+              <button type="button" onClick={() => setMobileMoreOpen(false)} className="h-8 px-3 rounded-lg text-xs" style={{ background: "var(--bg-surface2)" }}>Tutup</button>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {toolbarButton(false, "Rounded rectangle", <RectangleHorizontal size={15} />, () => { addShape("roundRect"); setMobileMoreOpen(false); })}
+              {toolbarButton(false, "Circle", <CircleIcon size={15} />, () => { addShape("circle"); setMobileMoreOpen(false); })}
+              {toolbarButton(false, "Line", <Minus size={15} />, () => { addLine(false); setMobileMoreOpen(false); })}
+              {toolbarButton(false, "Arrow", <ArrowRight size={15} />, () => { addLine(true); setMobileMoreOpen(false); })}
+              {toolbarButton(false, "Undo", <Undo2 size={15} />, () => { void undo(); setMobileMoreOpen(false); }, historyIndex <= 0)}
+              {toolbarButton(false, "Redo", <Redo2 size={15} />, () => { void redo(); setMobileMoreOpen(false); }, historyIndex >= historyRef.current.length - 1)}
+              {toolbarButton(false, "Copy", <Copy size={15} />, () => { void copy(); setMobileMoreOpen(false); }, !selected)}
+              {toolbarButton(false, "Paste", <Layers size={15} />, () => { void paste(); setMobileMoreOpen(false); }, !clipboardRef.current)}
+              {toolbarButton(false, "Duplicate", <Copy size={15} />, () => { void duplicate(); setMobileMoreOpen(false); }, !selected)}
+              {toolbarButton(false, "Delete", <Trash2 size={15} />, () => { deleteSelected(); setMobileMoreOpen(false); }, !selected)}
+              {toolbarButton(false, "Group", <Group size={15} />, () => { groupSelected(); setMobileMoreOpen(false); }, !selected)}
+              {toolbarButton(false, "Ungroup", <Ungroup size={15} />, () => { ungroupSelected(); setMobileMoreOpen(false); }, !selected)}
+              {toolbarButton(false, "Bring to front", <BringToFront size={15} />, () => { bringToFront(); setMobileMoreOpen(false); }, !selected)}
+              {toolbarButton(false, "Send to back", <SendToBack size={15} />, () => { sendToBack(); setMobileMoreOpen(false); }, !selected)}
+              {toolbarButton(false, "Export SVG", <Download size={15} />, () => { exportDrawing("svg"); setMobileMoreOpen(false); })}
+              {toolbarButton(false, "Export PNG", <Download size={15} />, () => { exportDrawing("png"); setMobileMoreOpen(false); })}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 min-h-0 flex overflow-hidden">
-        <aside className="w-64 shrink-0 border-r flex flex-col overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
+        <aside className={`w-64 shrink-0 border-r flex flex-col overflow-hidden free-drawing-left ${mobilePanel === "tools" ? "mobile-open" : ""}` style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
           <div className="p-3 border-b shrink-0" style={{ borderColor: "var(--border)" }}>
             <div className="flex items-center justify-between">
               <div>
@@ -860,7 +961,7 @@ export default function FreeDrawing({ onToast }: Props) {
           </div>
         </main>
 
-        <aside className="w-60 shrink-0 border-l overflow-y-auto custom-scrollbar p-3 space-y-4" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
+        <aside className={`w-60 shrink-0 border-l overflow-y-auto custom-scrollbar p-3 space-y-4 free-drawing-right ${mobilePanel === "properties" ? "mobile-open" : ""}` style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Object</p>
             {!selected ? (
@@ -911,6 +1012,12 @@ export default function FreeDrawing({ onToast }: Props) {
             </div>
           )}
         </aside>
+      </div>
+
+      <div className="lg:hidden shrink-0 grid grid-cols-3 gap-1 px-2 py-2 border-t" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
+        <button type="button" onClick={() => setMobilePanel(mobilePanel === "tools" ? null : "tools")} className="h-9 rounded-lg flex items-center justify-center gap-1 text-[11px] font-semibold" style={{ background: mobilePanel === "tools" ? "var(--accent-soft)" : "var(--bg-surface2)", color: mobilePanel === "tools" ? "var(--accent)" : "var(--text-secondary)" }}><Wrench size={14} /> Tools</button>
+        <button type="button" onClick={() => setMobilePanel(mobilePanel === "properties" ? null : "properties")} className="h-9 rounded-lg flex items-center justify-center gap-1 text-[11px] font-semibold" style={{ background: mobilePanel === "properties" ? "var(--accent-soft)" : "var(--bg-surface2)", color: mobilePanel === "properties" ? "var(--accent)" : "var(--text-secondary)" }}><Settings2 size={14} /> Properties</button>
+        <button type="button" onClick={() => setMobileMoreOpen(true)} className="h-9 rounded-lg flex items-center justify-center gap-1 text-[11px] font-semibold" style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)" }}><MoreHorizontal size={14} /> More</button>
       </div>
     </div>
   );

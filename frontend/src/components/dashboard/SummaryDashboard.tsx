@@ -22,13 +22,13 @@ function KpiCard({ label, value, sub, accent, icon }: {
   return (
     <div className="kpi-card">
       <div className="flex items-center justify-between mb-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: accent + "22" }}>
+        <div className="kpi-icon w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: accent + "22" }}>
           <span style={{ color: accent }}>{icon}</span>
         </div>
       </div>
-      <p className="text-3xl font-extrabold leading-none" style={{ color: "var(--text-primary)" }}>{value}</p>
-      <p className="text-xs font-semibold mt-1.5" style={{ color: "var(--text-secondary)" }}>{label}</p>
-      {sub && <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{sub}</p>}
+      <p className="kpi-value text-3xl font-extrabold leading-none" style={{ color: "var(--text-primary)" }}>{value}</p>
+      <p className="kpi-label text-xs font-semibold mt-1.5" style={{ color: "var(--text-secondary)" }}>{label}</p>
+      {sub && <p className="kpi-sub text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{sub}</p>}
     </div>
   );
 }
@@ -299,7 +299,7 @@ export default function SummaryDashboard() {
     <div className="p-4 md:p-5 space-y-4 overflow-auto h-full custom-scrollbar view-enter pb-20 md:pb-5">
 
       {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4">
+      <div className="kpi-grid grid grid-cols-4 gap-1.5 sm:grid-cols-2 xl:grid-cols-4 sm:gap-3 md:gap-4">
         <KpiCard label="Total PA" value={stats.total.toLocaleString("id-ID")} sub="Semua record aktif" accent="#3b82f6"
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
         />
