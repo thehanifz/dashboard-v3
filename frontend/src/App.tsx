@@ -7,7 +7,6 @@ import { useAuthStore } from "./state/authStore";
 import { useAppStore } from "./state/appStore";
 
 import LoginPage from "./pages/LoginPage";
-import ProfilePage from "./pages/ProfilePage";
 import MainPage from "./pages/MainPage";
 import SettingsPage from "./pages/SettingsPage";
 
@@ -36,7 +35,7 @@ export default function App() {
   return (
     <AuthGuard>
       <div className="h-screen overflow-hidden flex flex-col">
-        {page === "profile" ? <ProfilePage /> : page === "settings" ? <SettingsPage /> : <MainPage />}
+        {page === "settings" ? <SettingsPage /> : <MainPage />}
       </div>
     </AuthGuard>
   );

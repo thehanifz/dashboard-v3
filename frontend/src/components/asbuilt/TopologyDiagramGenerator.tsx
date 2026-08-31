@@ -183,10 +183,10 @@ export default function TopologyDiagramGenerator({ onToast }: Props) {
   };
 
   return (
-    <div className="flex h-full flex-col md:flex-row gap-0 overflow-hidden">
+    <div className="flex h-full flex-col lg:flex-row gap-0 overflow-hidden">
 
       {/* ── Panel Kiri ── */}
-      <div className="w-full h-[58%] md:h-full md:w-72 shrink-0 flex flex-col overflow-hidden"
+      <div className="w-full h-[62%] lg:h-full lg:w-[40%] xl:w-72 shrink-0 flex flex-col overflow-hidden"
         style={{ borderRight: "1px solid var(--border)" }}>
 
         <div className="px-4 py-3 shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
@@ -261,7 +261,7 @@ export default function TopologyDiagramGenerator({ onToast }: Props) {
       </div>
 
       {/* ── Panel Kanan: Canvas ── */}
-      <div className="w-full h-[42%] md:h-full md:flex-1 flex flex-col overflow-hidden">
+      <div className="w-full h-[38%] lg:h-full lg:flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden border-t lg:border-t-0" style={{ borderColor: "var(--border)" }}>
         <div className="px-4 py-3 shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
           <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Canvas Topologi</h3>
           <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
@@ -269,7 +269,7 @@ export default function TopologyDiagramGenerator({ onToast }: Props) {
           </p>
         </div>
 
-        <div className="flex-1 overflow-auto flex items-center justify-center custom-scrollbar"
+        <div className="flex-1 min-h-[220px] overflow-auto flex items-center justify-center custom-scrollbar"
           style={{ background: "var(--bg-surface2)" }}>
           {!hasContent && (
             <div className="text-center pointer-events-none" style={{ color: "var(--text-muted)" }}>

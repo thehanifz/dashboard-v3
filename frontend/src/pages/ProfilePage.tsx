@@ -7,7 +7,6 @@ import { useEffect, useState } from "react";
 import { profileApi, ProfileData } from "../services/profileApi";
 import { authApi } from "../services/authApi";
 import { useAuthStore } from "../state/authStore";
-import { useAppStore } from "../state/appStore";
 
 const ROLE_LABEL: Record<string, string> = {
   engineer:  "Engineer",
@@ -24,8 +23,7 @@ const ROLE_COLOR: Record<string, string> = {
 
 export default function ProfilePage() {
   const { user, clearAuth }   = useAuthStore();
-  const { setPage }           = useAppStore();
-
+  
   const [profile, setProfile]           = useState<ProfileData | null>(null);
   const [loading, setLoading]           = useState(true);
   const [loggingOut, setLoggingOut]     = useState(false);
@@ -139,23 +137,17 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="flex-1 overflow-auto" style={{ background: "var(--bg-app)" }}>
-      <div className="max-w-2xl mx-auto p-6 space-y-5">
+    <div className="min-h-full" style={{ background: "var(--bg-app)" }}>
+      <div className="w-full max-w-2xl mx-auto p-4 md:p-6 space-y-4 md:space-y-5">
 
         {/* Header */}
-        {!isSuperuser && (
-          <button onClick={() => setPage("dashboard")}
-            className="flex items-center gap-2 text-sm font-medium"
-            style={{ color: "var(--text-secondary)" }}>
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-            Kembali
-          </button>
-        )}
+        <div className="px-1 md:px-0">
+          <h1 className="text-lg font-bold" style={{ color: "var(--text-primary)" }}>Profil</h1>
+          <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>Informasi akun dan pengaturan</p>
+        </div>
 
         {/* Info Akun */}
-        <div className="rounded-2xl border p-6" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+        <div className="rounded-2xl border p-4 md:p-6" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
           <div className="flex items-start gap-4">
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-bold text-white shrink-0 shadow-sm"
               style={{ background: roleColor }}>
@@ -176,7 +168,7 @@ export default function ProfilePage() {
           </div>
 
           {/* Detail grid */}
-          <div className="mt-5 grid grid-cols-2 gap-3">
+          <div className="mt-4 md:mt-5 grid grid-cols-1 min-[360px]:grid-cols-2 gap-3">
             {[
               { label: "Username",    value: username },
               { label: "Status",      value: profile?.is_active ? "Aktif" : "Nonaktif" },
@@ -203,7 +195,7 @@ export default function ProfilePage() {
 
         {/* GSheet — PTL only */}
         {role === "ptl" && (
-          <div className="rounded-2xl border p-6" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+          <div className="rounded-2xl border p-4 md:p-6" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
             <h2 className="text-sm font-bold mb-4" style={{ color: "var(--text-primary)" }}>Google Sheet</h2>
 
             {gsError && <Alert type="error" msg={gsError} />}
@@ -293,7 +285,7 @@ export default function ProfilePage() {
 
         {/* Ganti Password — non-superuser only */}
         {!isSuperuser && (
-          <div className="rounded-2xl border p-6" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+          <div className="rounded-2xl border p-4 md:p-6" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
             <h2 className="text-sm font-bold mb-4" style={{ color: "var(--text-primary)" }}>Ganti Password</h2>
             {pwdError && <Alert type="error" msg={pwdError} />}
             {pwdSuccess && <Alert type="success" msg={`${pwdSuccess} Mengalihkan ke login...`} />}
@@ -322,7 +314,7 @@ export default function ProfilePage() {
         )}
 
         {/* Logout */}
-        <div className="rounded-2xl border p-6" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+        <div className="rounded-2xl border p-4 md:p-6" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
           <h2 className="text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>Keluar</h2>
           <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
             Sesi kamu akan diakhiri dan kamu perlu login ulang.

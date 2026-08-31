@@ -77,30 +77,32 @@ export function HBar({ label, value, max, color, pct, onClick, isActive }: HBarP
   };
 
   return (
-    <div 
-      className="flex flex-wrap items-center gap-x-2 gap-y-1.5 sm:flex-nowrap sm:gap-3"
+    <div
+      className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3 min-w-0"
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       style={baseStyle}
     >
-      <span className="text-xs w-full sm:w-36 truncate shrink-0" style={labelStyle}>
+      <span className="text-xs w-full sm:w-36 truncate shrink-0 min-w-0" style={labelStyle}>
         {label}
       </span>
-      <div className="order-3 sm:order-none basis-full sm:basis-auto flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: "var(--border)" }}>
-        <div 
-          className="h-full rounded-full"
-          style={barStyle} 
-        />
-      </div>
-      <span className="text-xs font-bold w-6 sm:w-5 text-right font-mono-data ml-auto sm:ml-0" style={valueStyle}>
-        {value}
-      </span>
-      {pct && (
-        <span className="text-[10px] w-8 text-right" style={pctStyle}>
-          {pct}
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <div className="flex-1 min-w-0 rounded-full h-1.5 overflow-hidden" style={{ background: "var(--border)" }}>
+          <div
+            className="h-full rounded-full"
+            style={barStyle}
+          />
+        </div>
+        <span className="text-xs font-bold w-5 shrink-0 text-right font-mono-data" style={valueStyle}>
+          {value}
         </span>
-      )}
+        {pct && (
+          <span className="text-[10px] w-8 shrink-0 text-right" style={pctStyle}>
+            {pct}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

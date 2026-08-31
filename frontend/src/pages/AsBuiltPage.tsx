@@ -130,10 +130,10 @@ function LibraryPage({ onToast }: { onToast: ToastFn }) {
   };
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full flex-col lg:flex-row overflow-hidden">
 
       {/* ── PANEL KIRI: split atas-bawah ── */}
-      <div className="w-72 shrink-0 flex flex-col overflow-hidden"
+      <div className="w-full lg:w-[40%] xl:w-72 shrink-0 flex flex-col overflow-hidden"
         style={{ borderRight: "1px solid var(--border)" }}>
 
         {/* Header */}
@@ -197,7 +197,8 @@ function LibraryPage({ onToast }: { onToast: ToastFn }) {
       </div>
 
       {/* ── PANEL KANAN: Preview full ── */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="w-full flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden lg:border-l-0 border-t lg:border-t-0"
+        style={{ borderColor: "var(--border)" }}>
         <div className="px-4 py-3 shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
           <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Preview Hasil</h3>
           <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
@@ -205,7 +206,7 @@ function LibraryPage({ onToast }: { onToast: ToastFn }) {
           </p>
         </div>
 
-        <div className="flex-1 overflow-auto flex items-center justify-center p-4 custom-scrollbar"
+        <div className="flex-1 min-h-[260px] overflow-auto flex items-center justify-center p-4 custom-scrollbar"
           style={{ background: "var(--bg-surface2)" }}>
           {!selected ? (
             <div className="text-center" style={{ color: "var(--text-muted)" }}>
@@ -332,20 +333,20 @@ function GeneratePage({ onToast }: { onToast: ToastFn }) {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      <div className="shrink-0 flex items-center gap-3 px-4 py-3"
+      <div className="shrink-0 flex flex-wrap items-center gap-2 px-3 sm:px-4 py-3"
         style={{ borderBottom: "1px solid var(--border)" }}>
         <label className="text-xs font-medium shrink-0"
           style={{ color: "var(--text-secondary)" }}>Generator:</label>
         <select
           value={activeGenerator}
           onChange={(e) => setActiveGenerator(e.target.value)}
-          className="px-3 py-1.5 rounded-lg text-xs border"
+          className="flex-1 min-w-0 sm:flex-none px-3 py-1.5 rounded-lg text-xs border"
           style={{
             background: "var(--bg-surface2)",
             border: "1px solid var(--border)",
             color: "var(--text-primary)",
             outline: "none",
-            minWidth: 200,
+            minWidth: 0,
           }}
         >
           {GENERATOR_REGISTRY.map((g) => (
@@ -375,7 +376,6 @@ export default function AsBuiltPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { toasts, show: showToast } = useToast();
 
-  const pageTitle    = asbuiltView === "library" ? "Library Template" : "Generate";
   const pageSubtitle = asbuiltView === "library"
     ? "Upload & kelola template SVG"
     : "Generate diagram dari berbagai jenis generator";
@@ -400,13 +400,31 @@ export default function AsBuiltPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <div className="min-w-0">
-            <h1 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{pageTitle}</h1>
-            <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>{pageSubtitle}</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>As-Built</h1>
+            <p className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{pageSubtitle}</p>
+          </div>
+          <div className="flex items-center gap-1 p-1 rounded-xl shrink-0" style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}>
+            {([
+              { id: "library" as const, label: "Library" },
+              { id: "generate" as const, label: "Generator" },
+            ]).map((view) => (
+              <button
+                key={view.id}
+                onClick={() => useAppStore.getState().setAsBuiltView(view.id)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                style={{
+                  background: asbuiltView === view.id ? "var(--accent)" : "transparent",
+                  color: asbuiltView === view.id ? "#fff" : "var(--text-secondary)",
+                }}
+              >
+                {view.label}
+              </button>
+            ))}
           </div>
         </header>
 
-        <main className="flex-1 overflow-hidden p-4 pb-16 md:pb-4">
+        <main className="flex-1 min-h-0 overflow-hidden p-2.5 sm:p-4 pb-16 md:pb-4">
           <div className="h-full rounded-2xl overflow-hidden"
             style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
             {asbuiltView === "library"  && <LibraryPage  onToast={showToast} />}

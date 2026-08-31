@@ -38,7 +38,7 @@ function SectionCard({ title, subtitle, action, children }: {
   title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl p-4 md:p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+    <div className="rounded-2xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
       <div className="flex items-start justify-between mb-4">
         <div>
           <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{title}</h3>
@@ -296,10 +296,10 @@ export default function SummaryDashboard() {
   const isEngineer = user?.role === "engineer";
 
   return (
-    <div className="p-3 sm:p-4 md:p-5 space-y-3 md:space-y-4 overflow-auto h-full custom-scrollbar view-enter pb-24 md:pb-5">
+    <div className="p-4 md:p-5 space-y-4 overflow-auto h-full custom-scrollbar view-enter pb-20 md:pb-5">
 
       {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4">
         <KpiCard label="Total PA" value={stats.total.toLocaleString("id-ID")} sub="Semua record aktif" accent="#3b82f6"
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
         />
@@ -327,7 +327,7 @@ export default function SummaryDashboard() {
       </div>
 
       {/* ── Progress Bar ── */}
-      <div className="rounded-2xl p-4 md:p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+      <div className="rounded-2xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Progress Penyelesaian</h3>
@@ -352,7 +352,7 @@ export default function SummaryDashboard() {
             }}
           />
         </div>
-        <div className="flex justify-between mt-2">
+        <div className="flex flex-col gap-1 mt-2 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
             {stats.doneBai.toLocaleString("id-ID")} {stats.valDone || "Done"}
           </span>
@@ -388,7 +388,7 @@ export default function SummaryDashboard() {
       )}
 
       {/* ── Chart Row 1 ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+      <div className="grid min-w-0 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
         <SectionCard
           title={`Per ${cols?.colStatusPekerjaan ?? "Status Pekerjaan"} On Progress`}
           subtitle={`Filter: ${cols?.colStatusPa ?? "Status PA"} = ${stats.valProgress || "On Progress"}`}
@@ -439,7 +439,7 @@ export default function SummaryDashboard() {
       </div>
 
       {/* ── Chart Row 2 ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+      <div className="grid min-w-0 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
         <SectionCard title="Top 10 NAMA CUSTOMER" subtitle="Customer terbanyak">
           <div className="space-y-2.5">
             {Object.entries(stats.byNamaCustomer)
