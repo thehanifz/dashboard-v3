@@ -26,6 +26,9 @@ import {
   Circle as CircleIcon,
   Copy,
   Download,
+  MoreHorizontal,
+  SlidersHorizontal,
+  X,
   Group,
   ImagePlus,
   Italic,
@@ -44,10 +47,6 @@ import {
   Upload,
   ZoomIn,
   ZoomOut,
-  MoreHorizontal,
-  Settings2,
-  ChevronDown,
-  PanelLeft,
 } from "lucide-react";
 import asbuiltApi, { type IconAsset } from "../../services/asbuiltApi";
 
@@ -102,14 +101,36 @@ export default function FreeDrawing({ onToast }: Props) {
   const [fillColor, setFillColor] = useState("#ffffff");
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [fontSize, setFontSize] = useState(18);
-  const [mobilePanel, setMobilePanel] = useState<"tools" | "properties" | null>(null);
-  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
-  const [mobileShapeOpen, setMobileShapeOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const workspaceRef = useRef<HTMLDivElement | null>(null);
-  const touchRef = useRef({ active: false, distance: 0, centerX: 0, centerY: 0 });
+  const [mobilePanel, setMobilePanel] = useState<"tools" | "icons" | "properties" | null>(null);
+  const workspaceRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const sync = () => setIsMobile(media.matches);
+    sync();
+    media.addEventListener?.("change", sync);
+    return () => media.removeEventListener?.("change", sync);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    const node = workspaceRef.current;
+    if (!node) return;
+    const fit = () => {
+      const availableWidth = Math.max(220, node.clientWidth - 24);
+      const availableHeight = Math.max(220, node.clientHeight - 24);
+      const nextZoom = Math.min(1.25, Math.max(0.15, Math.min(availableWidth / canvasSize.width, availableHeight / canvasSize.height)));
+      const rounded = Number(nextZoom.toFixed(2));
+      setZoom((current) => Math.abs(current - rounded) > 0.01 ? rounded : current);
+    };
+    const observer = new ResizeObserver(() => requestAnimationFrame(fit));
+    observer.observe(node);
+    fit();
+    return () => observer.disconnect();
+  }, [isMobile, canvasSize.height, canvasSize.width]);
 
   const syncSelection = useCallback(() => {
     const canvas = fabricRef.current;
@@ -548,70 +569,6 @@ export default function FreeDrawing({ onToast }: Props) {
     setZoom(Number(nextZoom.toFixed(2)));
   };
 
-  useEffect(() => {
-    const media = window.matchMedia("(max-width: 767px)");
-    const update = () => setIsMobile(media.matches);
-    update();
-    media.addEventListener?.("change", update);
-    return () => media.removeEventListener?.("change", update);
-  }, []);
-
-  useEffect(() => {
-    if (!isMobile || !workspaceRef.current) return;
-    const observer = new ResizeObserver(() => fitCanvas());
-    observer.observe(workspaceRef.current);
-    const id = window.setTimeout(() => fitCanvas(), 0);
-    return () => { observer.disconnect(); window.clearTimeout(id); };
-  }, [isMobile, canvasSize.width, canvasSize.height]);
-
-  useEffect(() => {
-    const canvasEl = canvasElementRef.current;
-    const canvas = fabricRef.current;
-    if (!isMobile || !canvasEl || !canvas) return;
-    const getTouchState = (touches: TouchList) => {
-      const a = touches[0], b = touches[1];
-      const dx = b.clientX - a.clientX, dy = b.clientY - a.clientY;
-      return { distance: Math.hypot(dx, dy), centerX: (a.clientX + b.clientX) / 2, centerY: (a.clientY + b.clientY) / 2 };
-    };
-    const onTouchStart = (event: TouchEvent) => {
-      if (event.touches.length !== 2) return;
-      event.preventDefault();
-      touchRef.current = { active: true, ...getTouchState(event.touches) };
-      canvas.selection = false;
-      canvas.defaultCursor = "grabbing";
-    };
-    const onTouchMove = (event: TouchEvent) => {
-      if (!touchRef.current.active || event.touches.length !== 2) return;
-      event.preventDefault();
-      const next = getTouchState(event.touches);
-      const rect = canvasEl.getBoundingClientRect();
-      const ratio = touchRef.current.distance ? next.distance / touchRef.current.distance : 1;
-      const nextZoom = Math.min(2, Math.max(0.15, zoomRef.current * ratio));
-      canvas.zoomToPoint({ x: next.centerX - rect.left, y: next.centerY - rect.top } as any, nextZoom);
-      canvas.relativePan({ x: next.centerX - touchRef.current.centerX, y: next.centerY - touchRef.current.centerY } as any);
-      touchRef.current = { active: true, ...next };
-      zoomRef.current = nextZoom;
-      setZoom(Number(nextZoom.toFixed(2)));
-      canvas.requestRenderAll();
-    };
-    const onTouchEnd = () => {
-      if (!touchRef.current.active) return;
-      touchRef.current.active = false;
-      canvas.selection = true;
-      canvas.defaultCursor = "default";
-    };
-    canvasEl.addEventListener("touchstart", onTouchStart, { passive: false });
-    canvasEl.addEventListener("touchmove", onTouchMove, { passive: false });
-    canvasEl.addEventListener("touchend", onTouchEnd);
-    canvasEl.addEventListener("touchcancel", onTouchEnd);
-    return () => {
-      canvasEl.removeEventListener("touchstart", onTouchStart);
-      canvasEl.removeEventListener("touchmove", onTouchMove);
-      canvasEl.removeEventListener("touchend", onTouchEnd);
-      canvasEl.removeEventListener("touchcancel", onTouchEnd);
-    };
-  }, [isMobile]);
-
   const exportDrawing = (format: "png" | "svg") => {
     const canvas = fabricRef.current;
     if (!canvas) return;
@@ -808,22 +765,9 @@ export default function FreeDrawing({ onToast }: Props) {
     </button>
   );
 
-  const mobileMoreActions = [
-    { label: "Undo", icon: <Undo2 size={15} />, onClick: () => void undo(), disabled: historyIndex <= 0 },
-    { label: "Redo", icon: <Redo2 size={15} />, onClick: () => void redo(), disabled: historyIndex >= historyRef.current.length - 1 },
-    { label: "Copy", icon: <Copy size={15} />, onClick: () => void copy(), disabled: !selected },
-    { label: "Paste", icon: <Layers size={15} />, onClick: () => void paste(), disabled: !clipboardRef.current },
-    { label: "Duplicate", icon: <Copy size={15} />, onClick: () => void duplicate(), disabled: !selected },
-    { label: "Delete", icon: <Trash2 size={15} />, onClick: deleteSelected, disabled: !selected },
-    { label: "Group", icon: <Group size={15} />, onClick: groupSelected, disabled: !selected },
-    { label: "Ungroup", icon: <Ungroup size={15} />, onClick: ungroupSelected, disabled: !selected },
-    { label: "Bring front", icon: <BringToFront size={15} />, onClick: bringToFront, disabled: !selected },
-    { label: "Send back", icon: <SendToBack size={15} />, onClick: sendToBack, disabled: !selected },
-  ];
-
   return (
-    <div className="h-full flex flex-col overflow-hidden" style={{ color: "var(--text-primary)" }}>
-      <div className="hidden md:flex shrink-0 items-center gap-1 px-3 py-2 border-b overflow-x-auto custom-scrollbar" style={{ borderColor: "var(--border)" }}>
+    <div className="h-full flex flex-col overflow-hidden relative" style={{ color: "var(--text-primary)" }}>
+      <div className="hidden md:flex shrink-0 flex items-center gap-1 px-3 py-2 border-b" style={{ borderColor: "var(--border)" }}>
         {toolbarButton(tool === "select", "Select", <MousePointer2 size={15} />, () => setToolMode("select"))}
         {toolbarButton(tool === "text", "Text", <Type size={15} />, addText)}
         {toolbarButton(tool === "rect", "Rectangle", <Square size={15} />, () => addShape("rect"))}
@@ -844,47 +788,41 @@ export default function FreeDrawing({ onToast }: Props) {
         <span className="w-px h-5 mx-1" style={{ background: "var(--border)" }} />
         {toolbarButton(false, "Bring to front", <BringToFront size={15} />, bringToFront, !selected)}
         {toolbarButton(false, "Send to back", <SendToBack size={15} />, sendToBack, !selected)}
-        <div className="ml-auto flex items-center gap-1 shrink-0">
+        <div className="ml-auto flex items-center gap-1">
           {toolbarButton(false, "Zoom out", <ZoomOut size={15} />, () => setZoom((v) => Math.max(0.15, +(v - 0.1).toFixed(2))))}
           <span className="text-[10px] w-10 text-center" style={{ color: "var(--text-muted)" }}>{Math.round(zoom * 100)}%</span>
           {toolbarButton(false, "Zoom in", <ZoomIn size={15} />, () => setZoom((v) => Math.min(2, +(v + 0.1).toFixed(2))))}
           {toolbarButton(false, "Fit canvas", <MousePointer2 size={15} />, fitCanvas)}
-          <button onClick={() => exportDrawing("svg")} className="ml-2 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5" style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}><Download size={13} /> SVG</button>
-          <button onClick={() => exportDrawing("png")} className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 text-white" style={{ background: "var(--accent)" }}><Download size={13} /> PNG</button>
+          <button onClick={() => exportDrawing("svg")} className="ml-2 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5" style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
+            <Download size={13} /> SVG
+          </button>
+          <button onClick={() => exportDrawing("png")} className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 text-white" style={{ background: "var(--accent)" }}>
+            <Download size={13} /> PNG
+          </button>
+        </div>
+      </div>      <div className="md:hidden shrink-0 flex items-center gap-1 px-2 py-2 border-b overflow-x-auto" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
+        {toolbarButton(tool === "select", "Select", <MousePointer2 size={15} />, () => { setMobilePanel(null); setToolMode("select"); })}
+        {toolbarButton(tool === "draw", "Freehand", <Pencil size={15} />, () => { setMobilePanel(null); setToolMode("draw"); })}
+        {toolbarButton(tool === "text", "Text", <Type size={15} />, () => { setMobilePanel(null); addText(); })}
+        {toolbarButton(false, "Rectangle", <Square size={15} />, () => { setMobilePanel(null); addShape("rect"); })}
+        <div className="ml-auto flex items-center gap-1 shrink-0">
+          {toolbarButton(false, "Undo", <Undo2 size={15} />, () => void undo(), historyIndex <= 0)}
+          {toolbarButton(false, "Redo", <Redo2 size={15} />, () => void redo(), historyIndex >= historyRef.current.length - 1)}
+          {toolbarButton(false, "More", <MoreHorizontal size={18} />, () => setMobilePanel(mobilePanel === null ? "tools" : null))}
         </div>
       </div>
 
-      <div className="md:hidden shrink-0 border-b relative" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
-        <div className="flex items-center gap-1 px-2 py-1.5">
-          {toolbarButton(tool === "select", "Select", <MousePointer2 size={14} />, () => { setToolMode("select"); setMobileMoreOpen(false); setMobileShapeOpen(false); })}
-          {toolbarButton(tool === "draw", "Freehand", <Pencil size={14} />, () => { setToolMode("draw"); setMobileMoreOpen(false); setMobileShapeOpen(false); })}
-          {toolbarButton(tool === "text", "Text", <Type size={14} />, () => { addText(); setMobileMoreOpen(false); setMobileShapeOpen(false); })}
-          <button type="button" title="Shape" onClick={() => { setMobileShapeOpen((v) => !v); setMobileMoreOpen(false); }} className="h-8 px-2 rounded-lg flex items-center gap-1 text-[10px] font-semibold" style={{ background: mobileShapeOpen ? "var(--accent-soft)" : "transparent", color: mobileShapeOpen ? "var(--accent)" : "var(--text-secondary)" }}><Square size={14} /> Shape <ChevronDown size={12} /></button>
-          <div className="ml-auto flex items-center gap-1">
-            <span className="text-[10px] min-w-10 text-center" style={{ color: "var(--text-muted)" }}>{Math.round(zoom * 100)}%</span>
-            {toolbarButton(false, "Fit canvas", <MousePointer2 size={14} />, fitCanvas)}
-            <button type="button" aria-label="More tools" title="More tools" onClick={() => { setMobileMoreOpen((v) => !v); setMobileShapeOpen(false); }} className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: mobileMoreOpen ? "var(--accent-soft)" : "transparent", color: mobileMoreOpen ? "var(--accent)" : "var(--text-secondary)" }}><MoreHorizontal size={16} /></button>
-          </div>
-        </div>
-        {mobileShapeOpen && <div className="absolute left-2 top-full z-40 mt-1 w-52 rounded-xl border shadow-lg p-1.5 grid grid-cols-2 gap-1" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-          {([['rect','Rectangle',<Square size={14} />],['roundRect','Rounded',<RectangleHorizontal size={14} />],['circle','Circle',<CircleIcon size={14} />],['line','Line',<Minus size={14} />],['arrow','Arrow',<ArrowRight size={14} />]] as const).map(([shape,label,icon]) => <button key={shape} type="button" onClick={() => { setToolMode(shape); if (shape === "line") addLine(false); else if (shape === "arrow") addLine(true); else addShape(shape as "rect" | "roundRect" | "circle"); setMobileShapeOpen(false); }} className="h-9 rounded-lg flex items-center gap-2 px-2 text-[10px]" style={{ color: "var(--text-secondary)", background: "var(--bg-surface2)" }}>{icon}{label}</button>)}
-        </div>}
-        {mobileMoreOpen && <div className="absolute right-2 top-full z-40 mt-1 w-64 rounded-xl border shadow-lg p-2" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-          <div className="grid grid-cols-2 gap-1">{mobileMoreActions.map((item) => <button key={item.label} type="button" disabled={item.disabled} onClick={() => { item.onClick(); setMobileMoreOpen(false); }} className="h-9 rounded-lg flex items-center gap-2 px-2 text-[10px] text-left disabled:opacity-30" style={{ color: "var(--text-secondary)", background: "var(--bg-surface2)" }}>{item.icon}{item.label}</button>)}</div>
-          <div className="grid grid-cols-3 gap-1 mt-2"><button type="button" onClick={() => setZoom((v) => Math.max(0.15, +(v - 0.1).toFixed(2)))} className="h-8 rounded-lg text-[10px]" style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)" }}>Zoom −</button><button type="button" onClick={fitCanvas} className="h-8 rounded-lg text-[10px]" style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)" }}>Fit</button><button type="button" onClick={() => setZoom((v) => Math.min(2, +(v + 0.1).toFixed(2)))} className="h-8 rounded-lg text-[10px]" style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)" }}>Zoom +</button></div>
-          <div className="grid grid-cols-2 gap-1 mt-2"><button type="button" onClick={() => exportDrawing("svg")} className="h-9 rounded-lg text-[10px] font-semibold" style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)" }}>Export SVG</button><button type="button" onClick={() => exportDrawing("png")} className="h-9 rounded-lg text-[10px] font-semibold text-white" style={{ background: "var(--accent)" }}>Export PNG</button></div>
-        </div>}
-      </div>
-
-      <div ref={workspaceRef} className="relative flex-1 min-h-0 flex overflow-hidden">
-        <aside className={`free-drawing-left w-64 shrink-0 border-r flex flex-col overflow-hidden md:flex ${mobilePanel === "tools" ? "!flex absolute z-30 left-2 right-2 bottom-2 w-auto max-h-[68%] rounded-xl border shadow-xl" : "hidden md:flex"}`} style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
+      <div className="flex-1 min-h-0 flex overflow-hidden">
+        <aside className="hidden md:flex w-64 shrink-0 border-r flex flex-col overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
           <div className="p-3 border-b shrink-0" style={{ borderColor: "var(--border)" }}>
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-bold">Free Drawing</h2>
                 <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Canvas diagram editor</p>
               </div>
-              <span className="flex items-center gap-1"><span className="text-[9px] px-2 py-1 rounded-full" style={{ background: isDirty ? "var(--accent-soft)" : "var(--bg-surface2)", color: isDirty ? "var(--accent)" : "var(--text-muted)" }}>{isDirty ? "Edited" : "Ready"}</span><button type="button" className="md:hidden w-7 h-7 rounded-lg flex items-center justify-center" onClick={() => setMobilePanel(null)} aria-label="Tutup tools" style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)" }}>×</button></span>
+              <span className="text-[9px] px-2 py-1 rounded-full" style={{ background: isDirty ? "var(--accent-soft)" : "var(--bg-surface2)", color: isDirty ? "var(--accent)" : "var(--text-muted)" }}>
+                {isDirty ? "Edited" : "Ready"}
+              </span>
             </div>
           </div>
 
@@ -938,7 +876,7 @@ export default function FreeDrawing({ onToast }: Props) {
           </div>
         </aside>
 
-        <main className="flex-1 min-w-0 min-h-0 overflow-hidden flex items-center justify-center p-2 md:p-4" style={{ background: "var(--bg-app)", touchAction: "none" }}>
+        <main ref={workspaceRef as any} className="flex-1 min-w-0 min-h-0 overflow-auto flex items-center justify-center p-3 md:p-4 relative" style={{ background: "var(--bg-app)" }}>
           <div
             className="shadow-lg relative"
             onDragOver={(e) => e.preventDefault()}
@@ -963,9 +901,9 @@ export default function FreeDrawing({ onToast }: Props) {
           </div>
         </main>
 
-        <aside className={`free-drawing-right w-60 shrink-0 border-l overflow-y-auto custom-scrollbar p-3 space-y-4 md:block ${mobilePanel === "properties" ? "!block absolute z-30 left-2 right-2 bottom-2 w-auto max-h-[68%] rounded-xl border shadow-xl" : "hidden md:block"}`} style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
+        <aside className="hidden md:block w-60 shrink-0 border-l overflow-y-auto custom-scrollbar p-3 space-y-4" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
           <div>
-            <div className="flex items-center justify-between mb-2"><p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Object</p><button type="button" className="md:hidden w-7 h-7 rounded-lg flex items-center justify-center" onClick={() => setMobilePanel(null)} aria-label="Tutup properties" style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)" }}>×</button></div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Object</p>
             {!selected ? (
               <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Pilih object di canvas untuk mengedit property.</p>
             ) : (
@@ -1014,14 +952,98 @@ export default function FreeDrawing({ onToast }: Props) {
             </div>
           )}
         </aside>
-
-        <div className="md:hidden absolute left-2 right-2 bottom-2 z-20 flex items-center gap-1 p-1.5 rounded-xl border shadow-lg" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-          <button type="button" onClick={() => setMobilePanel(mobilePanel === "tools" ? null : "tools")} className="flex-1 h-9 rounded-lg flex items-center justify-center gap-1.5 text-[10px] font-semibold" style={{ background: mobilePanel === "tools" ? "var(--accent-soft)" : "var(--bg-surface2)", color: mobilePanel === "tools" ? "var(--accent)" : "var(--text-secondary)" }}><PanelLeft size={14} /> Tools</button>
-          <button type="button" onClick={() => setMobilePanel(mobilePanel === "properties" ? null : "properties")} className="flex-1 h-9 rounded-lg flex items-center justify-center gap-1.5 text-[10px] font-semibold" style={{ background: mobilePanel === "properties" ? "var(--accent-soft)" : "var(--bg-surface2)", color: mobilePanel === "properties" ? "var(--accent)" : "var(--text-secondary)" }}><Settings2 size={14} /> Properties</button>
-          <button type="button" onClick={() => exportDrawing("png")} className="flex-1 h-9 rounded-lg flex items-center justify-center gap-1.5 text-[10px] font-semibold text-white" style={{ background: "var(--accent)" }}><Download size={13} /> Export</button>
-        </div>
       </div>
+      {isMobile && (
+        <>
+          <div className="shrink-0 grid grid-cols-4 gap-1 px-2 py-2 border-t" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
+            <button type="button" onClick={() => setMobilePanel(mobilePanel === "tools" ? null : "tools")} className="h-9 rounded-lg flex items-center justify-center gap-1 text-[10px] font-semibold" style={{ background: mobilePanel === "tools" ? "var(--accent-soft)" : "var(--bg-surface2)", color: mobilePanel === "tools" ? "var(--accent)" : "var(--text-secondary)" }}><SlidersHorizontal size={14} />Tools</button>
+            <button type="button" onClick={() => setMobilePanel(mobilePanel === "icons" ? null : "icons")} className="h-9 rounded-lg flex items-center justify-center gap-1 text-[10px] font-semibold" style={{ background: mobilePanel === "icons" ? "var(--accent-soft)" : "var(--bg-surface2)", color: mobilePanel === "icons" ? "var(--accent)" : "var(--text-secondary)" }}><ImagePlus size={14} />Icons</button>
+            <button type="button" onClick={() => setMobilePanel(mobilePanel === "properties" ? null : "properties")} className="h-9 rounded-lg flex items-center justify-center gap-1 text-[10px] font-semibold" style={{ background: mobilePanel === "properties" ? "var(--accent-soft)" : "var(--bg-surface2)", color: mobilePanel === "properties" ? "var(--accent)" : "var(--text-secondary)" }}><SlidersHorizontal size={14} />Properties</button>
+            <button type="button" onClick={() => setMobilePanel(null) || exportDrawing("png")} className="h-9 rounded-lg flex items-center justify-center gap-1 text-[10px] font-semibold" style={{ background: "var(--accent)", color: "#fff" }}><Download size={14} />PNG</button>
+          </div>
+
+          {mobilePanel && (
+            <div className="md:hidden absolute inset-x-2 bottom-[58px] z-40 max-h-[68%] overflow-hidden rounded-2xl border shadow-2xl" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+              <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: "var(--border)" }}>
+                <p className="text-xs font-bold">{mobilePanel === "icons" ? "Icon Library" : mobilePanel === "tools" ? "Tools" : "Properties"}</p>
+                <button type="button" onClick={() => setMobilePanel(null)} className="h-7 w-7 rounded-lg flex items-center justify-center" style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)" }}><X size={14} /></button>
+              </div>
+
+              {mobilePanel === "icons" && (
+                <div className="overflow-y-auto max-h-[calc(68vh-42px)] p-3 custom-scrollbar space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Free Drawing Icons</p>
+                    <label className="cursor-pointer p-1.5 rounded-lg" title="Tambah icon" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+                      {uploadingIcon ? <span className="text-[9px]">...</span> : <Upload size={14} />}
+                      <input type="file" accept="image/png,image/svg+xml" className="hidden" disabled={uploadingIcon} onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadIcon(file); e.currentTarget.value = ""; }} />
+                    </label>
+                  </div>
+                  {loadingIcons ? <p className="text-[11px] py-6 text-center" style={{ color: "var(--text-muted)" }}>Memuat icon...</p> : icons.length === 0 ? (
+                    <div className="text-center py-8 rounded-xl" style={{ background: "var(--bg-surface2)", color: "var(--text-muted)" }}><ImagePlus size={24} className="mx-auto mb-2 opacity-50" /><p className="text-[10px]">Belum ada icon</p></div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      {icons.map((icon) => (
+                        <button key={icon.filename} type="button" title={icon.filename} onClick={() => { void addIcon(icon); setMobilePanel(null); }} className="aspect-square rounded-xl p-2 flex flex-col items-center justify-center gap-1 border" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)" }}>
+                          <img src={icon.url} alt={icon.filename} className="max-w-full max-h-16 object-contain" draggable={false} />
+                          <span className="w-full truncate text-[8px]" style={{ color: "var(--text-muted)" }}>{icon.filename}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {mobilePanel === "tools" && (
+                <div className="overflow-y-auto max-h-[calc(68vh-42px)] p-3 custom-scrollbar space-y-4">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Canvas</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-[9px]" style={{ color: "var(--text-muted)" }}>Width<input type="number" min={200} value={canvasSize.width} onChange={(e) => setCanvasSize((s) => ({ ...s, width: Math.max(200, Number(e.target.value) || 200) }))} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
+                      <label className="text-[9px]" style={{ color: "var(--text-muted)" }}>Height<input type="number" min={200} value={canvasSize.height} onChange={(e) => setCanvasSize((s) => ({ ...s, height: Math.max(200, Number(e.target.value) || 200) }))} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
+                    </div>
+                    <label className="text-[9px] block mt-2" style={{ color: "var(--text-muted)" }}>Background<input type="color" value={background} onChange={(e) => setBackground(e.target.value)} className="w-full h-8 mt-1 rounded-lg cursor-pointer" /></label>
+                    <label className="flex items-center justify-between text-[10px] mt-2" style={{ color: "var(--text-secondary)" }}><span>Show Grid</span><input type="checkbox" checked={gridEnabled} onChange={(e) => setGridEnabled(e.target.checked)} /></label>
+                    <label className="flex items-center justify-between text-[10px] mt-2" style={{ color: "var(--text-secondary)" }}><span>Snap to Grid</span><input type="checkbox" checked={snapEnabled} onChange={(e) => setSnapEnabled(e.target.checked)} /></label>
+                    <label className="flex items-center justify-between text-[10px] mt-2" style={{ color: "var(--text-secondary)" }}><span>Grid Size</span><input type="number" min={5} max={100} value={gridSize} onChange={(e) => setGridSize(Math.max(5, Math.min(100, Number(e.target.value) || 20)))} className="w-16 px-2 py-1 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Drawing Style</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Stroke<input type="color" value={strokeColor} onChange={(e) => setStrokeColor(e.target.value)} className="w-full h-8 mt-1 rounded-lg cursor-pointer" /></label>
+                      <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Fill<input type="color" value={fillColor} onChange={(e) => setFillColor(e.target.value)} className="w-full h-8 mt-1 rounded-lg cursor-pointer" /></label>
+                    </div>
+                    <label className="text-[9px] block mt-2" style={{ color: "var(--text-muted)" }}>Stroke Width<input type="number" min={1} max={20} value={strokeWidth} onChange={(e) => setStrokeWidth(Math.max(1, Math.min(20, Number(e.target.value) || 1)))} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
+                    <label className="text-[9px] block mt-2" style={{ color: "var(--text-muted)" }}>Font Size<input type="number" min={8} max={120} value={fontSize} onChange={(e) => setFontSize(Math.max(8, Math.min(120, Number(e.target.value) || 18)))} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
+                  </div>
+                </div>
+              )}
+
+              {mobilePanel === "properties" && (
+                <div className="overflow-y-auto max-h-[calc(68vh-42px)] p-3 custom-scrollbar space-y-4">
+                  {!selected ? <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Pilih object di canvas untuk mengedit property.</p> : (
+                    <>
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Object</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>X<input type="number" value={Math.round(selected.left || 0)} onChange={(e) => updateSelected({ left: Number(e.target.value) })} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
+                          <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Y<input type="number" value={Math.round(selected.top || 0)} onChange={(e) => updateSelected({ top: Number(e.target.value) })} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
+                        </div>
+                        <label className="text-[9px] block mt-2" style={{ color: "var(--text-muted)" }}>Rotation<input type="number" value={Math.round(selected.angle || 0)} onChange={(e) => updateSelected({ angle: Number(e.target.value) })} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
+                        <label className="text-[9px] block mt-2" style={{ color: "var(--text-muted)" }}>Opacity<input type="range" min={0} max={1} step={0.05} value={selected.opacity ?? 1} onChange={(e) => updateSelected({ opacity: Number(e.target.value) })} className="w-full mt-1" /></label>
+                      </div>
+                      {selected && objectIsText(selected) && <div className="space-y-2"><p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Text</p><textarea value={selected.text || ""} onChange={(e) => updateSelected({ text: e.target.value })} className="w-full min-h-20 px-2 py-1.5 rounded-lg border text-xs resize-y" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></div>}
+                      {!objectIsText(selected) && <div className="space-y-2"><p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Appearance</p><label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Fill<input type="color" value={getObjectFill(selected)} onChange={(e) => updateSelected({ fill: e.target.value })} className="w-full h-8 mt-1 rounded-lg cursor-pointer" /></label><label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Stroke<input type="color" value={getObjectStroke(selected)} onChange={(e) => updateSelected({ stroke: e.target.value })} className="w-full h-8 mt-1 rounded-lg cursor-pointer" /></label></div>}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
     </div>
+
   );
 }
 
