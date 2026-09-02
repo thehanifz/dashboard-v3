@@ -7,7 +7,7 @@
  * Drill-down: saat masuk dari PTL Dashboard (via appStore.ptlDrillFilter),
  * filter langsung diterapkan dan banner info ditampilkan.
  */
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { useThemeStore }     from "../../state/themeStore";
@@ -202,6 +202,7 @@ export default function PTLDetailPanel() {
   const [showCreatePreset, setShowCreatePreset] = useState(false);
   const [editingPresetId, setEditingPresetId]   = useState<number | null>(null);
   const [drillLabel, setDrillLabel]             = useState<string | null>(null);
+  const [filterRefreshKey, setFilterRefreshKey] = useState(0);
 
   const { theme }                   = useThemeStore();
   const { user }                    = useAuthStore();
@@ -370,6 +371,7 @@ export default function PTLDetailPanel() {
       if (res.data.records) {
         setLocalRecords(res.data.records);
       }
+      setFilterRefreshKey(v => v + 1);
       showToast("Data diperbarui", "success");
     } catch {
       showToast("Gagal memuat data GSheet", "error");
@@ -378,39 +380,61 @@ export default function PTLDetailPanel() {
     }
   };
 
-  // ── Filter + search — termasuk aging tier virtual ──
+  // ── Filter + search — filter membership is snapshotted until filter refresh/reset ──
+  const filterSnapshotRef = useRef<{ signature: string; rowIds: Set<number> } | null>(null);
+
   const filteredRecords = useMemo(() => {
     let result = [...records];
+    const hasFilters = Object.keys(activeFilters).length > 0;
 
-    const normalFilters = Object.fromEntries(
-      Object.entries(activeFilters).filter(([k]) => k !== "__aging_tier")
-    );
-    if (Object.keys(normalFilters).length > 0) {
-      result = result.filter(r =>
-        Object.entries(normalFilters).every(([key, vals]) => vals.includes(String(r.data[key] || "")))
-      );
-    }
-
-    // Filter aging tier virtual — pakai tglUploadBAI + statusPa agar freeze konsisten
-    if (activeFilters["__aging_tier"]) {
-      const tiers = activeFilters["__aging_tier"];
-      result = result.filter(r => {
-        const aging = calcAging(
-          r.data[tglCol],
-          thresholds,
-          r.data[baiCol],
-          r.data[statusPaCol]
+    if (hasFilters) {
+      const signature = `${filterRefreshKey}:${JSON.stringify(activeFilters)}:${JSON.stringify(thresholds)}:${records.length > 0 ? "loaded" : "empty"}`;
+      const cached = filterSnapshotRef.current;
+      if (!cached || cached.signature !== signature) {
+        const normalFilters = Object.fromEntries(
+          Object.entries(activeFilters).filter(([k]) => k !== "__aging_tier")
         );
-        return aging ? tiers.includes(aging.tier) : false;
-      });
+
+        const rowIds = new Set(
+          records
+            .filter(r => {
+              if (Object.keys(normalFilters).length > 0) {
+                const matchesNormal = Object.entries(normalFilters).every(([key, vals]) =>
+                  vals.includes(String(r.data[key] || ""))
+                );
+                if (!matchesNormal) return false;
+              }
+
+              if (activeFilters["__aging_tier"]) {
+                const tiers = activeFilters["__aging_tier"];
+                const aging = calcAging(
+                  r.data[tglCol],
+                  thresholds,
+                  r.data[baiCol],
+                  r.data[statusPaCol]
+                );
+                if (!aging || !tiers.includes(aging.tier)) return false;
+              }
+
+              return true;
+            })
+            .map(r => r.row_id)
+        );
+        filterSnapshotRef.current = { signature, rowIds };
+      }
+
+      result = result.filter(r => filterSnapshotRef.current!.rowIds.has(r.row_id));
+    } else {
+      filterSnapshotRef.current = null;
     }
 
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(r => Object.values(r.data ?? {}).some(v => String(v).toLowerCase().includes(q)));
     }
+
     return result;
-  }, [records, search, activeFilters, thresholds]);
+  }, [records, search, activeFilters, thresholds, filterRefreshKey, tglCol, baiCol, statusPaCol]);
 
   const totalPage    = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
   const pagedRecords = filteredRecords.slice((tablePage - 1) * pageSize, tablePage * pageSize);

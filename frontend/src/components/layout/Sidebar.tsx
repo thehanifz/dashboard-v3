@@ -102,7 +102,7 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
   // ── App info dari DB (tidak hardcode) ────────────────────────────────────────
   const [appInfo, setAppInfo] = useState<AppInfo>({
     appName:     import.meta.env.VITE_APP_NAME     ?? "OverSee",
-    appSubtitle: import.meta.env.VITE_APP_SUBTITLE ?? "PA PLN Icon+",
+    appSubtitle: import.meta.env.VITE_APP_SUBTITLE ?? "MONITORING PA PLN ICONPLUS",
     appVersion:  import.meta.env.VITE_APP_VERSION  ?? "3.2",
   });
 

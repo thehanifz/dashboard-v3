@@ -146,13 +146,13 @@ export async function getDynamicTableConfig(): Promise<DynamicTableConfig> {
 // ── getAppInfo — nama, subtitle, versi aplikasi untuk Sidebar ──────────────────
 export interface AppInfo {
   appName:     string;  // key: app_name     → "OverSee"
-  appSubtitle: string;  // key: app_subtitle → "PA PLN Icon+"
+  appSubtitle: string;  // key: app_subtitle → "PA PLN ICONPLUS"
   appVersion:  string;  // key: app_version  → "3.2"
 }
 
 const APP_INFO_DEFAULTS: AppInfo = {
   appName:     import.meta.env.VITE_APP_NAME     ?? "OverSee",
-  appSubtitle: import.meta.env.VITE_APP_SUBTITLE ?? "PA PLN Icon+",
+  appSubtitle: import.meta.env.VITE_APP_SUBTITLE ?? "PA PLN ICONPLUS",
   appVersion:  import.meta.env.VITE_APP_VERSION  ?? "3.2",
 };
 

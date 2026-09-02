@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useAppearanceStore } from "../state/appearanceStore";
 
 type Record = { row_id: number; data: Record<string, string> };
@@ -12,9 +12,11 @@ type StatusMaster = {
 export function useTableData(
   records: Record[],
   search: string,
-  statusMaster: StatusMaster | null
+  statusMaster: StatusMaster | null,
+  filterRefreshKey = 0,
 ) {
   const activeFilters = useAppearanceStore(s => s.activeFilters);
+  const filterSnapshotRef = useRef<{ signature: string; rowIds: Set<number> } | null>(null);
 
   const statusSortIndex = useMemo(() => {
     const primary = statusMaster?.primary ?? [];
@@ -25,14 +27,32 @@ export function useTableData(
 
   const filteredRecords = useMemo(() => {
     const statusColumn = statusMaster?.status_column ?? "";
+    const hasFilters = Object.keys(activeFilters).length > 0;
     let result = [...records];
 
-    if (Object.keys(activeFilters).length > 0) {
-      result = result.filter(r =>
-        Object.entries(activeFilters).every(([key, vals]) =>
-          vals.includes(String(r.data[key] || ""))
-        )
-      );
+    if (hasFilters) {
+      const signature = JSON.stringify(activeFilters);
+      const hasRows = records.length > 0;
+      const snapshotKey = `${filterRefreshKey}:${signature}:${hasRows ? "loaded" : "empty"}`;
+      const cached = filterSnapshotRef.current;
+
+      if (!cached || cached.signature !== snapshotKey) {
+        const rowIds = new Set(
+          records
+            .filter(r =>
+              Object.entries(activeFilters).every(([key, vals]) =>
+                vals.includes(String(r.data[key] || ""))
+              )
+            )
+            .map(r => r.row_id)
+        );
+        filterSnapshotRef.current = { signature: snapshotKey, rowIds };
+      }
+
+      const rowIds = filterSnapshotRef.current.rowIds;
+      result = result.filter(r => rowIds.has(r.row_id));
+    } else {
+      filterSnapshotRef.current = null;
     }
 
     if (search.trim()) {
@@ -53,7 +73,7 @@ export function useTableData(
     }
 
     return result;
-  }, [records, search, activeFilters, statusMaster, statusSortIndex]);
+  }, [records, search, activeFilters, statusMaster, statusSortIndex, filterRefreshKey]);
 
   return { filteredRecords, activeFilters };
 }

@@ -33,9 +33,10 @@ type Props = {
   view?:         "table" | "kanban";
   onViewChange?: (v: "table" | "kanban") => void;
   toolbarOnly?:  boolean;
+  filterRefreshKey?: number;
 };
 
-export default function DynamicTable({ view, onViewChange, toolbarOnly = false }: Props = {}) {
+export default function DynamicTable({ view, onViewChange, toolbarOnly = false, filterRefreshKey = 0 }: Props = {}) {
   /* ── Stores ────────────────────────────────────────────────────────────── */
   const records         = useTaskStore(s => s.records) ?? [];
   const statusMaster    = useTaskStore(s => s.statusMaster);
@@ -76,7 +77,7 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
 
   /* ── Custom hooks ──────────────────────────────────────────────────────── */
   const [search, setSearch] = useState("");
-  const { filteredRecords, activeFilters } = useTableData(records, search, statusMaster);
+  const { filteredRecords, activeFilters } = useTableData(records, search, statusMaster, filterRefreshKey);
   const editor     = useCellEditor(statusMaster, ptlEditableSet);
   const pagination = useTablePagination(filteredRecords);
   const resize     = useTableResize(activePreset?.id, widths, filteredRecords);

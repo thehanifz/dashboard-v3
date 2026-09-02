@@ -7,7 +7,7 @@
  *
  * Dipindah dari pages/MitraDashboardPage.tsx
  */
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useTaskStore }        from "../../state/taskStore";
 import { useThemeStore }       from "../../state/themeStore";
 import { useMitraConfigStore } from "../../state/mitraConfigStore";
@@ -29,6 +29,7 @@ export default function MitraDashboardPanel() {
   const [editingValue, setEditingValue]         = useState("");
   const [page, setPage]                         = useState(1);
   const [activeFilters, setActiveFilters]       = useState<Record<string, string[]>>({});
+  const [filterRefreshKey, setFilterRefreshKey] = useState(0);
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const PAGE_SIZE                               = 20;
 
@@ -63,15 +64,29 @@ export default function MitraDashboardPanel() {
     }
   }, [hasLoadedData]);
 
+  const filterSnapshotRef = useRef<{ signature: string; rowIds: Set<number> } | null>(null);
+
   const filteredRecords = useMemo(() => {
     let result = [...records];
 
     if (Object.keys(activeFilters).length > 0) {
-      result = result.filter(record =>
-        Object.entries(activeFilters).every(([key, values]) =>
-          values.includes(String(record.data?.[key] ?? ""))
-        )
-      );
+      const signature = `${filterRefreshKey}:${JSON.stringify(activeFilters)}:${records.length > 0 ? "loaded" : "empty"}`;
+      const cached = filterSnapshotRef.current;
+      if (!cached || cached.signature !== signature) {
+        const rowIds = new Set(
+          records
+            .filter(record =>
+              Object.entries(activeFilters).every(([key, values]) =>
+                values.includes(String(record.data?.[key] ?? ""))
+              )
+            )
+            .map(record => record.row_id)
+        );
+        filterSnapshotRef.current = { signature, rowIds };
+      }
+      result = result.filter(record => filterSnapshotRef.current!.rowIds.has(record.row_id));
+    } else {
+      filterSnapshotRef.current = null;
     }
 
     if (search.trim()) {
@@ -82,7 +97,7 @@ export default function MitraDashboardPanel() {
     }
 
     return result;
-  }, [records, search, activeFilters]);
+  }, [records, search, activeFilters, filterRefreshKey]);
 
   const totalPage    = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE));
   const filterCount = Object.keys(activeFilters).length;
@@ -118,6 +133,7 @@ export default function MitraDashboardPanel() {
   const handleRefresh = async () => {
     try {
       await refreshAll();
+      setFilterRefreshKey(v => v + 1);
       showToast("Data berhasil diperbarui", "success");
     } catch {
       showToast("Gagal memuat data", "error");

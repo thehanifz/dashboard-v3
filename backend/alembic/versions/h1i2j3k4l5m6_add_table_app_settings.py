@@ -71,7 +71,7 @@ NEW_SETTINGS = [
     },
     {
         "key": "app_subtitle",
-        "value": "PA PLN Icon+",
+        "value": "PA PLN ICONPLUS",
         "value_type": "string",
         "category": "app",
         "label": "Subtitle Aplikasi",

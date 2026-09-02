@@ -20,6 +20,7 @@ type DetailView = "kanban" | "table";
 export default function EngineerDetailPanel() {
   const [view, setView]                         = useState<DetailView>("table");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [filterRefreshKey, setFilterRefreshKey] = useState(0);
   const { toasts, show: showToast }             = useToast();
 
   const refreshAll = useTaskStore((s) => s.refreshAll);
@@ -27,6 +28,7 @@ export default function EngineerDetailPanel() {
   const handleRefresh = useCallback(async () => {
     try {
       await refreshAll();
+      setFilterRefreshKey(v => v + 1);
       showToast("Data berhasil diperbarui", "success");
     } catch {
       showToast("Gagal memuat data dari server", "error");
@@ -47,16 +49,16 @@ export default function EngineerDetailPanel() {
         <main className="flex-1 overflow-hidden flex flex-col">
           {/* Mobile selalu menggunakan card list dari DynamicTable. Kanban hanya desktop. */}
           <div className="md:hidden flex-1 overflow-hidden">
-            <DynamicTable view="table" onViewChange={setView} />
+            <DynamicTable view="table" onViewChange={setView} filterRefreshKey={filterRefreshKey} />
           </div>
 
           {/* Desktop mempertahankan behavior Tabel/Kanban existing. */}
           <div className="hidden md:flex flex-1 overflow-hidden flex-col">
             {view === "table" ? (
-              <DynamicTable view={view} onViewChange={setView} />
+              <DynamicTable view={view} onViewChange={setView} filterRefreshKey={filterRefreshKey} />
             ) : (
               <div className="flex-1 overflow-hidden flex flex-col">
-                <DynamicTable view={view} onViewChange={setView} toolbarOnly />
+                <DynamicTable view={view} onViewChange={setView} toolbarOnly filterRefreshKey={filterRefreshKey} />
                 <div className="flex-1 overflow-hidden">
                   <KanbanBoard />
                 </div>
