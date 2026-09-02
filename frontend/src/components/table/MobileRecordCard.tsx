@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTaskStore } from "../../state/taskStore";
 import { useRole } from "../../hooks/useRole";
 import type { SheetRecord, StatusMaster } from "../../types/record";
@@ -108,6 +108,106 @@ function MobileEditSheet({
   );
 }
 
+function MobileDetailModal({
+  open,
+  columns,
+  record,
+  renderValue,
+  onClose,
+}: {
+  open: boolean;
+  columns: string[];
+  record: SheetRecord;
+  renderValue: (column: string) => ReactNode;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const titleColumn = columns[0];
+  const title = titleColumn ? record.data?.[titleColumn] || "Detail Record" : "Detail Record";
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-end md:hidden"
+      style={{ background: "rgba(0,0,0,0.48)" }}
+      onMouseDown={event => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Detail ${title}`}
+        className="flex max-h-[92dvh] w-full flex-col rounded-t-3xl shadow-2xl"
+        style={{ background: "var(--bg-surface)", borderTop: "1px solid var(--border)" }}
+        onMouseDown={event => event.stopPropagation()}
+      >
+        <div className="shrink-0 px-4 pt-3 pb-3" style={{ borderBottom: "1px solid var(--border)" }}>
+          <div className="w-10 h-1 rounded-full mx-auto mb-3" style={{ background: "var(--border-strong)" }} />
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                Detail Record
+              </p>
+              <h3 className="mt-0.5 truncate text-base font-semibold" style={{ color: "var(--text-primary)" }}>
+                {title}
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+              style={{ background: "var(--bg-surface2)", color: "var(--text-muted)" }}
+              aria-label="Tutup detail"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          <div className="grid grid-cols-1 gap-2">
+            {columns.map(column => (
+              <div
+                key={column}
+                className="min-w-0 rounded-2xl p-2.5"
+                style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}
+              >
+                <div className="mb-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                  {column}
+                </div>
+                <div onClick={event => event.stopPropagation()}>
+                  {renderValue(column)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function MobileRecordCard({
   record,
   columns,
@@ -119,14 +219,44 @@ export default function MobileRecordCard({
 }: Props) {
   const { canEditColumn: roleCanEditColumn } = useRole();
   const updateCell = useTaskStore(s => s.updateCell);
-  const [expanded, setExpanded] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [editing, setEditing] = useState<{ column: string; value: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const pointerMovedRef = useRef(false);
+
+  useEffect(() => {
+    if (!detailOpen) return;
+
+    const onPopState = () => setDetailOpen(false);
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [detailOpen]);
+
+  const openDetail = () => {
+    if (detailOpen) return;
+
+    window.history.pushState(
+      { ...(window.history.state ?? {}), __mobileRecordDetail: true },
+      "",
+      window.location.href,
+    );
+    setDetailOpen(true);
+  };
+
+  const closeDetail = () => {
+    if (!detailOpen) return;
+
+    if (window.history.state?.__mobileRecordDetail) {
+      window.history.back();
+    } else {
+      setDetailOpen(false);
+    }
+  };
 
   const statusColumn = statusMaster?.status_column ?? "";
   const detailColumn = statusMaster?.detail_column ?? "";
   const primaryColumns = columns.slice(0, 3);
-  const secondaryColumns = columns.slice(3);
 
   useEffect(() => {
     if (!editing) return;
@@ -210,9 +340,61 @@ export default function MobileRecordCard({
   };
 
   return (
-    <article
-      className="rounded-2xl p-3.5 shadow-sm"
-      style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
+    <>
+      <article
+        role="button"
+        tabIndex={0}
+        aria-label={`Buka detail ${record.data?.[columns[0]] ?? "record"}`}
+        onPointerDown={event => {
+          if (event.pointerType === "mouse" && event.button !== 0) return;
+          pointerStartRef.current = { x: event.clientX, y: event.clientY };
+          pointerMovedRef.current = false;
+        }}
+        onPointerMove={event => {
+          const start = pointerStartRef.current;
+          if (!start) return;
+
+          const distance = Math.hypot(
+            event.clientX - start.x,
+            event.clientY - start.y,
+          );
+
+          // Do not open the detail modal when the user is scrolling.
+          if (distance > 10) pointerMovedRef.current = true;
+        }}
+        onPointerUp={event => {
+          if (event.pointerType === "mouse" && event.button !== 0) return;
+          if (pointerMovedRef.current) {
+            pointerStartRef.current = null;
+            return;
+          }
+
+          const target = event.target as HTMLElement;
+          if (target.closest("button, select, input, textarea, a")) {
+            pointerStartRef.current = null;
+            return;
+          }
+
+          openDetail();
+          pointerStartRef.current = null;
+        }}
+        onPointerCancel={() => {
+          pointerStartRef.current = null;
+          pointerMovedRef.current = false;
+        }}
+        onKeyDown={event => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openDetail();
+          }
+        }}
+        className="rounded-2xl p-3.5 shadow-sm cursor-pointer touch-manipulation select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] active:scale-[0.995] transition-transform"
+        style={{
+          background: "var(--bg-surface)",
+          border: "1px solid var(--border)",
+          touchAction: "pan-y",
+        }}
     >
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0 grid grid-cols-1 gap-3">
@@ -234,47 +416,21 @@ export default function MobileRecordCard({
         </div>
 
         {actions && (
-          <div className="flex items-center gap-1 shrink-0 pt-0.5">
+          <div className="flex items-center gap-1 shrink-0 pt-0.5" onClick={e => e.stopPropagation()}>
             {actions}
           </div>
         )}
       </div>
 
-      {secondaryColumns.length > 0 && (
-        <>
-          <button
-            type="button"
-            onClick={() => setExpanded(v => !v)}
-            className="w-full flex items-center justify-between gap-3 mt-3 pt-3 text-xs font-medium"
-            style={{ borderTop: "1px solid var(--border)", color: "var(--accent)" }}
-          >
-            <span>{expanded ? "Sembunyikan informasi" : `Lihat ${secondaryColumns.length} informasi lainnya`}</span>
-            <svg className={`w-4 h-4 transition-transform ${expanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+      </article>
 
-          {expanded && (
-            <div className="grid grid-cols-1 gap-3 mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
-              {secondaryColumns.map(column => (
-                <div key={column} className="min-w-0">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-                      {column}
-                    </span>
-                    {isEditable(column) && (
-                      <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} style={{ color: "var(--accent)" }}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                      </svg>
-                    )}
-                  </div>
-                  {renderValue(column)}
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
+      <MobileDetailModal
+        open={detailOpen}
+        columns={columns}
+        record={record}
+        renderValue={renderValue}
+        onClose={closeDetail}
+      />
 
       <MobileEditSheet
         open={!!editing}
@@ -285,6 +441,6 @@ export default function MobileRecordCard({
         onCancel={() => !saving && setEditing(null)}
         onSave={saveEdit}
       />
-    </article>
+    </>
   );
 }
