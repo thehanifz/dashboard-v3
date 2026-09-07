@@ -351,11 +351,10 @@ export default function PTLDetailPanel() {
       await updatePtlCache(rowId, updates);
     } catch (err: any) {
       showToast(err?.response?.data?.detail ?? "Gagal menyimpan status", "error");
-      await refreshPtlData();
     } finally {
       setSaving(false);
     }
-  }, [statusCol, detailCol, showToast, updatePtlCache, refreshPtlData]);
+  }, [statusCol, detailCol, showToast, updatePtlCache]);
 
   const handleRefresh = async () => {
     try {
@@ -389,9 +388,19 @@ export default function PTLDetailPanel() {
           records
             .filter(r => {
               if (Object.keys(normalFilters).length > 0) {
-                const matchesNormal = Object.entries(normalFilters).every(([key, vals]) =>
-                  vals.includes(String(r.data[key] || ""))
-                );
+                const matchesNormal = Object.entries(normalFilters).every(([key, vals]) => {
+                  // Dashboard drill-down uses a virtual filter instead of a real column.
+                  if (key === "__status_pa_bucket") {
+                    const status = String(r.data[statusPaCol] ?? "").trim().toLowerCase();
+                    return vals.includes("__ON_PROGRESS__")
+                      ? status !== "done bai" && status !== "pa cancel"
+                      : false;
+                  }
+
+                  // __EMPTY__ represents a genuinely empty cell.
+                  const raw = String(r.data[key] ?? "");
+                  return vals.some(v => v === "__EMPTY__" ? raw.trim() === "" : raw === v);
+                });
                 if (!matchesNormal) return false;
               }
 
