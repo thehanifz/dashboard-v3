@@ -455,6 +455,22 @@ export default function PTLDetailPanel() {
     setDrillLabel(null);
   };
 
+  const onProgressFilterActive = (activeFilters["__status_pa_bucket"] ?? []).includes("__ON_PROGRESS__");
+
+  const toggleOnProgressQuickFilter = () => {
+    setActiveFilters(prev => {
+      const next = { ...prev };
+      if ((prev["__status_pa_bucket"] ?? []).includes("__ON_PROGRESS__")) {
+        delete next["__status_pa_bucket"];
+      } else {
+        next["__status_pa_bucket"] = ["__ON_PROGRESS__"];
+      }
+      return next;
+    });
+    setDrillLabel(null);
+    setTablePage(1);
+  };
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -541,6 +557,9 @@ export default function PTLDetailPanel() {
             onOpenMobileFilter={() => setMobileFilterOpen(true)}
             filteredCount={filteredRecords.length}
             totalCount={records.length}
+            quickFilterLabel="On Progress"
+            quickFilterActive={onProgressFilterActive}
+            onQuickFilter={toggleOnProgressQuickFilter}
           />
 
           {/* Mobile: selalu gunakan card list. Kanban tidak ditampilkan di mobile. */}

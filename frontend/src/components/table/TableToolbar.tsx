@@ -35,6 +35,9 @@ type Props = {
   onOpenMobileFilter?: () => void;
   filteredCount: number;
   totalCount:    number;
+  quickFilterLabel?: string;
+  quickFilterActive?: boolean;
+  onQuickFilter?: () => void;
 };
 
 export default function TableToolbar({
@@ -44,6 +47,7 @@ export default function TableToolbar({
   presets, activePreset, presetLoading, onSelectPreset, onCreatePreset, onEditPreset,
   filterCount, onResetFilter, onOpenMobileFilter,
   filteredCount, totalCount,
+  quickFilterLabel, quickFilterActive, onQuickFilter,
 }: Props) {
   return (
     <div className="shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
@@ -75,6 +79,27 @@ export default function TableToolbar({
             presets={presets} activePreset={activePreset} presetLoading={presetLoading}
             onSelectPreset={onSelectPreset} onCreatePreset={onCreatePreset} onEditPreset={onEditPreset}
           />
+
+          {/* Quick filter */}
+          {onQuickFilter && quickFilterLabel && (
+            <button
+              type="button"
+              onClick={onQuickFilter}
+              aria-pressed={quickFilterActive}
+              className="inline-flex items-center gap-1.5 px-3 py-2 md:py-1.5 rounded-xl text-xs font-medium transition-colors"
+              style={{
+                background: quickFilterActive ? "var(--accent-soft)" : "var(--bg-surface)",
+                color: quickFilterActive ? "var(--accent)" : "var(--text-secondary)",
+                border: `1px solid ${quickFilterActive ? "var(--accent)" : "var(--border)"}`,
+              }}
+              title={`${quickFilterActive ? "Matikan" : "Aktifkan"} filter ${quickFilterLabel}`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4-2A1 1 0 018 17v-3.586L3.293 6.707A1 1 0 013 6V4z" />
+              </svg>
+              {quickFilterLabel}
+            </button>
+          )}
 
           {/* Mobile filter trigger */}
           {onOpenMobileFilter && (
