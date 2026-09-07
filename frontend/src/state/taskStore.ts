@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import api from "../services/api";
-import { getCachedRecords, setCachedRecords, getCacheMeta } from "../services/recordCache";
+import { getCachedRecords, setCachedRecords, getCacheMeta, getCachedPtlSheet, setCachedPtlSheet, updateCachedPtlRecord } from "../services/recordCache";
 import type { CacheMeta } from "../services/recordCache";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────────────────────
@@ -49,6 +49,8 @@ interface TaskState {
   // PTL-specific methods
   setPtlSheetData: (data: PTLSheetData | null) => void;
   setPtlLoading: (loading: boolean) => void;
+  fetchPtlSheet: (forceNetwork?: boolean) => Promise<void>;
+  updatePtlCache: (rowId: number, updates: Record<string, string>) => Promise<void>;
 }
 
 export interface PTLSheetData {
@@ -225,6 +227,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     statusTimer[rowId] = setTimeout(async () => {
       try {
         await api.post(`/records/${rowId}/cells`, { updates: { [column]: value } });
+        const current = get();
+        await setCachedRecords(current.records, current.columns);
       } catch (err) {
         console.error("updateCell failed", err);
       }
@@ -242,4 +246,39 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   setPtlSheetData: (data) => set({ ptlSheetData: data }),
   setPtlLoading: (loading) => set({ ptlLoading: loading }),
+
+  fetchPtlSheet: async (forceNetwork = false) => {
+    if (!forceNetwork) {
+      const cached = await getCachedPtlSheet();
+      if (cached) {
+        set({ ptlSheetData: cached });
+        return;
+      }
+    }
+
+    set({ ptlLoading: true });
+    try {
+      const res = await api.get<PTLSheetData>("/records/ptl-sheet");
+      await setCachedPtlSheet(res.data);
+      set({ ptlSheetData: res.data });
+    } finally {
+      set({ ptlLoading: false });
+    }
+  },
+
+  updatePtlCache: async (rowId, updates) => {
+    await updateCachedPtlRecord(rowId, updates);
+    const current = get().ptlSheetData;
+    if (!current) return;
+    set({
+      ptlSheetData: {
+        ...current,
+        records: current.records.map((record) =>
+          record.row_id === rowId
+            ? { ...record, data: { ...record.data, ...updates } }
+            : record
+        ),
+      },
+    });
+  },
 }));

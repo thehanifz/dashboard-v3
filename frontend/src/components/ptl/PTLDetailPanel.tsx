@@ -214,6 +214,8 @@ export default function PTLDetailPanel() {
   const setPtlSheetData       = useTaskStore((s) => s.setPtlSheetData);
   const ptlLoading            = useTaskStore((s) => s.ptlLoading);
   const setPtlLoading         = useTaskStore((s) => s.setPtlLoading);
+  const fetchPtlSheet         = useTaskStore((s) => s.fetchPtlSheet);
+  const updatePtlCache        = useTaskStore((s) => s.updatePtlCache);
   const statusMaster          = useTaskStore((s) => s.statusMaster);
   const refreshAll            = useTaskStore((s) => s.refreshAll);
 
@@ -271,8 +273,6 @@ export default function PTLDetailPanel() {
     const { column, values, label } = ptlDrillFilter;
     if (column === "__aging_tier") {
       setActiveFilters({ ["__aging_tier"]: values });
-    } else if (column === "__status_pa_bucket") {
-      setActiveFilters({ ["__status_pa_bucket"]: values });
     } else {
       setActiveFilters({ [column]: values });
     }
@@ -292,27 +292,20 @@ export default function PTLDetailPanel() {
   const statusCol = statusMaster?.status_column ?? "Status Pekerjaan";
   const detailCol = statusMaster?.detail_column ?? "Detail Progres";
 
-  const refreshPtlData = useCallback(async () => {
+  const refreshPtlData = useCallback(async (forceNetwork = false) => {
     try {
-      const [statusRes, sheetRes] = await Promise.all([
-        api.get("/status"),
-        api.get<PTLSheetData>("/records/ptl-sheet")
-      ]);
-      useTaskStore.getState().fetchStatusMaster();
-      setPtlSheetData(sheetRes.data);
-      if (sheetRes.data.records) {
-        setLocalRecords(sheetRes.data.records);
-      }
+      await fetchPtlSheet(forceNetwork);
+      const data = useTaskStore.getState().ptlSheetData;
+      if (data?.records) setLocalRecords(data.records);
     } catch (err) {
       console.error("[PTLDetail] refreshPtlData error:", err);
       showToast("Gagal memuat data GSheet", "error");
     }
-  }, [showToast, setPtlSheetData]);
+  }, [fetchPtlSheet, showToast]);
 
   useEffect(() => {
     if (!ptlSheetData?.records && !ptlLoading) {
-      console.log("[PTLDetail] No data in store, fetching...");
-      refreshPtlData();
+      refreshPtlData(false);
     }
   }, [ptlSheetData, ptlLoading, refreshPtlData]);
 
@@ -323,7 +316,7 @@ export default function PTLDetailPanel() {
     setSaving(true);
     try {
       await api.post(`/records/ptl-sheet/${rowId}/cells`, { updates: { [col]: value } });
-      await refreshPtlData();
+      await updatePtlCache(rowId, { [col]: value });
     } catch (err: any) {
       setLocalRecords(prev =>
         prev.map(r => r.row_id === rowId ? { ...r, data: { ...r.data, [col]: localRecords.find(s => s.row_id === rowId)?.data[col] ?? value } } : r)
@@ -332,7 +325,7 @@ export default function PTLDetailPanel() {
     } finally {
       setSaving(false);
     }
-  }, [showToast, refreshPtlData, localRecords]);
+  }, [showToast, updatePtlCache, localRecords]);
 
   const handleUpdateStatus = useCallback(async (rowId: number, status: string, detail?: string) => {
     setLocalRecords(prev =>
@@ -350,29 +343,24 @@ export default function PTLDetailPanel() {
     );
     setSaving(true);
     try {
-      await api.post(`/records/ptl-sheet/${rowId}/cells`, {
-        updates: {
-          [statusCol]: status,
-          ...(detail !== undefined ? { [detailCol]: detail } : {}),
-        },
-      });
-      await refreshPtlData();
+      const updates = {
+        [statusCol]: status,
+        ...(detail !== undefined ? { [detailCol]: detail } : {}),
+      };
+      await api.post(`/records/ptl-sheet/${rowId}/cells`, { updates });
+      await updatePtlCache(rowId, updates);
     } catch (err: any) {
       showToast(err?.response?.data?.detail ?? "Gagal menyimpan status", "error");
       await refreshPtlData();
     } finally {
       setSaving(false);
     }
-  }, [statusCol, detailCol, showToast, refreshPtlData]);
+  }, [statusCol, detailCol, showToast, updatePtlCache, refreshPtlData]);
 
   const handleRefresh = async () => {
     try {
       setPtlLoading(true);
-      const res = await api.get<PTLSheetData>("/records/ptl-sheet");
-      setPtlSheetData(res.data);
-      if (res.data.records) {
-        setLocalRecords(res.data.records);
-      }
+      await refreshPtlData(true);
       setFilterRefreshKey(v => v + 1);
       showToast("Data diperbarui", "success");
     } catch {
@@ -401,17 +389,9 @@ export default function PTLDetailPanel() {
           records
             .filter(r => {
               if (Object.keys(normalFilters).length > 0) {
-                const matchesNormal = Object.entries(normalFilters).every(([key, vals]) => {
-                  if (key === "__status_pa_bucket") {
-                    const status = String(r.data[statusPaCol] || "").trim().toLowerCase();
-                    return vals.includes("__ON_PROGRESS__")
-                      ? status !== "done bai" && status !== "pa cancel"
-                      : true;
-                  }
-                  const raw = String(r.data[key] || "");
-                  const normalizedValues = vals.map(v => v === "__EMPTY__" ? "" : v);
-                  return normalizedValues.includes(raw);
-                });
+                const matchesNormal = Object.entries(normalFilters).every(([key, vals]) =>
+                  vals.includes(String(r.data[key] || ""))
+                );
                 if (!matchesNormal) return false;
               }
 

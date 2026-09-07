@@ -4,6 +4,7 @@
  * Menyimpan pageSize dan tablePage per role + view.
  */
 import { useState, useEffect } from "react";
+import type { SetStateAction } from "react";
 import { useAuthStore } from "../state/authStore";
 
 interface TableSettings {
@@ -28,7 +29,16 @@ export function useTableSettings(defaultPageSize: number = 20) {
         const allSettings = JSON.parse(stored) as Record<string, TableSettings>;
         const key = `${role}-detail`;
         if (allSettings[key]) {
-          setSettings(allSettings[key]);
+          const saved = allSettings[key];
+          const pageSize =
+            Number.isFinite(saved.pageSize) && saved.pageSize > 0
+              ? Math.floor(saved.pageSize)
+              : defaultPageSize;
+          const tablePage =
+            Number.isFinite(saved.tablePage) && saved.tablePage >= 1
+              ? Math.floor(saved.tablePage)
+              : 1;
+          setSettings({ pageSize, tablePage });
         }
       }
     } catch {
@@ -56,6 +66,10 @@ export function useTableSettings(defaultPageSize: number = 20) {
     pageSize: settings.pageSize,
     tablePage: settings.tablePage,
     setPageSize: (size: number) => updateSettings({ pageSize: size, tablePage: 1 }),
-    setTablePage: (page: number) => updateSettings({ tablePage: page }),
+    setTablePage: (page: SetStateAction<number>) => {
+      const nextPage = typeof page === "function" ? page(settings.tablePage) : page;
+      const safePage = Number.isFinite(nextPage) ? Math.max(1, Math.floor(nextPage)) : 1;
+      updateSettings({ tablePage: safePage });
+    },
   };
 }

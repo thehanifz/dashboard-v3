@@ -55,3 +55,39 @@ export async function getCacheMeta(): Promise<CacheMeta | null> {
 export async function clearCache(): Promise<void> {
   await Promise.all([del(KEY_RECORDS), del(KEY_COLUMNS), del(KEY_META)]);
 }
+
+
+// ─── PTL cache ────────────────────────────────────────────────────────────────
+// PTL data mengikuti kebijakan yang sama: tidak expire dan hanya diperbarui
+// saat refresh manual atau setelah update cell berhasil.
+const KEY_PTL = "ptl_records_cache";
+
+export async function setCachedPtlSheet(data: {
+  no_gsheet: boolean;
+  columns: string[];
+  records: import("../state/taskStore").SheetRecord[];
+}): Promise<void> {
+  await set(KEY_PTL, data);
+}
+
+export async function getCachedPtlSheet(): Promise<{
+  no_gsheet: boolean;
+  columns: string[];
+  records: import("../state/taskStore").SheetRecord[];
+} | null> {
+  return (await get(KEY_PTL)) ?? null;
+}
+
+export async function updateCachedPtlRecord(
+  rowId: number,
+  updates: Record<string, string>
+): Promise<void> {
+  const cached = await getCachedPtlSheet();
+  if (!cached) return;
+  const records = cached.records.map((record) =>
+    record.row_id === rowId
+      ? { ...record, data: { ...record.data, ...updates } }
+      : record
+  );
+  await setCachedPtlSheet({ ...cached, records });
+}
