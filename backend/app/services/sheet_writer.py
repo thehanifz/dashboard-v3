@@ -58,6 +58,40 @@ def _get_raw_headers() -> list[str]:
     return headers
 
 
+
+def read_external_row_context(
+    spreadsheet_id: str,
+    sheet_name: str,
+    row_id: int,
+) -> tuple[list[str], dict[str, str]]:
+    """Read only header + one target row from an external PTL sheet.
+
+    FORMULA render is used so the caller can distinguish a formula from a
+    literal value (notably for the Aging column).
+    """
+    creds = Credentials.from_service_account_file(
+        GOOGLE_APPLICATION_CREDENTIALS,
+        scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    )
+    service = build("sheets", "v4", credentials=creds)
+
+    result = (
+        service.spreadsheets()
+        .values()
+        .batchGet(
+            spreadsheetId=spreadsheet_id,
+            ranges=[f"{sheet_name}!1:1", f"{sheet_name}!{row_id}:{row_id}"],
+            valueRenderOption="FORMULA",
+        )
+        .execute()
+    )
+    value_ranges = result.get("valueRanges", [])
+    header_values = value_ranges[0].get("values", [[]]) if len(value_ranges) > 0 else [[]]
+    row_values = value_ranges[1].get("values", [[]]) if len(value_ranges) > 1 else [[]]
+    headers = header_values[0] if header_values else []
+    values = row_values[0] if row_values else []
+    return headers, dict(zip(headers, values))
+
 def update_cells(row_id: int, updates: dict):
     """
     Update satu atau lebih cell pada baris tertentu di RAW sheet.
