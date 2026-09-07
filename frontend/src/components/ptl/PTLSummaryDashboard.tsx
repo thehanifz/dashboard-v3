@@ -142,6 +142,10 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
   // ─── Stats ───────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
     const byStatusPekerjaan: Record<string, number> = {};
+    const isOnProgress = (status: string) => {
+      const normalized = status.trim().toLowerCase();
+      return normalized !== "done bai" && normalized !== "pa cancel";
+    };
     const byLayanan:         Record<string, number> = {};
     const byJenisMutasi:     Record<string, number> = {};
     const byStatusPA:        Record<string, number> = {};
@@ -149,9 +153,10 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
     const agingRowIds: Record<string, number[]> = { safe: [], warning: [], danger: [], critical: [] };
 
     records.forEach(r => {
-      // Status Pekerjaan — hanya yang Status PA = On Progress
-      if ((r.data[statusCol] || "") === "On Progress") {
-        const sp = r.data["Status Pekerjaan"] || "Tidak Diketahui";
+      // On Progress = semua kecuali Done BAI dan PA Cancel
+      if (isOnProgress((r.data[statusCol] || "").trim())) {
+        const rawSp = (r.data["Status Pekerjaan"] || "").trim();
+        const sp = rawSp || "Tidak Diketahui";
         byStatusPekerjaan[sp] = (byStatusPekerjaan[sp] || 0) + 1;
       }
 
@@ -179,8 +184,8 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
 
     const total      = records.length;
     const doneBai    = byStatusPA["Done BAI"]    || 0;
-    const onProgress = byStatusPA["On Progress"] || 0;
     const paCancel   = byStatusPA["PA Cancel"]   || 0;
+    const onProgress = Math.max(0, total - doneBai - paCancel);
     const donePct    = total > 0 ? Math.round((doneBai / total) * 100) : 0;
 
     return {
@@ -199,6 +204,9 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
   // ─── Drill handlers ───────────────────────────────────────────────────────
   const drillByStatusPA = (value: string) =>
     drillToPtlDetail({ column: "Status PA", values: [value], label: `Status PA = ${value}` });
+
+  const drillOnProgress = () =>
+    drillToPtlDetail({ column: "__status_pa_bucket", values: ["__ON_PROGRESS__"], label: "Status PA = On Progress (kecuali Done BAI & PA Cancel)" });
 
   const drillByStatusPekerjaan = (value: string) =>
     drillToPtlDetail({
@@ -249,7 +257,7 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
         />
         <KpiCard label="On Progress" value={stats.onProgress} sub="Status PA = On Progress" accent="#f59e0b"
-          clickable onClick={() => drillByStatusPA("On Progress")}
+          clickable onClick={drillOnProgress}
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
         />
         <KpiCard label="PA Cancel" value={stats.paCancel} sub="Status PA = PA Cancel" accent="#ef4444"
@@ -291,7 +299,7 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
       {/* ── Chart Row — 3 Bar Horizontal ── */}
       <div className="grid min-w-0 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
 
-        <SectionCard title="Per Status Pekerjaan On Progress" subtitle="Klik bar untuk filter tabel">
+        <SectionCard title="Per Status Pekerjaan On Progress" subtitle="Semua status PA kecuali Done BAI & PA Cancel • Klik bar untuk filter tabel">
           <div className="space-y-1">
             {Object.entries(stats.byStatusPekerjaan)
               .sort((a, b) => b[1] - a[1])
@@ -299,7 +307,7 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
                 <HBar key={sp} label={sp} value={count} max={maxSP}
                   color={CHART_COLORS[i % CHART_COLORS.length]}
                   pct={`${Math.round(count / totalSP * 100)}%`}
-                  onClick={() => drillByStatusPekerjaan(sp)}
+                  onClick={() => drillByStatusPekerjaan(sp === "Tidak Diketahui" ? "__EMPTY__" : sp)}
                 />
               ))}
           </div>
