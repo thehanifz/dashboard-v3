@@ -17,9 +17,68 @@ from app.services.sync_engine import read_ptl_sheet
 from ._shared import _sanitize, _extract_spreadsheet_id, _enrich_updates_with_opsi, _write_sync_log
 
 from app.services.sheet_writer import update_cells_external
+from app.core.config import GOOGLE_APPLICATION_CREDENTIALS
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _get_aging_formula(spreadsheet_id: str, sheet_name: str, row_id: int, headers: list[str]) -> str | None:
+    """Ambil isi formula cell Aging pada row PTL, tanpa mengubah nilainya."""
+    aging_idx = next((i for i, h in enumerate(headers) if h.strip().lower() == "aging"), None)
+    if aging_idx is None:
+        return None
+
+    letters = ""
+    idx = aging_idx
+    while idx >= 0:
+        letters = chr(idx % 26 + 65) + letters
+        idx = idx // 26 - 1
+
+    creds = Credentials.from_service_account_file(
+        GOOGLE_APPLICATION_CREDENTIALS,
+        scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    )
+    service = build("sheets", "v4", credentials=creds)
+    result = (
+        service.spreadsheets()
+        .values()
+        .get(
+            spreadsheetId=spreadsheet_id,
+            range=f"{sheet_name}!{letters}{row_id}",
+            valueRenderOption="FORMULA",
+        )
+        .execute()
+    )
+    values = result.get("values", [])
+    return values[0][0] if values and values[0] else None
+
+
+def _ensure_aging_formula(
+    spreadsheet_id: str,
+    sheet_name: str,
+    row_id: int,
+    headers: list[str],
+    updates: dict[str, str],
+) -> dict[str, str]:
+    """Saat Status Pekerjaan diubah, isi formula Aging hanya jika cell belum berformula."""
+    aging_col = next((h for h in headers if h.strip().lower() == "aging"), None)
+    if not aging_col:
+        return updates
+
+    existing = _get_aging_formula(spreadsheet_id, sheet_name, row_id, headers)
+    if isinstance(existing, str) and existing.startswith("="):
+        return updates
+
+    # Jangan menimpa nilai Aging yang sudah ada tetapi bukan formula.
+    if existing not in (None, ""):
+        return updates
+
+    next_updates = dict(updates)
+    next_updates[aging_col] = f'=IF(AQ{row_id}="Done BAI";AT{row_id}-J{row_id};NOW()-J{row_id})'
+    return next_updates
 
 
 class GeneralUpdatePayload(BaseModel):
@@ -86,6 +145,9 @@ async def update_ptl_own_sheet(
     # Auto-enrich Status PA + Kategori PA
     if "Status Pekerjaan" in sanitized:
         sanitized = _enrich_updates_with_opsi(sanitized, sanitized["Status Pekerjaan"])
+        sanitized = _ensure_aging_formula(
+            spreadsheet_id, sheet_name, row_id, headers, sanitized
+        )
 
     # Skip kolom yang tidak ada di header GSheet PTL
     if headers:
