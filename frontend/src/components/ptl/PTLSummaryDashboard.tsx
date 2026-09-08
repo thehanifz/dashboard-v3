@@ -8,7 +8,7 @@
  * dengan filter otomatis terapasang.
  */
 import { useMemo, useEffect, useState } from "react";
-import { calcAging, getAgingTierStyles, DEFAULT_THRESHOLDS } from "../../utils/aging";
+import { getAgingTierStyles } from "../../utils/aging";
 import type { AgingThresholds } from "../../utils/aging";
 import { getAgingThresholds } from "../../services/settingsApi";
 import { useAppStore } from "../../state/appStore";
@@ -122,10 +122,35 @@ function SectionCard({ title, subtitle, children }: {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function PTLSummaryDashboard({ records, loading }: Props) {
-  const [thresholds, setThresholds] = useState<AgingThresholds>(DEFAULT_THRESHOLDS);
-  const tglCol    = "TGL TERBIT PA";
-  const baiCol    = "TGL UPLOAD BAI";
+  const [thresholds, setThresholds] = useState<AgingThresholds | null>(null);
   const statusCol = "Status PA";
+
+  // Aging PTL memakai nilai mentah dari kolom "Aging" GSheet.
+  // Tidak menghitung ulang dari TGL TERBIT PA / TGL UPLOAD BAI.
+  const agingColKey = useMemo(() => {
+    return records.length > 0
+      ? (Object.keys(records[0].data).find(
+          k => k.trim().toLowerCase() === "aging"
+        ) || "Aging")
+      : "Aging";
+  }, [records]);
+
+  const calcAgingFromDays = (
+    raw: unknown
+  ): { tier: "safe" | "warning" | "danger" | "critical" } | null => {
+    if (raw === null || raw === undefined || raw === "" || !thresholds) return null;
+
+    const match = String(raw).trim().replace(",", ".").match(/-?\d+(?:\.\d+)?/);
+    if (!match) return null;
+
+    const days = Number(match[0]);
+    if (!Number.isFinite(days)) return null;
+
+    if (days <= thresholds.tier1) return { tier: "safe" };
+    if (days <= thresholds.tier2) return { tier: "warning" };
+    if (days <= thresholds.tier3) return { tier: "danger" };
+    return { tier: "critical" };
+  };
 
   const drillToPtlDetail = useAppStore(s => s.drillToPtlDetail);
 
@@ -136,7 +161,10 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
       .catch(() => {});
   }, []);
 
-  const tierStyles = useMemo(() => getAgingTierStyles(thresholds), [thresholds]);
+  const tierStyles = useMemo(
+    () => thresholds ? getAgingTierStyles(thresholds) : null,
+    [thresholds]
+  );
 
   // ─── Stats ───────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -170,13 +198,8 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
       const mutasi = r.data["JENIS MUTASI"] || "Lainnya";
       byJenisMutasi[mutasi] = (byJenisMutasi[mutasi] || 0) + 1;
 
-      // Aging mengikuti status PA: Done BAI vs On Progress.
-      const aging = calcAging(
-        r.data[tglCol],
-        thresholds,
-        r.data[baiCol],
-        r.data[statusCol]
-      );
+      // Aging langsung dari kolom Aging GSheet.
+      const aging = calcAgingFromDays(r.data[agingColKey]);
       if (aging) {
         const normalizedStatus = String(r.data[statusCol] ?? "").trim().toLowerCase();
         const bucket = normalizedStatus === "done bai" ? "doneBai" :
@@ -196,7 +219,7 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
       byStatusPekerjaan, byLayanan, byJenisMutasi, byStatusPA,
       agingByStatus, total, doneBai, onProgress, paCancel, donePct,
     };
-  }, [records, thresholds]);
+  }, [records, thresholds, agingColKey]);
 
   const maxSP      = Math.max(...Object.values(stats.byStatusPekerjaan), 1);
   const maxLayanan = Math.max(...Object.values(stats.byLayanan), 1);
@@ -242,7 +265,7 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
       label: `${bucket === "doneBai" ? "Done BAI" : "On Progress"} · Aging: ${label}`,
     });
 
-  if (loading && records.length === 0) {
+  if (!thresholds || !tierStyles || (loading && records.length === 0)) {
     return (
       <div className="p-4 md:p-5 space-y-4">
         {[...Array(3)].map((_, i) => (
