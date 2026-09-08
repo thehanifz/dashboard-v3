@@ -11,6 +11,8 @@ import { useAppearanceStore } from "./appearanceStore";
 import { useTaskStore } from "./taskStore";
 import { SESSION_ACCESS_TOKEN, SESSION_USER, SESSION_LOGOUT_INTENT } from "../constants/storageKeys";
 import { ROLES } from "../constants/roles";
+import { clearUserCache } from "../services/cacheStore";
+import { getCurrentCacheScope } from "../services/cacheScope";
 
 export type { UserRole } from "../constants/roles";
 export type { UserRole as AuthUserRole } from "../constants/roles";
@@ -73,6 +75,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     sessionStorage.removeItem(SESSION_LOGOUT_INTENT);
     set({ user, accessToken, authReady: true, isLoggingOut: false });
 
+    // Public config (app info/table config) is refreshed once per login/session setup.
+    void import("../services/settingsApi")
+      .then(({ refreshPublicSettingsCache }) => refreshPublicSettingsCache())
+      .catch(() => undefined);
+
     // Load preset & editable columns dari DB setelah login / session recovery.
     setTimeout(() => {
       const role = user.role;
@@ -94,9 +101,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   clearAuth: () => {
+    const scope = getCurrentCacheScope();
+    if (scope) void clearUserCache(scope).catch(() => undefined);
     sessionStorage.removeItem(SESSION_ACCESS_TOKEN);
     sessionStorage.removeItem(SESSION_USER);
     useTaskStore.getState().resetLoadedFlag();
+    useTaskStore.setState({ records: [], columns: [], cacheMeta: null, ptlSheetData: null, statusMaster: null, hasLoadedData: false });
     set({ user: null, accessToken: null });
   },
 

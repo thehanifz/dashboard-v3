@@ -3,7 +3,8 @@
  * API client untuk endpoint /api/settings
  * Pakai axios instance (api.ts) agar token auto-refresh berjalan.
  */
-import api from "./api";
+import api, { getDeduped } from "./api";
+import { getGlobal, setGlobal, delGlobal } from "./cacheStore";
 
 export type DashboardSetting = {
   id:          number;
@@ -20,7 +21,7 @@ export type DashboardSetting = {
 
 // ── GET /api/settings — semua settings (butuh login) ─────────────────────────────
 export async function fetchAllSettings(): Promise<DashboardSetting[]> {
-  const { data } = await api.get<DashboardSetting[]>("/settings/");
+  const { data } = await getDeduped<DashboardSetting[]>("/settings/");
   return data;
 }
 
@@ -39,9 +40,23 @@ export async function invalidateSettingsCache(): Promise<void> {
 }
 
 // ── GET /api/settings/public — tanpa auth ────────────────────────────────────
-export async function fetchPublicSettings(): Promise<Record<string, unknown>> {
-  const { data } = await api.get<Record<string, unknown>>("/settings/public");
+export async function fetchPublicSettings(forceNetwork = false): Promise<Record<string, unknown>> {
+  if (!forceNetwork) {
+    const cached = await getGlobal<Record<string, unknown>>("public-settings");
+    if (cached) return cached;
+  }
+  const { data } = await getDeduped<Record<string, unknown>>("/settings/public");
+  await setGlobal("public-settings", data);
   return data;
+}
+
+/** Refresh public configuration once during login/session initialization. */
+export async function refreshPublicSettingsCache(): Promise<void> {
+  await fetchPublicSettings(true);
+}
+
+export async function clearPublicSettingsCache(): Promise<void> {
+  await delGlobal("public-settings");
 }
 
 // ── Legacy: getAgingThresholds — baca dari public settings ───────────────────

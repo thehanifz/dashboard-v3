@@ -77,11 +77,17 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "app-navigation",
+      version: 2,
+      migrate: (persisted: any) => ({
+        ...persisted,
+        teskomAutofillId: null,
+        teskomAutofillData: null,
+        teskomAutofillSource: null,
+      }),
       partialize: (state) => ({
         currentPage:      TRANSIENT_PAGES.includes(state.currentPage) ? "dashboard" : state.currentPage,
         asbuiltView:      state.asbuiltView,
         // Autofill payload bersifat transient; jangan dipersist ke localStorage.
-        teskomAutofillId: state.teskomAutofillId,
         // ptlDrillFilter TIDAK di-persist — transient state
       }),
     }

@@ -1,4 +1,4 @@
-import api from "./api";
+import api, { getDeduped } from "./api";
 
 export interface AutoFillResult {
   ok: boolean;
@@ -78,7 +78,7 @@ const teskomApi = {
 
   /** Autofill dari GSheet PTL milik sendiri (ptl role). */
   autofillPtl: (idPa: string): Promise<AutoFillResult> =>
-    api.get(`/teskom/autofill-ptl/${encodeURIComponent(idPa)}`).then((r) => r.data),
+    getDeduped(`/teskom/autofill-ptl/${encodeURIComponent(idPa)}`).then((r) => r.data),
 
   generateDoc: (formData: FormData): Promise<Blob> =>
     api

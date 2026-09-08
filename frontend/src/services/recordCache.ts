@@ -1,93 +1,70 @@
-/**
- * recordCache.ts
- * Cache permanen untuk records engineer menggunakan IndexedDB.
- * Data tidak pernah expire — hanya diganti saat user klik Refresh manual.
- */
 import { get, set, del } from "idb-keyval";
-import type { RecordRow } from "../state/taskStore";
-
-const KEY_RECORDS  = "records_cache";
-const KEY_COLUMNS  = "records_columns";
-const KEY_META     = "records_meta";
+import type { RecordRow, SheetRecord, PTLSheetData } from "../state/taskStore";
+import { getScoped, setScoped, delScoped, type CacheScope } from "./cacheStore";
 
 export interface CacheMeta {
-  lastSyncedAt: string; // ISO string
+  lastSyncedAt: string;
   totalRows: number;
 }
 
-/** Simpan records + columns + metadata ke IndexedDB */
-export async function setCachedRecords(
-  records: RecordRow[],
-  columns: string[]
-): Promise<void> {
-  const meta: CacheMeta = {
-    lastSyncedAt: new Date().toISOString(),
-    totalRows: records.length,
-  };
-  await Promise.all([
-    set(KEY_RECORDS, records),
-    set(KEY_COLUMNS, columns),
-    set(KEY_META, meta),
-  ]);
-}
-
-/** Ambil records + columns dari IndexedDB. Return null jika belum ada. */
-export async function getCachedRecords(): Promise<{
+interface RecordsCache {
   records: RecordRow[];
   columns: string[];
   meta: CacheMeta;
-} | null> {
-  const [records, columns, meta] = await Promise.all([
-    get<RecordRow[]>(KEY_RECORDS),
-    get<string[]>(KEY_COLUMNS),
-    get<CacheMeta>(KEY_META),
-  ]);
-  if (!records || !columns || !meta) return null;
-  return { records, columns, meta };
 }
 
-/** Ambil hanya metadata (cepat, tanpa load seluruh data) */
-export async function getCacheMeta(): Promise<CacheMeta | null> {
-  return (await get<CacheMeta>(KEY_META)) ?? null;
+const LEGACY_KEYS = ["records_cache", "records_columns", "records_meta", "ptl_records_cache"];
+
+export async function setCachedRecords(records: RecordRow[], columns: string[], scope: CacheScope): Promise<void> {
+  const value: RecordsCache = {
+    records,
+    columns,
+    meta: { lastSyncedAt: new Date().toISOString(), totalRows: records.length },
+  };
+  await setScoped("records", scope, value);
 }
 
-/** Hapus seluruh cache */
-export async function clearCache(): Promise<void> {
-  await Promise.all([del(KEY_RECORDS), del(KEY_COLUMNS), del(KEY_META)]);
+export async function getCachedRecords(scope: CacheScope): Promise<RecordsCache | null> {
+  const cached = await getScoped<RecordsCache>("records", scope);
+  if (cached === undefined) return null;
+  if (!Array.isArray(cached.records) || !Array.isArray(cached.columns) || !cached.meta) {
+    throw new Error("Corrupt records cache");
+  }
+  return cached;
 }
 
-
-// ─── PTL cache ────────────────────────────────────────────────────────────────
-// PTL data mengikuti kebijakan yang sama: tidak expire dan hanya diperbarui
-// saat refresh manual atau setelah update cell berhasil.
-const KEY_PTL = "ptl_records_cache";
-
-export async function setCachedPtlSheet(data: {
-  no_gsheet: boolean;
-  columns: string[];
-  records: import("../state/taskStore").SheetRecord[];
-}): Promise<void> {
-  await set(KEY_PTL, data);
+export async function getCacheMeta(scope: CacheScope): Promise<CacheMeta | null> {
+  const cached = await getScoped<RecordsCache>("records", scope);
+  return cached?.meta ?? null;
 }
 
-export async function getCachedPtlSheet(): Promise<{
-  no_gsheet: boolean;
-  columns: string[];
-  records: import("../state/taskStore").SheetRecord[];
-} | null> {
-  return (await get(KEY_PTL)) ?? null;
+export async function clearCache(scope: CacheScope): Promise<void> {
+  await delScoped("records", scope);
 }
 
-export async function updateCachedPtlRecord(
-  rowId: number,
-  updates: Record<string, string>
-): Promise<void> {
-  const cached = await getCachedPtlSheet();
+export async function setCachedPtlSheet(data: PTLSheetData, scope: CacheScope): Promise<void> {
+  await setScoped("ptl-records", scope, data);
+}
+
+export async function getCachedPtlSheet(scope: CacheScope): Promise<PTLSheetData | null> {
+  const cached = await getScoped<PTLSheetData>("ptl-records", scope);
+  if (cached === undefined) return null;
+  if (!Array.isArray(cached.records) || !Array.isArray(cached.columns)) {
+    throw new Error("Corrupt PTL cache");
+  }
+  return cached;
+}
+
+export async function updateCachedPtlRecord(rowId: number, updates: Record<string, string>, scope: CacheScope): Promise<void> {
+  const cached = await getCachedPtlSheet(scope);
   if (!cached) return;
-  const records = cached.records.map((record) =>
-    record.row_id === rowId
-      ? { ...record, data: { ...record.data, ...updates } }
-      : record
+  const records = cached.records.map((record: SheetRecord) =>
+    record.row_id === rowId ? { ...record, data: { ...record.data, ...updates } } : record
   );
-  await setCachedPtlSheet({ ...cached, records });
+  await setCachedPtlSheet({ ...cached, records }, scope);
+}
+
+/** Remove pre-v2 unscoped cache so it can never be reused across users. */
+export async function clearLegacyCache(): Promise<void> {
+  await Promise.all(LEGACY_KEYS.map(key => del(key)));
 }

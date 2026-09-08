@@ -1,4 +1,4 @@
-import api from "./api";
+import api, { getDeduped } from "./api";
 
 export interface SyncResult {
   ok: boolean;
@@ -62,12 +62,12 @@ export const syncApi = {
   },
 
   async getLogs(limit = 100): Promise<SyncLog[]> {
-    const res = await api.get<SyncLog[]>(`/sync/logs?limit=${limit}`);
+    const res = await getDeduped<SyncLog[]>(`/sync/logs?limit=${limit}`);
     return res.data;
   },
 
   async getMismatches(): Promise<SyncMismatch[]> {
-    const res = await api.get<SyncMismatch[]>("/sync/mismatches");
+    const res = await getDeduped<SyncMismatch[]>("/sync/mismatches");
     return res.data;
   },
 

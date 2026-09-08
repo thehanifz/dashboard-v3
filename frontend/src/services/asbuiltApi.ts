@@ -1,4 +1,4 @@
-import api from "./api";
+import api, { getDeduped } from "./api";
 
 export interface IconAsset {
   filename: string;
@@ -12,7 +12,7 @@ export interface TemplateDetail {
 
 const asbuiltApi = {
   listIcons: async (): Promise<IconAsset[]> => {
-    const files = await api.get<string[]>("/asbuilt/icons").then((r) => r.data);
+    const files = await getDeduped<string[]>("/asbuilt/icons").then((r) => r.data);
     return files.map((filename) => ({
       filename,
       url: `/api/asbuilt/icons/${encodeURIComponent(filename)}`,
@@ -26,7 +26,7 @@ const asbuiltApi = {
   },
 
   listTemplates: (): Promise<string[]> =>
-    api.get("/asbuilt/templates").then((r) => r.data),
+    getDeduped("/asbuilt/templates").then((r) => r.data),
 
   uploadTemplate: (file: File): Promise<{ message: string; filename: string; fields: string[] }> => {
     const form = new FormData();
@@ -35,7 +35,7 @@ const asbuiltApi = {
   },
 
   getTemplateDetail: (filename: string): Promise<TemplateDetail> =>
-    api.get(`/asbuilt/templates/${filename}`).then((r) => r.data),
+    getDeduped(`/asbuilt/templates/${filename}`).then((r) => r.data),
 
   generateSVG: (filename: string, data: Record<string, string>): Promise<Blob> =>
     api

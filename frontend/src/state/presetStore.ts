@@ -6,12 +6,13 @@
  * - Setiap preset sekarang punya db_id (number | null) untuk referensi ke DB
  * - Setiap mutasi (add/rename/updateColumns/updatePreset/delete) diikuti
  *   fire-and-forget sync ke /api/presets
- * - Saat app mount, data di-load dari DB via loadFromDB()
- * - Kalau DB tidak tersedia (belum login, error), state lokal tetap jalan
+ * - Saat load, cache user+role dipakai lebih dulu lalu disinkronkan dari DB di background
+ * - Kalau DB tidak tersedia, cache/state lokal tetap jalan
  */
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import presetApi from "../services/presetApi";
+import { getPresetCache, setPresetCache } from "../services/presetCache";
 
 export type TablePreset = {
   id:             string;
@@ -36,9 +37,25 @@ type PresetState = {
   deletePreset:       (id: string) => void;
   setActivePreset:    (id: string) => void;
 
-  // Baru: load dari DB saat login
+  // Cache-first load + background sync saat login/session
   loadFromDB: () => Promise<void>;
 };
+
+async function persistEngineerCache(presets: TablePreset[]) {
+  const dbPresets = presets
+    .filter(p => Number.isFinite(p.db_id))
+    .map(p => ({
+      id: p.db_id as number,
+      scope: "engineer" as const,
+      name: p.name,
+      columns: p.columns,
+      widths: {
+        ...(p.widths ?? {}),
+        ...(p.pinnedColumns?.length ? { __pinned: p.pinnedColumns } : {}),
+      },
+    }));
+  await setPresetCache("engineer", dbPresets);
+}
 
 export const usePresetStore = create<PresetState>()(
   persist(
@@ -46,33 +63,39 @@ export const usePresetStore = create<PresetState>()(
       presets:        [],
       activePresetId: null,
 
-      // ── Load dari DB saat login ──────────────────────────────────────────
+      // ── Load cache-first, lalu background sync dari backend ──────────────
       loadFromDB: async () => {
-        try {
-          const dbPresets = await presetApi.list("engineer");
-          if (!dbPresets || !dbPresets.length) return;
-
+        const applyPresets = (dbPresets: Awaited<ReturnType<typeof presetApi.list>>) => {
+          if (!dbPresets) return;
           const merged: TablePreset[] = dbPresets.map(p => {
             const rawWidths = p.widths ?? {};
             const { __pinned, ...cleanWidths } = rawWidths as any;
             return {
-              id:             p.id.toString(),
-              db_id:          p.id,
-              name:           p.name,
-              columns:        Array.isArray(p.columns) ? p.columns : [],
-              widths:         cleanWidths,
-              pinnedColumns:  Array.isArray(__pinned) ? __pinned : [],
+              id: p.id.toString(),
+              db_id: p.id,
+              name: p.name,
+              columns: Array.isArray(p.columns) ? p.columns : [],
+              widths: cleanWidths,
+              pinnedColumns: Array.isArray(__pinned) ? __pinned : [],
             };
           });
-
           set(state => ({
             presets: merged,
             activePresetId: merged.find(p => p.id === state.activePresetId)
               ? state.activePresetId
               : (merged[0]?.id ?? null),
           }));
+        };
+
+        const cached = await getPresetCache("engineer");
+        if (cached) applyPresets(cached);
+
+        try {
+          const fresh = await presetApi.list("engineer");
+          await setPresetCache("engineer", fresh);
+          applyPresets(fresh);
         } catch {
-          // Gagal load DB → pakai state lokal
+          // Cache tetap menjadi fallback ketika backend tidak tersedia.
         }
       },
 
@@ -86,13 +109,14 @@ export const usePresetStore = create<PresetState>()(
         }));
 
         // Sync ke DB, update db_id setelah berhasil
-        presetApi.create("engineer", name, columns).then(created => {
+        presetApi.create("engineer", name, columns).then(async created => {
           set(state => ({
             presets: (state.presets ?? []).map(p =>
               p.id === tempId ? { ...p, db_id: created.id, id: created.id.toString() } : p
             ),
             activePresetId: state.activePresetId === tempId ? created.id.toString() : state.activePresetId,
           }));
+          await persistEngineerCache(get().presets ?? []);
         }).catch(() => {});
       },
 
@@ -100,14 +124,14 @@ export const usePresetStore = create<PresetState>()(
       renamePreset: (id, name) => {
         set(state => ({ presets: (state.presets ?? []).map(p => p.id === id ? { ...p, name } : p) }));
         const preset = (get().presets ?? []).find(p => p.id === id);
-        if (preset?.db_id) presetApi.update(preset.db_id, { name }).catch(() => {});
+        if (preset?.db_id) presetApi.update(preset.db_id, { name }).then(() => persistEngineerCache(get().presets ?? [])).catch(() => {});
       },
 
       // ── updatePresetColumns ───────────────────────────────────────────────
       updatePresetColumns: (id, columns) => {
         set(state => ({ presets: (state.presets ?? []).map(p => p.id === id ? { ...p, columns } : p) }));
         const preset = (get().presets ?? []).find(p => p.id === id);
-        if (preset?.db_id) presetApi.update(preset.db_id, { columns }).catch(() => {});
+        if (preset?.db_id) presetApi.update(preset.db_id, { columns }).then(() => persistEngineerCache(get().presets ?? [])).catch(() => {});
       },
 
       // ── updateWidth ───────────────────────────────────────────────────────
@@ -118,7 +142,7 @@ export const usePresetStore = create<PresetState>()(
           ),
         }));
         const preset = (get().presets ?? []).find(p => p.id === id);
-        if (preset?.db_id) presetApi.update(preset.db_id, { widths: preset.widths }).catch(() => {});
+        if (preset?.db_id) presetApi.update(preset.db_id, { widths: preset.widths }).then(() => persistEngineerCache(get().presets ?? [])).catch(() => {});
       },
 
       // ── updatePreset ──────────────────────────────────────────────────────
@@ -136,7 +160,7 @@ export const usePresetStore = create<PresetState>()(
             ...(updates.name    !== undefined && { name: updates.name }),
             ...(updates.columns !== undefined && { columns: updates.columns }),
             widths: widthsToSave,
-          }).catch(() => {});
+          }).then(() => persistEngineerCache(get().presets ?? [])).catch(() => {});
         }
       },
 
@@ -144,7 +168,7 @@ export const usePresetStore = create<PresetState>()(
       reorderColumns: (id, newOrder) => {
         set(state => ({ presets: (state.presets ?? []).map(p => p.id === id ? { ...p, columns: newOrder } : p) }));
         const preset = (get().presets ?? []).find(p => p.id === id);
-        if (preset?.db_id) presetApi.update(preset.db_id, { columns: newOrder }).catch(() => {});
+        if (preset?.db_id) presetApi.update(preset.db_id, { columns: newOrder }).then(() => persistEngineerCache(get().presets ?? [])).catch(() => {});
       },
 
       // ── deletePreset ──────────────────────────────────────────────────────
@@ -157,7 +181,7 @@ export const usePresetStore = create<PresetState>()(
             activePresetId: state.activePresetId === id ? (next[0]?.id ?? null) : state.activePresetId,
           };
         });
-        if (preset?.db_id) presetApi.remove(preset.db_id).catch(() => {});
+        if (preset?.db_id) presetApi.remove(preset.db_id).then(() => persistEngineerCache(get().presets ?? [])).catch(() => {});
       },
 
       // ── setActivePreset ───────────────────────────────────────────────────

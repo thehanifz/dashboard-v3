@@ -3,7 +3,7 @@
  * Axios instance dengan interceptor auth.
  * Import authStore langsung — tidak pakai require() karena tidak support di browser (ESM).
  */
-import axios, { AxiosInstance } from "axios";
+import axios, { AxiosInstance, AxiosResponse, AxiosRequestConfig } from "axios";
 import { useAuthStore } from "../state/authStore";
 
 const api: AxiosInstance = axios.create({
@@ -98,5 +98,26 @@ api.interceptors.response.use(
     }
   }
 );
+
+const inFlightGets = new Map<string, Promise<unknown>>();
+
+/** Share identical concurrent GET requests across components. */
+export function getDeduped<T = unknown>(
+  url: string,
+  config?: AxiosRequestConfig,
+): Promise<AxiosResponse<T>> {
+  const params = config?.params ? JSON.stringify(config.params) : "";
+  const authState = useAuthStore.getState();
+  const sessionKey = `${authState.user?.username ?? "public"}:${authState.user?.role ?? ""}:${authState.accessToken ?? ""}`;
+  const key = `${sessionKey}|${url}?${params}`;
+  const existing = inFlightGets.get(key);
+  if (existing) return existing as Promise<AxiosResponse<T>>;
+
+  const request = api.get<T>(url, config).finally(() => {
+    inFlightGets.delete(key);
+  });
+  inFlightGets.set(key, request);
+  return request;
+}
 
 export default api;

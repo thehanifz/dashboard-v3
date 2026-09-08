@@ -2,7 +2,7 @@
  * authApi.ts
  * Semua pemanggilan API terkait autentikasi.
  */
-import api from "./api";
+import api, { getDeduped } from "./api";
 
 export interface LoginResponse {
   access_token: string;
@@ -28,7 +28,7 @@ export const authApi = {
   },
 
   me: async () => {
-    const res = await api.get("/auth/me");
+    const res = await getDeduped("/auth/me");
     return res.data;
   },
 };
