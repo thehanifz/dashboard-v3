@@ -49,9 +49,9 @@ export function ToolbarHeader({ title, recordCount, userName, saving, onRefresh,
         </div>
       </div>
 
-      {/* Kanan: view switcher (optional) */}
-      {showViewTab && (
-        <div className="hidden md:flex items-center gap-2 shrink-0">
+      {/* Kanan: refresh — view switcher Kanban dihapus dari UI */}
+      {onRefresh && (
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={onRefresh}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
@@ -62,27 +62,6 @@ export function ToolbarHeader({ title, recordCount, userName, saving, onRefresh,
             </svg>
             Refresh
           </button>
-          <div className="flex items-center shrink-0 p-0.5 rounded-xl"
-            style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}>
-            {([
-              ["table",  "Tabel",  "M3 10h18M3 6h18M3 14h18M3 18h18"],
-              ["kanban", "Kanban", "M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7"],
-            ] as [ViewType, string, string][]).map(([v, label, path]) => (
-              <button key={v} onClick={() => onViewChange!(v)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-                style={{
-                  background: view === v ? "var(--accent)" : "transparent",
-                  color:      view === v ? "#fff" : "var(--text-muted)",
-                  boxShadow:  view === v ? "0 1px 4px rgba(0,0,0,0.15)" : "none",
-                }}>
-                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-                  style={{ width: 13, height: 13 }}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d={path} />
-                </svg>
-                {label}
-              </button>
-            ))}
-          </div>
         </div>
       )}
     </div>
