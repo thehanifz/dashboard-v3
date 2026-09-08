@@ -95,7 +95,7 @@ async def update_ptl_own_sheet(
         aging_value = str(row_data.get(aging_col, "") or "")
         if not aging_value.strip():
             sanitized[aging_col] = (
-                f'=IF(AQ{row_id}="Done BAI";AT{row_id}-J{row_id};NOW()-J{row_id})'
+                f'=IF(AR{row_id}="Done BAI";AU{row_id}-K{row_id};NOW()-K{row_id})'
             )
 
     # Skip kolom yang tidak ada di header GSheet PTL
