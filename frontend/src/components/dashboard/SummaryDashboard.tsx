@@ -207,6 +207,17 @@ export default function SummaryDashboard() {
     useAppearanceStore.getState().clearFilters();
   };
 
+  const handleAgingClick = (statusKey: "done" | "progress", tier: string, label: string) => {
+    const statusPaCol = cols?.colStatusPa ?? "Status PA";
+    const nextFilters = statusKey === "done"
+      ? { [statusPaCol]: [detectedStatus.done], ["__aging_tier"]: [tier] }
+      : { ["__status_pa_bucket"]: ["__ON_PROGRESS__"], ["__aging_tier"]: [tier] };
+
+    useAppearanceStore.getState().setActiveFilters(nextFilters);
+    useAppStore.getState().setPage("detail");
+    setDashboardFilter({ column: "Aging", value: `${label} · ${statusKey === "done" ? "Done BAI" : "On Progress"}` });
+  };
+
   const statusPaValues = useMemo(() => {
     const statusPaCol = cols?.colStatusPa ?? "Status PA";
     const counts: Record<string, number> = {};
@@ -249,7 +260,10 @@ export default function SummaryDashboard() {
     const byNamaCustomer:    Record<string, number> = {};
     const byPtlUpdate:       Record<string, number> = {};
     const bySegmentasi:      Record<string, number> = {};
-    const agingTiers = { safe: 0, warning: 0, danger: 0, critical: 0 };
+    const agingTiersByStatus = {
+      done: { safe: 0, warning: 0, danger: 0, critical: 0 },
+      progress: { safe: 0, warning: 0, danger: 0, critical: 0 },
+    };
 
     records.forEach(r => {
       const statusPa = (r.data[statusPaCol] || "").trim();
@@ -280,11 +294,18 @@ export default function SummaryDashboard() {
       const segmentasi = r.data["SEGMENTASI"] || "Tidak Diketahui";
       bySegmentasi[segmentasi] = (bySegmentasi[segmentasi] || 0) + 1;
 
-      // ── Aging: pakai kolom "Aging PA" yang sudah dihitung backend Python ──
-      // Lebih akurat dari parse ulang string tanggal di browser.
+      // ── Aging: dipisah berdasarkan Status PA ──
+      // Done BAI dan On Progress ditampilkan terpisah; PA Cancel tidak masuk aging.
       const agingPaStr = r.data["Aging PA"] || "";
       const aging = calcAgingFromDays(agingPaStr, thresholds);
-      if (aging) agingTiers[aging.tier]++;
+      if (aging) {
+        const normalizedStatus = statusPa.toLowerCase();
+        if (normalizedStatus === "done bai") {
+          agingTiersByStatus.done[aging.tier]++;
+        } else if (normalizedStatus !== "pa cancel") {
+          agingTiersByStatus.progress[aging.tier]++;
+        }
+      }
     });
 
     const total      = records.length;
@@ -296,7 +317,7 @@ export default function SummaryDashboard() {
     return {
       byStatusPekerjaan, byLayanan, byJenisMutasi, byStatusPA,
       byNamaCustomer, byPtlUpdate, bySegmentasi,
-      agingTiers, total, doneBai, onProgress, paCancel, donePct,
+      agingTiersByStatus, total, doneBai, onProgress, paCancel, donePct,
       valDone, valProgress, valCancel,
       allStatusPaValues: statusPaValues,
     };
@@ -409,10 +430,10 @@ export default function SummaryDashboard() {
       )}
 
       {/* ── Chart Row 1 ── */}
-      <div className="grid min-w-0 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
+      <div className="grid min-w-0 items-start grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
         <SectionCard
           title={`Per ${cols?.colStatusPekerjaan ?? "Status Pekerjaan"} On Progress`}
-          subtitle={`Filter: semua ${cols?.colStatusPa ?? "Status PA"} kecuali Done BAI dan PA Cancel`}
+          subtitle={undefined}
         >
           <div className="space-y-2.5">
             {Object.entries(stats.byStatusPekerjaan)
@@ -460,7 +481,7 @@ export default function SummaryDashboard() {
       </div>
 
       {/* ── Chart Row 2 ── */}
-      <div className="grid min-w-0 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
+      <div className="grid min-w-0 items-start grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
         <SectionCard title="Top 10 NAMA CUSTOMER" subtitle="Customer terbanyak">
           <div className="space-y-2.5">
             {Object.entries(stats.byNamaCustomer)
@@ -522,7 +543,7 @@ export default function SummaryDashboard() {
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)"; }}
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317a1.724 1.724 0 013.35 0 1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31.826-2.37 2.37a1.724 1.724 0 001.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
               Atur Tier
@@ -530,21 +551,52 @@ export default function SummaryDashboard() {
           ) : null
         }
       >
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {(["safe", "warning", "danger", "critical"] as const).map(tier => {
-            const count = stats.agingTiers[tier];
-            const s     = tierStyles[tier];
-            const pct   = stats.total > 0 ? Math.round(count / stats.total * 100) : 0;
-            return (
-              <div key={tier} className="rounded-xl p-4 text-center"
-                style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}>
-                <div className="w-2.5 h-2.5 rounded-full mx-auto mb-2" style={{ background: AGING_COLORS[tier] }} />
-                <p className="text-2xl font-extrabold" style={{ color: "var(--text-primary)" }}>{count.toLocaleString("id-ID")}</p>
-                <p className="text-[11px] font-semibold mt-1" style={{ color: "var(--text-secondary)" }}>{s.label}</p>
-                <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{pct}% dari total</p>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {([
+            ["done", "Done BAI"],
+            ["progress", "On Progress"],
+          ] as const).map(([statusKey, statusLabel]) => (
+            <div key={statusKey} className="rounded-xl p-3"
+              style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>{statusLabel}</h4>
+                <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                  {Object.values(stats.agingTiersByStatus[statusKey]).reduce((a, b) => a + b, 0).toLocaleString("id-ID")} record
+                </span>
               </div>
-            );
-          })}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {(["safe", "warning", "danger", "critical"] as const).map(tier => {
+                  const count = stats.agingTiersByStatus[statusKey][tier];
+                  const s = tierStyles[tier];
+                  return (
+                    <div key={tier}
+                      className="relative rounded-lg px-2.5 py-3 text-center min-w-0"
+                      onClick={() => handleAgingClick(statusKey, tier, s.label)}
+                      style={{
+                        background: "var(--bg-surface)",
+                        border: "1px solid var(--border)",
+                        cursor: "pointer",
+                        transition: "box-shadow 150ms, transform 150ms",
+                      }}
+                      onMouseEnter={e => {
+                        (e.currentTarget as HTMLElement).style.boxShadow = `0 4px 12px ${AGING_COLORS[tier]}33`;
+                        (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)";
+                      }}
+                      onMouseLeave={e => {
+                        (e.currentTarget as HTMLElement).style.boxShadow = "";
+                        (e.currentTarget as HTMLElement).style.transform = "";
+                      }}
+                      title={`Klik untuk filter tabel: ${statusLabel} · ${s.label}`}
+                    >
+                      <span className="absolute left-2 top-2 w-2.5 h-2.5 rounded-full" style={{ background: AGING_COLORS[tier] }} />
+                      <p className="text-2xl font-extrabold leading-none" style={{ color: "var(--text-primary)" }}>{count.toLocaleString("id-ID")}</p>
+                      <p className="text-[10px] font-semibold mt-1.5" style={{ color: "var(--text-secondary)" }}>{s.label}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       </SectionCard>
 

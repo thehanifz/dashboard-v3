@@ -17,7 +17,7 @@ export default function EngineerDashboardPanel() {
   const { toasts, show: showToast }             = useToast();
 
   const refreshAll        = useTaskStore((s) => s.refreshAll);
-  const fetchStatusMaster = useTaskStore((s) => s.fetchStatusMaster);
+  const refreshStatusOnly = useTaskStore((s) => s.refreshStatusOnly);
   const hasLoadedData     = useTaskStore((s) => s.hasLoadedData);
   const loadCacheMeta     = useTaskStore((s) => s.loadCacheMeta);
   const theme             = useThemeStore((s) => s.theme);
@@ -39,32 +39,32 @@ export default function EngineerDashboardPanel() {
 
   useEffect(() => {
     console.log("[EngineerDashboard] Mounting...");
+    refreshStatusOnly().catch(console.error);
 
     if (!hasLoadedData) {
-      // refreshAll memuat status + records melalui cache-first masing-masing.
+      // Pertama kali: coba dari cache dulu (forceNetwork = false)
       refreshAll(false).catch((err) => {
         console.error("Gagal load data:", err);
         showToast("Gagal memuat data", "error");
       });
     } else {
-      // Navigasi balik: status tetap cache-first, tanpa memicu refreshAll kedua.
-      fetchStatusMaster().catch(console.error);
+      // Sudah ada di store (navigasi balik), cukup refresh meta cache di topbar
       loadCacheMeta();
     }
   }, []);
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg-app)" }}>
+    <div className="flex h-dvh min-h-0 overflow-hidden" style={{ background: "var(--bg-app)" }}>
       <Sidebar collapsed={sidebarCollapsed} onToast={showToast} />
 
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
         <Topbar
           onRefresh={handleRefresh}
           sidebarCollapsed={sidebarCollapsed}
           onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
         />
 
-        <main className="flex-1 overflow-hidden pb-16 md:pb-0">
+        <main className="flex-1 min-h-0 overflow-hidden pb-16 md:pb-0">
           <SummaryDashboard />
         </main>
       </div>
