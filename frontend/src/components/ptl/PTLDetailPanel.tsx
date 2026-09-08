@@ -18,13 +18,11 @@ import { useAppearanceStore } from "../../state/appearanceStore";
 import { useAppStore }        from "../../state/appStore";
 import { useTaskStore }       from "../../state/taskStore";
 import { useTableSettings }    from "../../hooks/useTableSettings";
-import { calcAging, DEFAULT_THRESHOLDS } from "../../utils/aging";
 import type { AgingThresholds } from "../../utils/aging";
 import { getAgingThresholds } from "../../services/settingsApi";
 import Sidebar               from "../layout/Sidebar";
 import Topbar                from "../layout/Topbar";
 import ToastContainer        from "../ui/ToastContainer";
-import PTLKanbanBoard        from "./PTLKanbanBoard";
 import ColumnFilter          from "../table/ColumnFilter";
 import PresetEditorModal     from "../preset/PresetEditorModal";
 import { TableHeaderCell }   from "../table/TableHeaderCell";
@@ -39,7 +37,6 @@ import baiApi                from "../../services/baiApi";
 import type { SheetRecord, PTLSheetData, StatusMaster } from "../../state/taskStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type DetailView = "kanban" | "table";
 const DEFAULT_COL_WIDTH = 160;
 const MIN_COL_WIDTH     = 60;
 
@@ -188,12 +185,17 @@ function DrillBanner({ label, onClear }: { label: string; onClear: () => void })
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 export default function PTLDetailPanel() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [view, setView]                         = useState<DetailView>("table");
   const [localRecords, setLocalRecords]         = useState<SheetRecord[]>([]);
   const [search, setSearch]                     = useState("");
   const [saving, setSaving]                     = useState(false);
   const isOffline                               = useTaskStore(s => s.isOffline);
-  const [thresholds, setThresholds]             = useState<AgingThresholds>(DEFAULT_THRESHOLDS);
+  const [thresholds, setThresholds]             = useState<AgingThresholds | null>(null);
+
+  useEffect(() => {
+    getAgingThresholds().then(setThresholds).catch((err) => {
+      console.error("[AGING_DEBUG][PTL_DETAIL_LOAD]", err);
+    });
+  }, []);
 
   const { pageSize, tablePage, setPageSize, setTablePage } = useTableSettings(20);
 
@@ -290,9 +292,32 @@ export default function PTLDetailPanel() {
   const records    = localRecords;
   const idPaCol    = allColumns.find(c => c === "ID PA") ?? "ID PA";
   const namaCol    = allColumns.find(c => c.toLowerCase().includes("perusahaan")) ?? "";
-  const tglCol     = "TGL TERBIT PA";
-  const baiCol     = "TGL UPLOAD BAI";
   const statusPaCol = "Status PA";
+  const agingColKey = useMemo(() => {
+    return records.length > 0
+      ? (Object.keys(records[0].data).find(
+          k => k.trim().toLowerCase() === "aging"
+        ) || "Aging")
+      : "Aging";
+  }, [records]);
+
+  // Gunakan nilai Aging mentah dari GSheet, sama dengan PTL Summary.
+  const calcAgingFromDays = (
+    raw: unknown
+  ): { tier: "safe" | "warning" | "danger" | "critical" } | null => {
+    if (raw === null || raw === undefined || raw === "" || !thresholds) return null;
+
+    const match = String(raw).trim().replace(",", ".").match(/-?\d+(?:\.\d+)?/);
+    if (!match) return null;
+
+    const days = Number(match[0]);
+    if (!Number.isFinite(days)) return null;
+
+    if (days <= thresholds.tier1) return { tier: "safe" };
+    if (days <= thresholds.tier2) return { tier: "warning" };
+    if (days <= thresholds.tier3) return { tier: "danger" };
+    return { tier: "critical" };
+  };
 
   const statusCol = statusMaster?.status_column ?? "Status Pekerjaan";
   const detailCol = statusMaster?.detail_column ?? "Detail Progres";
@@ -417,23 +442,13 @@ export default function PTLDetailPanel() {
                 const bucket = status === "done bai" ? "doneBai" :
                   status === "pa cancel" ? null : "onProgress";
                 if (!bucket) return false;
-                const aging = calcAging(
-                  r.data[tglCol],
-                  thresholds,
-                  r.data[baiCol],
-                  r.data[statusPaCol]
-                );
+                const aging = calcAgingFromDays(r.data[agingColKey]);
                 if (!aging || !filters.includes(`${bucket}:${aging.tier}`)) return false;
               }
 
               if (activeFilters["__aging_tier"]) {
                 const tiers = activeFilters["__aging_tier"];
-                const aging = calcAging(
-                  r.data[tglCol],
-                  thresholds,
-                  r.data[baiCol],
-                  r.data[statusPaCol]
-                );
+                const aging = calcAgingFromDays(r.data[agingColKey]);
                 if (!aging || !tiers.includes(aging.tier)) return false;
               }
 
@@ -455,7 +470,7 @@ export default function PTLDetailPanel() {
     }
 
     return result;
-  }, [records, search, activeFilters, thresholds, filterRefreshKey, tglCol, baiCol, statusPaCol]);
+  }, [records, search, activeFilters, thresholds, filterRefreshKey, statusPaCol, agingColKey]);
 
   const totalPage    = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
   const pagedRecords = filteredRecords.slice((tablePage - 1) * pageSize, tablePage * pageSize);
@@ -564,8 +579,6 @@ export default function PTLDetailPanel() {
             userName={user?.nama_lengkap ?? ""}
             saving={saving}
             onRefresh={handleRefresh}
-            view={view}
-            onViewChange={setView}
             search={search}
             onSearch={v => { setSearch(v); setTablePage(1); }}
             presets={presets.map(p => ({ id: p.id, name: p.name, columns: p.columns ?? [] }))}
@@ -638,18 +651,7 @@ export default function PTLDetailPanel() {
             </div>
           )}
 
-          {/* Desktop: behavior existing tetap dipertahankan, termasuk Kanban. */}
           <div className="hidden md:flex flex-1 overflow-hidden flex-col">
-            {view === "kanban" && (
-              <div className="flex-1 overflow-hidden">
-                {ptlLoading && localRecords.length === 0
-                  ? <div className="p-6 text-xs" style={{ color: "var(--text-muted)" }}>Memuat data...</div>
-                  : <PTLKanbanBoard records={records} onUpdateCell={handleUpdateCell} />
-                }
-              </div>
-            )}
-
-            {view === "table" && (
               <div className="flex-1 overflow-hidden flex flex-col px-4 pt-3 pb-4 gap-2.5">
 
               {drillLabel && (
@@ -832,7 +834,6 @@ export default function PTLDetailPanel() {
                 </>
               )}
             </div>
-          )}
           </div>
         </main>
       </div>
