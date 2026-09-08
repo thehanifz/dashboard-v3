@@ -34,8 +34,7 @@ import AsBuiltPage          from "./AsBuiltPage";
 import TeskomPage           from "./TeskomPage";
 import MitraTableConfigPage from "./MitraTableConfigPage";
 import SyncDashboardPage    from "./SyncDashboardPage";
-import SettingsPage         from "./SettingsPage";
-import ProfilePage          from "./ProfilePage";
+import { SettingsPanel, Profile } from "../components/setting";
 
 // Panel superuser
 import SuperuserPanel from "../components/superuser/SuperuserPanel";
@@ -49,15 +48,15 @@ function LayoutShell({ children, onRefresh }: { children: React.ReactNode; onRef
   const { toasts, show: showToast } = useToast();
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden" style={{ background: "var(--bg-app)" }}>
+    <div className="flex h-full overflow-hidden" style={{ background: "var(--bg-app)" }}>
       <Sidebar collapsed={collapsed} onToast={showToast} />
-      <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Topbar
           onRefresh={onRefresh}
           sidebarCollapsed={collapsed}
           onToggleSidebar={() => setCollapsed(v => !v)}
         />
-        <main className="flex-1 min-h-0 overflow-auto pb-16 md:pb-0">
+        <main className="flex-1 overflow-auto pb-16 md:pb-0">
           {children}
         </main>
       </div>
@@ -73,7 +72,13 @@ export default function MainPage() {
   // Profile selalu dirender di dalam shell aplikasi agar desktop/mobile konsisten
   // dengan halaman lain dan tidak membuka layout standalone.
   if (page === "profile") {
-    return <LayoutShell><ProfilePage /></LayoutShell>;
+    return <LayoutShell><Profile /></LayoutShell>;
+  }
+
+  // Settings adalah panel universal. Konfigurasi dashboard di dalamnya
+  // tetap dibatasi oleh role engineer/superuser.
+  if (page === "settings") {
+    return <LayoutShell><SettingsPanel /></LayoutShell>;
   }
 
   // ── Superuser ──────────────────────────────────────────────────────────────
@@ -83,7 +88,7 @@ export default function MainPage() {
   if (user?.role === "superuser") {
     return (
       <LayoutShell>
-        {page === "settings" ? <SettingsPage /> : <SuperuserPanel />}
+        <SuperuserPanel />
       </LayoutShell>
     );
   }
@@ -110,7 +115,6 @@ export default function MainPage() {
     if (page === "teskom")       return <TeskomPage />;
     if (page === "mitra-config") return <LayoutShell><MitraTableConfigPage /></LayoutShell>;
     if (page === "sync")         return <LayoutShell><SyncDashboardPage /></LayoutShell>;
-    if (page === "settings")     return <LayoutShell><SettingsPage /></LayoutShell>;
     // default: dashboard
     return <EngineerDashboardPanel />;
   }

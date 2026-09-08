@@ -98,7 +98,6 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
 
   const [asbuiltOpen, setAsbuiltOpen]     = useState(currentPage === "asbuilt");
   const [mismatchCount, setMismatchCount] = useState(0);
-  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
 
   // ── App info dari DB (tidak hardcode) ────────────────────────────────────────
   const [appInfo, setAppInfo] = useState<AppInfo>({
@@ -277,86 +276,6 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
       </aside>
 
       {/* ── Mobile Bottom Nav ── */}
-      {mobileSettingsOpen && (
-        <div
-          className="md:hidden fixed inset-0 z-[60]"
-          style={{ background: "rgba(0,0,0,0.42)" }}
-          onMouseDown={e => {
-            if (e.target === e.currentTarget) setMobileSettingsOpen(false);
-          }}
-        >
-          <div
-            className="absolute bottom-0 left-0 right-0 rounded-t-3xl p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl"
-            style={{ background: "var(--bg-surface)", borderTop: "1px solid var(--border)" }}
-            onMouseDown={e => e.stopPropagation()}
-          >
-            <div
-              className="w-10 h-1 rounded-full mx-auto mb-4"
-              style={{ background: "var(--border-strong)" }}
-            />
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-                  Settings
-                </p>
-                <h3 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
-                  Pengaturan cepat
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setMobileSettingsOpen(false)}
-                className="w-9 h-9 rounded-xl flex items-center justify-center"
-                style={{ background: "var(--bg-surface2)", color: "var(--text-muted)" }}
-                aria-label="Tutup settings"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileSettingsOpen(false);
-                  setPage("profile");
-                }}
-                className="min-h-12 rounded-2xl px-3 flex items-center gap-3 text-left"
-                style={{
-                  background: currentPage === "profile" ? "var(--accent-soft)" : "var(--bg-surface2)",
-                  color: "var(--text-primary)",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                  style={{ background: ROLE_COLOR[role] ?? "#2563eb" }}
-                >
-                  {user?.nama_lengkap?.charAt(0).toUpperCase() ?? "?"}
-                </div>
-                <span className="text-sm font-semibold">Profil</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={toggleTheme}
-                className="min-h-12 rounded-2xl px-3 flex items-center gap-3 text-left"
-                style={{
-                  background: "var(--bg-surface2)",
-                  color: "var(--text-primary)",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                {isDark ? <SunIcon /> : <MoonIcon />}
-                <span className="text-sm font-semibold">
-                  {isDark ? "Light Mode" : "Dark Mode"}
-                </span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <nav
         className="md:hidden fixed bottom-0 left-0 right-0 z-50 bottom-nav flex items-stretch overflow-hidden px-1 py-1"
         style={{
@@ -393,17 +312,17 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
         })}
 
         <button
-          onClick={() => setMobileSettingsOpen(true)}
+          onClick={() => setPage("settings")}
           className="relative flex-1 min-w-0 basis-0 flex flex-col items-center justify-center gap-0.5 px-1 py-2 rounded-xl transition-all"
           style={{
-            color: mobileSettingsOpen || currentPage === "profile"
+            color: currentPage === "settings" || currentPage === "profile"
               ? "var(--accent)"
               : "var(--text-muted)",
-            background: mobileSettingsOpen || currentPage === "profile"
+            background: currentPage === "settings" || currentPage === "profile"
               ? "var(--accent-soft)"
               : "transparent",
           }}
-          aria-label="Buka settings"
+          aria-label="Buka pengaturan"
         >
           <IconSettings />
           <span className="w-full min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[10px] font-semibold leading-tight text-center">

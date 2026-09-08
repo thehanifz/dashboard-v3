@@ -4,11 +4,8 @@
  */
 import { useEffect } from "react";
 import { useAuthStore } from "./state/authStore";
-import { useAppStore } from "./state/appStore";
-
 import LoginPage from "./pages/LoginPage";
 import MainPage from "./pages/MainPage";
-import SettingsPage from "./pages/SettingsPage";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { authReady, isLoggedIn, initializeSession } = useAuthStore();
@@ -19,7 +16,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (!authReady) {
     return (
-      <div className="h-[100dvh] min-h-0 flex items-center justify-center" style={{ background: "var(--bg-app, #0f172a)" }}>
+      <div className="h-screen flex items-center justify-center" style={{ background: "var(--bg-app, #0f172a)" }}>
         <div className="text-sm" style={{ color: "var(--text-muted, #94a3b8)" }}>Memulihkan sesi...</div>
       </div>
     );
@@ -30,12 +27,10 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const { currentPage: page } = useAppStore();
-
   return (
     <AuthGuard>
-      <div className="h-[100dvh] min-h-0 overflow-hidden flex flex-col">
-        {page === "settings" ? <SettingsPage /> : <MainPage />}
+      <div className="h-screen overflow-hidden flex flex-col">
+        <MainPage />
       </div>
     </AuthGuard>
   );
