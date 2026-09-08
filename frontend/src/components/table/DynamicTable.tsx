@@ -198,7 +198,7 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false, 
                         namaPerusahaan={record.data[tableConfig.colNamaPerusahaan] || ""}
                         onToast={showToast}
                       />
-                      <TeskomActionButton idPa={record.data[tableConfig.colIdPa] || ""} />
+                      <TeskomActionButton idPa={record.data[tableConfig.colIdPa] || ""} data={record.data} />
                     </>
                   )}
                 />

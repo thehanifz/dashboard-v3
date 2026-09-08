@@ -24,11 +24,14 @@ interface AppState {
   currentPage: AppPage;
   asbuiltView: AsBuiltView;
   teskomAutofillId: string | null;
+  /** Data row dari cache tabel untuk autofill Teskom tanpa round-trip API. */
+  teskomAutofillData: Record<string, string> | null;
+  teskomAutofillSource: "records" | "ptl" | null;
   /** Filter drill-down dari PTL dashboard → PTL detail panel */
   ptlDrillFilter: PtlDrillFilter | null;
   setPage: (page: AppPage) => void;
   setAsBuiltView: (view: AsBuiltView) => void;
-  setTeskomAutofill: (idPa: string | null) => void;
+  setTeskomAutofill: (idPa: string | null, data?: Record<string, string> | null, source?: "records" | "ptl") => void;
   /** Set filter + navigasi ke PTL detail page */
   drillToPtlDetail: (filter: PtlDrillFilter) => void;
   /** Clear setelah PTLDetailPanel membaca filter */
@@ -47,6 +50,8 @@ export const useAppStore = create<AppState>()(
       currentPage:       "dashboard",
       asbuiltView:       "library",
       teskomAutofillId:  null,
+      teskomAutofillData: null,
+      teskomAutofillSource: null,
       ptlDrillFilter:    null,
 
       setPage: (page) => {
@@ -59,7 +64,8 @@ export const useAppStore = create<AppState>()(
       },
 
       setAsBuiltView:    (view) => set({ asbuiltView: view }),
-      setTeskomAutofill: (idPa) => set({ teskomAutofillId: idPa }),
+      setTeskomAutofill: (idPa, data = null, source = null) =>
+        set({ teskomAutofillId: idPa, teskomAutofillData: data, teskomAutofillSource: source }),
 
       drillToPtlDetail: (filter) => {
         set({ ptlDrillFilter: filter });
@@ -74,6 +80,7 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         currentPage:      TRANSIENT_PAGES.includes(state.currentPage) ? "dashboard" : state.currentPage,
         asbuiltView:      state.asbuiltView,
+        // Autofill payload bersifat transient; jangan dipersist ke localStorage.
         teskomAutofillId: state.teskomAutofillId,
         // ptlDrillFilter TIDAK di-persist — transient state
       }),

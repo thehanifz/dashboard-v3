@@ -40,7 +40,7 @@ const ROLE_COLOR: Record<string, string> = { engineer: "#2563eb", ptl: "#7c3aed"
 const ROLE_PAGES: Record<string, AppPage[]> = {
   engineer:  ["dashboard", "detail", "asbuilt", "teskom", "mitra-config", "sync", "settings"],
   ptl:       ["dashboard", "detail", "asbuilt", "teskom"],
-  mitra:     ["dashboard"],
+  mitra:     ["dashboard", "teskom"],
   superuser: ["settings"],
 };
 

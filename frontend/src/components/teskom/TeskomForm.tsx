@@ -4,7 +4,7 @@ import AutoFillSearch from "./AutoFillSearch";
 import PhotoUpload from "./PhotoUpload";
 import FormFields from "./forms/FormFields";
 import { FORM_REGISTRY, Tipe } from "./formRegistry";
-import teskomApi, { AutoFillResult } from "../../services/teskomApi";
+import teskomApi, { AutoFillResult, autofillFromCache } from "../../services/teskomApi";
 import { useAppStore } from "../../state/appStore";
 import { useAuthStore } from "../../state/authStore";
 
@@ -45,8 +45,10 @@ export default function TeskomForm({ onToast }: Props) {
   const isPtl    = user?.role === "ptl";
 
   // Autofill dari tabel dashboard (deep-link)
-  const teskomAutofillId  = useAppStore((s) => s.teskomAutofillId);
-  const setTeskomAutofill = useAppStore((s) => s.setTeskomAutofill);
+  const teskomAutofillId     = useAppStore((s) => s.teskomAutofillId);
+  const teskomAutofillData   = useAppStore((s) => s.teskomAutofillData);
+  const teskomAutofillSource = useAppStore((s) => s.teskomAutofillSource);
+  const setTeskomAutofill    = useAppStore((s) => s.setTeskomAutofill);
 
   const supportedTipe = FORM_REGISTRY[kategori]?.supportedTipe ?? ["T", "OT"];
   const activeTipe: Tipe = supportedTipe.includes(tipe) ? tipe : FORM_REGISTRY[kategori].defaultTipe;
@@ -101,24 +103,38 @@ export default function TeskomForm({ onToast }: Props) {
   // ── Autofill berdasarkan role saat halaman dibuka dari tabel ──
   useEffect(() => {
     if (!teskomAutofillId) return;
-    const idPa = teskomAutofillId;
-    setTeskomAutofill(null); // clear segera agar tidak trigger ulang
 
-    const fetchFn = isPtl
+    const idPa = teskomAutofillId;
+    const cachedData = teskomAutofillData;
+    const cachedSource = teskomAutofillSource;
+
+    // Data dari row dashboard/PTL sudah berasal dari cache lokal.
+    // Gunakan langsung agar klik Teskom tidak round-trip ke PostgreSQL/GSheet.
+    if (cachedData) {
+      const result = autofillFromCache(cachedData, cachedSource || (isPtl ? "ptl" : "records"));
+      handleAutofill(result.autofill);
+      setTeskomAutofill(null);
+      onToast(`Data "${idPa}" berhasil dimuat dari cache`, "success");
+      return;
+    }
+
+    // Fallback untuk deep-link/manual state lama yang tidak membawa row cache.
+    const request = isPtl
       ? teskomApi.autofillPtl(idPa)
       : teskomApi.autofill(idPa);
 
-    fetchFn
+    request
       .then((result) => {
         handleAutofill(result.autofill);
         const src = isPtl ? "GSheet PTL" : "database";
         onToast(`Data "${idPa}" berhasil dimuat dari ${src}`, "success");
       })
-      .catch(() => {
-        onToast(`Gagal autofill ID PA "${idPa}"`, "error");
-      });
-  }, [teskomAutofillId, isPtl]); // eslint-disable-line react-hooks/exhaustive-deps
-  // sengaja deps kosong — hanya jalan sekali saat mount
+      .catch((err: any) => {
+        const msg = err?.response?.data?.detail || `Gagal autofill ID PA "${idPa}"`;
+        onToast(msg, "error");
+      })
+      .finally(() => setTeskomAutofill(null));
+  }, [teskomAutofillId, teskomAutofillData, teskomAutofillSource, isPtl, handleAutofill, setTeskomAutofill, onToast]);
 
   // IntersectionObserver — tab aktif ikut scroll
   useEffect(() => {

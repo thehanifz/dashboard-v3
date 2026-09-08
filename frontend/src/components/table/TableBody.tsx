@@ -78,7 +78,7 @@ export function TableBody({
                   namaPerusahaan={r.data[tableConfig.colNamaPerusahaan] || ""}
                   onToast={onToast}
                 />
-                <TeskomActionButton idPa={r.data[tableConfig.colIdPa] || ""} />
+                <TeskomActionButton idPa={r.data[tableConfig.colIdPa] || ""} data={r.data} />
               </div>
             </td>
 

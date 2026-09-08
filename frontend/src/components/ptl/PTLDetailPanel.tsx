@@ -145,11 +145,11 @@ function PtlBaiButton({ rowId, idPa, namaPerusahaan, onToast }: {
 }
 
 // ─── Teskom Button ────────────────────────────────────────────────────────────
-function PtlTeskomButton({ idPa }: { idPa: string }) {
+function PtlTeskomButton({ idPa, data }: { idPa: string; data: Record<string, string> }) {
   const setNavPage        = useAppStore(s => s.setPage);
   const setTeskomAutofill = useAppStore(s => s.setTeskomAutofill);
   return (
-    <button onClick={e => { e.stopPropagation(); if (!idPa) return; setTeskomAutofill(idPa); setNavPage("teskom"); }}
+    <button onClick={e => { e.stopPropagation(); if (!idPa) return; setTeskomAutofill(idPa, data, "ptl"); setNavPage("teskom"); }}
       title={`Buka Teskom — ${idPa}`}
       className="flex items-center justify-center w-6 h-6 rounded-md transition-all"
       style={{ color: "var(--text-muted)" }}
@@ -593,7 +593,7 @@ export default function PTLDetailPanel() {
                       namaPerusahaan={namaCol ? (record.data[namaCol] ?? "") : ""}
                       onToast={showToast}
                     />
-                    <PtlTeskomButton idPa={record.data[idPaCol] ?? ""} />
+                    <PtlTeskomButton idPa={record.data[idPaCol] ?? ""} data={record.data} />
                   </>
                 )}
               />
@@ -697,7 +697,7 @@ export default function PTLDetailPanel() {
                                   style={{ zIndex: 10, width: 72, minWidth: 72, padding: "4px 8px", textAlign: "center", borderRight: "1px solid var(--border)", borderBottom: "1px solid var(--border)", background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)" }}>
                                   <div className="flex items-center justify-center gap-0.5">
                                     <PtlBaiButton rowId={r.row_id} idPa={idPaVal} namaPerusahaan={namaVal} onToast={showToast} />
-                                    <PtlTeskomButton idPa={idPaVal} />
+                                    <PtlTeskomButton idPa={idPaVal} data={r.data} />
                                   </div>
                                 </td>
                                 {columns.map(col => {

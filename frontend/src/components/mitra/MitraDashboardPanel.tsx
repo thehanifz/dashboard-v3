@@ -17,6 +17,7 @@ import Sidebar         from "../layout/Sidebar";
 import ToastContainer  from "../ui/ToastContainer";
 import MobileRecordList from "../table/MobileRecordList";
 import MobileFilterSheet from "../table/MobileFilterSheet";
+import TeskomActionButton from "../table/TeskomActionButton";
 
 type DashView = "summary" | "kanban" | "table";
 const DEFAULT_COL_WIDTH = 150;
@@ -243,6 +244,12 @@ export default function MitraDashboardPanel() {
                 onStatusChange={async (rowId, status, detail) => {
                   await updateStatus(rowId, status, detail);
                 }}
+                renderActions={record => (
+                  <TeskomActionButton
+                    idPa={record.data["ID PA"] || ""}
+                    data={record.data}
+                  />
+                )}
               />
             </div>
           )}
@@ -254,6 +261,17 @@ export default function MitraDashboardPanel() {
               <table className="text-xs border-collapse" style={{ tableLayout: "fixed", width: "max-content", minWidth: "100%" }}>
                 <thead className="sticky top-0 z-10 th-table-head">
                   <tr>
+                    <th
+                      className="sticky left-0 z-10 px-2 py-2.5 text-center font-semibold"
+                      style={{
+                        width: 40, minWidth: 40,
+                        borderBottom: "2px solid var(--border)",
+                        borderRight: "1px solid var(--border)",
+                        background: "var(--bg-surface)",
+                        color: "var(--text-muted)",
+                      }}
+                      title="Aksi"
+                    />
                     {displayColumns.map((col) => (
                       <th key={col}
                         className="px-3 py-2.5 text-left font-semibold"
@@ -280,6 +298,17 @@ export default function MitraDashboardPanel() {
                     <tr key={r.row_id}
                       className="th-table-row"
                       style={{ background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)" }}>
+                      <td
+                        className="sticky left-0 z-10 px-1 py-1 text-center"
+                        style={{
+                          width: 40, minWidth: 40,
+                          borderRight: "1px solid var(--border)",
+                          borderBottom: "1px solid var(--border)",
+                          background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)",
+                        }}
+                      >
+                        <TeskomActionButton idPa={r.data["ID PA"] || ""} data={r.data} />
+                      </td>
                       {displayColumns.map((col) => {
                         const isEditing = editingCell?.rowId === r.row_id && editingCell?.col === col;
                         const editable  = canEdit(col);

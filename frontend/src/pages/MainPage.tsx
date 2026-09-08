@@ -99,6 +99,7 @@ export default function MainPage() {
 
   // ── Mitra ─────────────────────────────────────────────────────────────────
   if (user?.role === "mitra") {
+    if (page === "teskom") return <TeskomPage />;
     return <MitraDashboardPanel />;
   }
 
