@@ -4,10 +4,11 @@ import { persist } from "zustand/middleware";
 export type AppPage = "dashboard" | "detail" | "asbuilt" | "teskom" | "mitra-config" | "sync" | "profile" | "settings";
 export type AsBuiltView = "library" | "generate";
 
-// Halaman yang TIDAK disimpan ke localStorage — selalu reset ke default saat load
+// Halaman yang TIDAK disimpan ke localStorage — selalu reset ke default saat load.
+// Halaman ini tetap boleh masuk browser history.
 const TRANSIENT_PAGES: AppPage[] = ["profile", "settings"];
 
-// Semua page yang valid — untuk validasi hash dari URL
+// Semua page yang valid — untuk validasi hash dari URL.
 const VALID_PAGES: AppPage[] = ["dashboard", "detail", "asbuilt", "teskom", "mitra-config", "sync", "profile", "settings"];
 
 /** Filter yang di-pass dari PTL Summary Dashboard ke PTL Detail Panel */
@@ -38,38 +39,40 @@ interface AppState {
   clearPtlDrillFilter: () => void;
 }
 
-/** Baca hash URL saat ini, return AppPage yang valid atau null */
+/** Baca hash URL saat ini, return AppPage yang valid atau null. */
 function getPageFromHash(): AppPage | null {
-  const hash = window.location.hash.replace("#", "").trim() as AppPage;
+  const hash = window.location.hash.replace(/^#/, "").trim() as AppPage;
   return VALID_PAGES.includes(hash) ? hash : null;
 }
 
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      currentPage:       "dashboard",
-      asbuiltView:       "library",
-      teskomAutofillId:  null,
+      currentPage: "dashboard",
+      asbuiltView: "library",
+      teskomAutofillId: null,
       teskomAutofillData: null,
       teskomAutofillSource: null,
-      ptlDrillFilter:    null,
+      ptlDrillFilter: null,
 
       setPage: (page) => {
         set({ currentPage: page });
-        if (!TRANSIENT_PAGES.includes(page)) {
+
+        // Semua halaman navigable harus membuat browser-history entry.
+        // TRANSIENT_PAGES hanya berarti tidak dipersist ke localStorage,
+        // bukan berarti dikeluarkan dari browser navigation.
+        if (window.location.hash !== `#${page}`) {
           window.location.hash = page;
-        } else {
-          history.replaceState(null, "", window.location.pathname + window.location.search);
         }
       },
 
-      setAsBuiltView:    (view) => set({ asbuiltView: view }),
+      setAsBuiltView: (view) => set({ asbuiltView: view }),
       setTeskomAutofill: (idPa, data = null, source = null) =>
         set({ teskomAutofillId: idPa, teskomAutofillData: data, teskomAutofillSource: source }),
 
       drillToPtlDetail: (filter) => {
         set({ ptlDrillFilter: filter });
-        // Navigasi ke page "detail" — PTLDetailPanel akan consume filter ini
+        // Navigasi ke page "detail" — PTLDetailPanel akan consume filter ini.
         get().setPage("detail");
       },
 
@@ -85,10 +88,12 @@ export const useAppStore = create<AppState>()(
         teskomAutofillSource: null,
       }),
       partialize: (state) => ({
-        currentPage:      TRANSIENT_PAGES.includes(state.currentPage) ? "dashboard" : state.currentPage,
-        asbuiltView:      state.asbuiltView,
+        // Profile/Settings tidak dipersist, tetapi tetap bisa dinavigasikan
+        // lewat browser history selama session berjalan.
+        currentPage: TRANSIENT_PAGES.includes(state.currentPage) ? "dashboard" : state.currentPage,
+        asbuiltView: state.asbuiltView,
         // Autofill payload bersifat transient; jangan dipersist ke localStorage.
-        // ptlDrillFilter TIDAK di-persist — transient state
+        // ptlDrillFilter TIDAK di-persist — transient state.
       }),
     }
   )
@@ -97,23 +102,37 @@ export const useAppStore = create<AppState>()(
 /**
  * initHashNavigation — panggil sekali di main.tsx setelah store siap.
  * - Membaca hash awal saat pertama load
- * - Mendengarkan event popstate (tombol back/forward browser)
+ * - Mendengarkan hashchange untuk tombol Back/Forward browser
  */
 export function initHashNavigation() {
   const initialPage = getPageFromHash();
-  if (initialPage && !TRANSIENT_PAGES.includes(initialPage)) {
-    useAppStore.getState().setPage(initialPage);
-  } else if (!initialPage) {
+  if (initialPage) {
+    // Hash adalah sumber navigasi URL saat tersedia, termasuk profile/settings.
+    useAppStore.setState({ currentPage: initialPage });
+  } else {
     const stored = useAppStore.getState().currentPage;
-    if (!TRANSIENT_PAGES.includes(stored)) {
-      window.location.hash = stored;
+    const fallbackPage = TRANSIENT_PAGES.includes(stored) ? "dashboard" : stored;
+    useAppStore.setState({ currentPage: fallbackPage });
+
+    if (window.location.hash !== `#${fallbackPage}`) {
+      window.location.hash = fallbackPage;
     }
   }
 
-  window.addEventListener("popstate", () => {
+  const handleHashChange = () => {
     const page = getPageFromHash();
-    if (page && !TRANSIENT_PAGES.includes(page)) {
+    if (page) {
       useAppStore.setState({ currentPage: page });
+    } else {
+      // Back dari #dashboard menuju URL tanpa hash tetap harus kembali ke
+      // halaman dashboard, bukan meninggalkan UI pada page sebelumnya.
+      useAppStore.setState({ currentPage: "dashboard" });
     }
-  });
+  };
+
+  window.addEventListener("hashchange", handleHashChange);
+
+  // hashchange sudah cukup untuk browser Back/Forward; popstate tidak
+  // diperlukan untuk navigasi hash dan justru dapat membuat state ganda.
+  return () => window.removeEventListener("hashchange", handleHashChange);
 }
