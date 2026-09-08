@@ -28,7 +28,7 @@ from app.api.presets import router as presets_router
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 app = FastAPI(
-    title="Dashboard v3 — Unified API",
+    title="OverSee — Unified API",
     version="3.1.0",
     description="Unified backend: Dashboard, AsBuilt, Teskom + Auth",
     root_path="",

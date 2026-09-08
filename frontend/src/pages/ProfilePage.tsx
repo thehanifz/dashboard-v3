@@ -23,7 +23,7 @@ const ROLE_COLOR: Record<string, string> = {
 };
 
 export default function ProfilePage() {
-  const { user, clearAuth }   = useAuthStore();
+  const { user, beginLogout, clearAuth } = useAuthStore();
   const { setPage }           = useAppStore();
 
   const [profile, setProfile]           = useState<ProfileData | null>(null);
@@ -75,7 +75,13 @@ export default function ProfilePage() {
 
   const handleLogout = async () => {
     setLoggingOut(true);
-    try { await authApi.logout(); } catch {}
+    beginLogout();
+    try {
+      await authApi.logout();
+    } catch {
+      // Logout lokal tetap dilanjutkan; beginLogout() mencegah session
+      // recovery/auto-refresh menghidupkan kembali session yang baru ditutup.
+    }
     clearAuth();
     window.location.href = "/";
   };

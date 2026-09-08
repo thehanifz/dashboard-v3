@@ -2,16 +2,17 @@ import { useAppStore } from "../../state/appStore";
 
 interface Props {
   idPa: string;
+  data: Record<string, string>;
 }
 
-export default function TeskomActionButton({ idPa }: Props) {
+export default function TeskomActionButton({ idPa, data }: Props) {
   const setPage            = useAppStore((s) => s.setPage);
   const setTeskomAutofill  = useAppStore((s) => s.setTeskomAutofill);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!idPa) return;
-    setTeskomAutofill(idPa);
+    setTeskomAutofill(idPa, data, "records");
     setPage("teskom");
   };
 

@@ -61,6 +61,7 @@ async def _write_sync_log(
     new_value: str | None,
     sync_type: str,
     synced_by: str | None = None,
+    commit: bool = True,
 ) -> None:
     log = SyncLog(
         ptl_user_id=ptl_user_id,
@@ -72,4 +73,5 @@ async def _write_sync_log(
         synced_by=synced_by,
     )
     db.add(log)
-    await db.commit()
+    if commit:
+        await db.commit()

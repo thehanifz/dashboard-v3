@@ -1,4 +1,4 @@
-import api from "./api";
+import api, { getDeduped } from "./api";
 
 export interface RoleTableConfig {
   role: string;
@@ -15,7 +15,7 @@ export interface AvailableColumns {
 
 export const roleConfigApi = {
   async getConfig(role: string): Promise<RoleTableConfig> {
-    const res = await api.get<RoleTableConfig>(`/role-config/${role}`);
+    const res = await getDeduped<RoleTableConfig>(`/role-config/${role}`);
     return res.data;
   },
 
@@ -28,7 +28,7 @@ export const roleConfigApi = {
   },
 
   async getAvailableColumns(): Promise<AvailableColumns> {
-    const res = await api.get<AvailableColumns>("/role-config/columns");
+    const res = await getDeduped<AvailableColumns>("/role-config/columns");
     return res.data;
   },
 };

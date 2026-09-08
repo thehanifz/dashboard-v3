@@ -18,7 +18,7 @@ from typing import Optional, List
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Query
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from starlette.background import BackgroundTask
 
 from app.core.config import MAX_UPLOAD_BYTES
@@ -140,7 +140,7 @@ async def autofill_from_postgres(
 
     # Filter node jika kolom ada di model
     if hasattr(PARecord, "node"):
-        stmt = stmt.where(PARecord.node == node_upper)
+        stmt = stmt.where(func.upper(func.trim(PARecord.node)) == node_upper)
 
     result = await db.execute(stmt)
     record = result.scalars().first()

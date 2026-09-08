@@ -21,6 +21,10 @@ import { TablePagination }      from "./TablePagination";
 import TableToolbar              from "./TableToolbar";
 import PresetEditorModal         from "../preset/PresetEditorModal";
 import ColumnFilter              from "./ColumnFilter";
+import MobileRecordList          from "./MobileRecordList";
+import MobileFilterSheet         from "./MobileFilterSheet";
+import BaiActionButton            from "./BaiActionButton";
+import TeskomActionButton         from "./TeskomActionButton";
 
 const MIN_COL_WIDTH     = 60;
 const DEFAULT_COL_WIDTH = 150;
@@ -29,11 +33,13 @@ type Props = {
   view?:         "table" | "kanban";
   onViewChange?: (v: "table" | "kanban") => void;
   toolbarOnly?:  boolean;
+  filterRefreshKey?: number;
 };
 
-export default function DynamicTable({ view, onViewChange, toolbarOnly = false }: Props = {}) {
+export default function DynamicTable({ view, onViewChange, toolbarOnly = false, filterRefreshKey = 0 }: Props = {}) {
   /* ── Stores ────────────────────────────────────────────────────────────── */
   const records         = useTaskStore(s => s.records) ?? [];
+  const isOffline       = useTaskStore(s => s.isOffline);
   const statusMaster    = useTaskStore(s => s.statusMaster);
   const presets         = usePresetStore(s => s.presets) ?? [];
   const activePresetId  = usePresetStore(s => s.activePresetId);
@@ -41,6 +47,8 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
   const reorderColumns  = usePresetStore(s => s.reorderColumns);
   const updatePreset    = usePresetStore(s => s.updatePreset);
   const { columnColors, labelColors, editableColumns, toggleEditableColumn } = useAppearanceStore();
+  const updateCell = useTaskStore(s => s.updateCell);
+  const updateStatus = useTaskStore(s => s.updateStatus);
   const { user }        = useAuthStore();
 
   /* ── Config dari API ───────────────────────────────────────────────────── */
@@ -70,7 +78,7 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
 
   /* ── Custom hooks ──────────────────────────────────────────────────────── */
   const [search, setSearch] = useState("");
-  const { filteredRecords, activeFilters } = useTableData(records, search, statusMaster);
+  const { filteredRecords, activeFilters } = useTableData(records, search, statusMaster, filterRefreshKey);
   const editor     = useCellEditor(statusMaster, ptlEditableSet);
   const pagination = useTablePagination(filteredRecords);
   const resize     = useTableResize(activePreset?.id, widths, filteredRecords);
@@ -79,6 +87,7 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
   /* ── UI State ──────────────────────────────────────────────────────────── */
   const [editorMode,          setEditorMode]          = useState<"create" | "edit" | null>(null);
   const [activeFilterCol,     setActiveFilterCol]     = useState<string | null>(null);
+  const [mobileFilterOpen,     setMobileFilterOpen]     = useState(false);
   const [filterPos,           setFilterPos]           = useState({ top: 0, left: 0 });
   const [saving]              = useState(false);
 
@@ -142,6 +151,7 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
         onEditPreset={() => setEditorMode("edit")}
         filterCount={filterCount}
         onResetFilter={() => useAppearanceStore.getState().clearFilters()}
+        onOpenMobileFilter={() => setMobileFilterOpen(true)}
         filteredCount={filteredRecords.length}
         totalCount={records.length}
       />
@@ -163,7 +173,40 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
             </div>
           ) : (
             <>
-              <div className="flex-1 overflow-auto custom-scrollbar rounded-2xl"
+              <div className="md:hidden flex-1 min-h-0 overflow-y-auto custom-scrollbar px-3 pb-3">
+                <MobileRecordList
+                  records={pagination.rows}
+                  columns={columns}
+                  statusMaster={statusMaster}
+                  canEditColumn={editor.canEditCell}
+                  onCommit={async (rowId, col, value) => {
+                    try {
+                      await updateCell(rowId, col, value);
+                      showToast("Data berhasil disimpan", "success");
+                    } catch {
+                      showToast("Gagal menyimpan data", "error");
+                      throw new Error("update failed");
+                    }
+                  }}
+                  canEditStatus={!isOffline}
+                  onStatusChange={async (rowId, status, detail) => {
+                    await updateStatus(rowId, status, detail);
+                  }}
+                  renderActions={record => (
+                    <>
+                      <BaiActionButton
+                        rowId={record.row_id}
+                        idPa={record.data[tableConfig.colIdPa] || ""}
+                        namaPerusahaan={record.data[tableConfig.colNamaPerusahaan] || ""}
+                        onToast={showToast}
+                      />
+                      <TeskomActionButton idPa={record.data[tableConfig.colIdPa] || ""} data={record.data} />
+                    </>
+                  )}
+                />
+              </div>
+
+              <div className="hidden md:block flex-1 overflow-auto custom-scrollbar rounded-2xl"
                 style={{ border: "1px solid var(--border)" }}>
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                   <table className="text-xs"
@@ -227,14 +270,26 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
                 </DndContext>
               </div>
 
-              <TablePagination
-                page={pagination.page}
-                pageSize={pagination.pageSize}
-                totalPage={pagination.totalPage}
-                total={filteredRecords.length}
-                setPage={pagination.setPage}
-                setPageSize={pagination.setPageSize}
-              />
+              <div className="shrink-0 md:hidden px-3 pb-3">
+                <TablePagination
+                  page={pagination.page}
+                  pageSize={pagination.pageSize}
+                  totalPage={pagination.totalPage}
+                  total={filteredRecords.length}
+                  setPage={pagination.setPage}
+                  setPageSize={pagination.setPageSize}
+                />
+              </div>
+              <div className="hidden md:block shrink-0 px-4 pb-3">
+                <TablePagination
+                  page={pagination.page}
+                  pageSize={pagination.pageSize}
+                  totalPage={pagination.totalPage}
+                  total={filteredRecords.length}
+                  setPage={pagination.setPage}
+                  setPageSize={pagination.setPageSize}
+                />
+              </div>
             </>
           )}
         </>
@@ -247,6 +302,22 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false }
           onClose={() => setEditorMode(null)}
         />
       )}
+      <MobileFilterSheet
+        open={mobileFilterOpen}
+        columns={columns}
+        records={records}
+        activeFilters={activeFilters}
+        onToggle={(col, val) => {
+          useAppearanceStore.getState().toggleFilter(col, val);
+          pagination.setPage(1);
+        }}
+        onReset={() => {
+          useAppearanceStore.getState().clearFilters();
+          pagination.setPage(1);
+        }}
+        onClose={() => setMobileFilterOpen(false)}
+      />
+
       {activeFilterCol && (
         <ColumnFilter
           column={activeFilterCol}

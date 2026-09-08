@@ -90,46 +90,53 @@ export default function UserManagementPanel() {
   };
 
   return (
-    <div className="p-4 lg:p-6 space-y-5">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>Daftar User</h2>
-          <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>
-            Kelola akun Engineer, PTL, dan Mitra.
-          </p>
-        </div>
-        <button
-          onClick={() => setIsCreate(true)}
-          className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white"
-          style={{ background: "var(--accent)" }}
+    <div className="p-4 lg:p-6">
+      <section
+        className="overflow-hidden rounded-2xl border shadow-sm"
+        style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
+      >
+        <div
+          className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+          style={{ borderBottom: "1px solid var(--border)" }}
         >
-          + Tambah User
-        </button>
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div className="rounded-xl px-4 py-3 text-sm"
-          style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)" }}>
-          {error}
+          <div className="min-w-0">
+            <h2 className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>Daftar User</h2>
+            <p className="mt-0.5 text-sm" style={{ color: "var(--text-secondary)" }}>
+              Kelola akun Engineer, PTL, dan Mitra.
+            </p>
+          </div>
+          <button
+            onClick={() => setIsCreate(true)}
+            className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 sm:w-auto"
+            style={{ background: "var(--accent)" }}
+          >
+            + Tambah User
+          </button>
         </div>
-      )}
 
-      {/* Tabel */}
-      {loading ? (
-        <div className="rounded-xl border p-6 text-sm"
-          style={{ background: "var(--bg-surface)", borderColor: "var(--border)", color: "var(--text-muted)" }}>
-          Memuat data user...
+        {error && (
+          <div className="mx-5 mt-4 rounded-xl px-4 py-3 text-sm"
+            style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)" }}>
+            {error}
+          </div>
+        )}
+
+        <div className="p-3 sm:p-4">
+          {loading ? (
+            <div className="rounded-xl border p-8 text-center text-sm"
+              style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-muted)" }}>
+              Memuat data user...
+            </div>
+          ) : (
+            <UserTable
+              users={users}
+              onEdit={setEditing}
+              onResetPassword={setResetUser}
+              onDeactivate={setDeact}
+            />
+          )}
         </div>
-      ) : (
-        <UserTable
-          users={users}
-          onEdit={setEditing}
-          onResetPassword={setResetUser}
-          onDeactivate={setDeact}
-        />
-      )}
+      </section>
 
       {/* Modals */}
       <UserFormModal

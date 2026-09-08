@@ -26,6 +26,7 @@ const ALLOWED_ROLES = ["superuser", "engineer"];
 
 export default function SettingsPage() {
   const { user, hasRole }   = useAuthStore();
+  const isSuperuser = user?.role === "superuser";
   const { setPage }         = useAppStore();
 
   const [settings, setSettings]   = useState<DashboardSetting[]>([]);
@@ -49,7 +50,12 @@ export default function SettingsPage() {
     setLoading(true);
     fetchAllSettings()
       .then(setSettings)
-      .catch((e) => setError(e.message))
+      .catch((e) => {
+        const status = e?.response?.status;
+        setError(status === 403
+          ? "Akun ini tidak memiliki akses untuk membaca Pengaturan."
+          : e?.message || "Gagal memuat pengaturan.");
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -102,115 +108,95 @@ export default function SettingsPage() {
   if (!ALLOWED_ROLES.some(r => hasRole(r))) return null;
 
   return (
-    <div className="flex flex-col h-full bg-gray-950 text-white overflow-y-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setPage("dashboard")}
-            className="text-gray-400 hover:text-white transition text-sm"
-          >
+    <div className="min-h-full overflow-y-auto" style={{ background: "var(--bg-app)", color: "var(--text-primary)" }}>
+      <div
+        className="sticky top-0 z-10 flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6"
+        style={{ background: "color-mix(in srgb, var(--bg-app) 92%, transparent)", borderColor: "var(--border)", backdropFilter: "blur(10px)" }}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <button onClick={() => setPage("dashboard")} className="shrink-0 text-sm transition hover:opacity-80" style={{ color: "var(--text-muted)" }}>
             ← Kembali
           </button>
-          <h1 className="text-xl font-bold text-white">⚙️ Pengaturan Dashboard</h1>
+          <div className="min-w-0">
+            <h1 className="truncate text-base font-bold sm:text-xl">⚙️ Pengaturan Dashboard</h1>
+            {isSuperuser && <p className="mt-0.5 text-[11px]" style={{ color: "var(--text-muted)" }}>Mode baca untuk Superuser</p>}
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          {saveMsg && (
-            <span className="text-sm text-green-400">{saveMsg}</span>
+        <div className="flex flex-wrap items-center gap-2">
+          {saveMsg && <span className="text-xs sm:text-sm" style={{ color: saveMsg.startsWith("❌") ? "#ef4444" : "#16a34a" }}>{saveMsg}</span>}
+          {!isSuperuser && (
+            <button onClick={handleInvalidateCache} className="rounded-lg px-3 py-2 text-xs font-medium transition hover:opacity-90" style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
+              🔄 Reload Cache
+            </button>
           )}
-          <button
-            onClick={handleInvalidateCache}
-            className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 px-3 py-1.5 rounded transition"
-          >
-            🔄 Reload Cache
-          </button>
-          {cacheMsg && (
-            <span className="text-xs text-blue-400">{cacheMsg}</span>
-          )}
+          {cacheMsg && <span className="text-xs" style={{ color: "var(--accent)" }}>{cacheMsg}</span>}
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 px-6 py-6 space-y-8 max-w-3xl">
+      <div className="w-full max-w-4xl space-y-6 px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
         {loading && (
-          <p className="text-gray-400 text-sm">Memuat settings...</p>
+          <div className="rounded-xl border px-4 py-3 text-sm" style={{ background: "var(--bg-surface)", borderColor: "var(--border)", color: "var(--text-muted)" }}>
+            Memuat settings...
+          </div>
         )}
         {error && (
-          <p className="text-red-400 text-sm">❌ {error}</p>
+          <div className="rounded-xl border px-4 py-3 text-sm" style={{ background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.3)", color: "#ef4444" }}>
+            ❌ {error}
+          </div>
         )}
 
         {Object.entries(grouped).map(([category, items]) => (
-          <div key={category}>
-            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
-              {CATEGORY_LABEL[category] ?? category}
-            </h2>
-            <div className="bg-gray-900 rounded-xl border border-gray-800 divide-y divide-gray-800">
-              {items.map((s) => (
-                <div key={s.key} className="px-4 py-3 flex items-start gap-4">
-                  {/* Label & deskripsi */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white">{s.label}</p>
-                    {s.description && (
-                      <p className="text-xs text-gray-500 mt-0.5">{s.description}</p>
-                    )}
-                    <p className="text-xs text-gray-600 mt-0.5 font-mono">{s.key}</p>
+          <section key={category}>
+            <div className="mb-3">
+              <h2 className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
+                {CATEGORY_LABEL[category] ?? category}
+              </h2>
+            </div>
+            <div className="overflow-hidden rounded-2xl border shadow-sm" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+              {items.map((s, index) => (
+                <div key={s.key} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:gap-5" style={{ borderTop: index ? "1px solid var(--border)" : undefined }}>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{s.label}</p>
+                    {s.description && <p className="mt-1 text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>{s.description}</p>}
+                    <p className="mt-1 break-all font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>{s.key}</p>
                   </div>
 
-                  {/* Value / edit */}
-                  <div className="flex items-center gap-2 shrink-0">
-                    {editKey === s.key ? (
-                      <>
+                  <div className="w-full sm:w-auto sm:min-w-[280px] sm:max-w-[46%]">
+                    {editKey === s.key && !isSuperuser ? (
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <input
-                          className="bg-gray-800 border border-blue-500 text-white text-sm rounded px-2 py-1 w-40 focus:outline-none"
+                          className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                          style={{ background: "var(--bg-surface2)", borderColor: "var(--accent)", color: "var(--text-primary)" }}
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") saveEdit(s.key);
-                            if (e.key === "Escape") cancelEdit();
-                          }}
+                          onKeyDown={(e) => { if (e.key === "Enter") saveEdit(s.key); if (e.key === "Escape") cancelEdit(); }}
                           autoFocus
                         />
-                        <button
-                          onClick={() => saveEdit(s.key)}
-                          disabled={saving}
-                          className="text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-2 py-1 rounded transition"
-                        >
-                          {saving ? "..." : "✔"}
-                        </button>
-                        <button
-                          onClick={cancelEdit}
-                          className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded transition"
-                        >
-                          ✕
-                        </button>
-                      </>
+                        <div className="flex gap-2">
+                          <button onClick={() => saveEdit(s.key)} disabled={saving} className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50 sm:flex-none">{saving ? "..." : "Simpan"}</button>
+                          <button onClick={cancelEdit} className="flex-1 rounded-lg px-3 py-2 text-xs font-medium sm:flex-none" style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)" }}>Batal</button>
+                        </div>
+                      </div>
                     ) : (
-                      <>
-                        <span className="text-sm text-gray-200 font-mono bg-gray-800 px-2 py-1 rounded">
-                          {s.value}
+                      <div className="flex items-start gap-2">
+                        <span className="min-w-0 flex-1 break-words rounded-lg px-3 py-2 font-mono text-xs" style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
+                          {s.value || "—"}
                         </span>
-                        {s.is_editable && (
-                          <button
-                            onClick={() => startEdit(s)}
-                            className="text-xs text-gray-400 hover:text-blue-400 transition px-1"
-                            title="Edit"
-                          >
-                            ✏️
-                          </button>
+                        {s.is_editable && !isSuperuser && (
+                          <button onClick={() => startEdit(s)} className="shrink-0 rounded-lg px-2 py-2 text-sm transition hover:opacity-80" style={{ color: "var(--text-muted)" }} title="Edit">✏️</button>
                         )}
-                      </>
+                      </div>
                     )}
                   </div>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         ))}
 
-        {/* Footer info */}
         {!loading && settings.length > 0 && (
-          <p className="text-xs text-gray-600">
-            Total {settings.length} settings. Perubahan berlaku real-time setelah disimpan (cache TTL 5 menit).
+          <p className="pb-4 text-[11px]" style={{ color: "var(--text-muted)" }}>
+            Total {settings.length} settings. {isSuperuser ? "Superuser dapat melihat konfigurasi tanpa mengubah nilainya." : "Perubahan berlaku setelah disimpan."}
           </p>
         )}
       </div>

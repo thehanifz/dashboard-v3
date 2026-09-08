@@ -16,19 +16,19 @@ const AGING_COLORS = { safe: "#10b981", warning: "#f59e0b", danger: "#f97316", c
 const CHART_COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#ec4899","#84cc16","#14b8a6"];
 
 // ─── KPI Card ───────────────────────────────────────────────────────────────────────────
-function KpiCard({ label, value, sub, accent, icon }: {
-  label: string; value: number | string; sub?: string; accent: string; icon: React.ReactNode;
+function KpiCard({ label, value, sub, accent, icon, onClick, clickable }: {
+  label: string; value: number | string; sub?: string; accent: string; icon: React.ReactNode; onClick?: () => void; clickable?: boolean;
 }) {
   return (
-    <div className="kpi-card">
+    <div className="kpi-card" onClick={onClick} style={{ cursor: clickable ? "pointer" : undefined }}>
       <div className="flex items-center justify-between mb-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: accent + "22" }}>
+        <div className="kpi-icon w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: accent + "22" }}>
           <span style={{ color: accent }}>{icon}</span>
         </div>
       </div>
-      <p className="text-3xl font-extrabold leading-none" style={{ color: "var(--text-primary)" }}>{value}</p>
-      <p className="text-xs font-semibold mt-1.5" style={{ color: "var(--text-secondary)" }}>{label}</p>
-      {sub && <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{sub}</p>}
+      <p className="kpi-value text-3xl font-extrabold leading-none" style={{ color: "var(--text-primary)" }}>{value}</p>
+      <p className="kpi-label text-xs font-semibold mt-1.5" style={{ color: "var(--text-secondary)" }}>{label}</p>
+      {sub && <p className="kpi-sub text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{sub}</p>}
     </div>
   );
 }
@@ -189,6 +189,19 @@ export default function SummaryDashboard() {
     });
   };
 
+  const handleOnProgressClick = () => {
+    const value = "__ON_PROGRESS__";
+    setDashboardFilter(prev => {
+      if (prev?.column === "__status_pa_bucket" && prev?.value === value) {
+        useAppearanceStore.getState().clearFilters();
+        return null;
+      }
+      useAppearanceStore.getState().setActiveFilters({ ["__status_pa_bucket"]: [value] });
+      useAppStore.getState().setPage("detail");
+      return { column: "Status PA", value: "On Progress" };
+    });
+  };
+
   const handleClearFilter = () => {
     setDashboardFilter(null);
     useAppearanceStore.getState().clearFilters();
@@ -226,6 +239,10 @@ export default function SummaryDashboard() {
     const valCancel   = detectedStatus.cancel;
 
     const byStatusPekerjaan: Record<string, number> = {};
+    const isOnProgress = (status: string) => {
+      const normalized = status.trim().toLowerCase();
+      return normalized !== "done bai" && normalized !== "pa cancel";
+    };
     const byLayanan:         Record<string, number> = {};
     const byJenisMutasi:     Record<string, number> = {};
     const byStatusPA:        Record<string, number> = {};
@@ -235,8 +252,10 @@ export default function SummaryDashboard() {
     const agingTiers = { safe: 0, warning: 0, danger: 0, critical: 0 };
 
     records.forEach(r => {
-      if (valProgress && (r.data[statusPaCol] || "").trim() === valProgress) {
-        const sp = r.data[statusPekCol] || "Tidak Diketahui";
+      const statusPa = (r.data[statusPaCol] || "").trim();
+      if (isOnProgress(statusPa)) {
+        const rawSp = (r.data[statusPekCol] || "").trim();
+        const sp = rawSp || "Tidak Diketahui";
         byStatusPekerjaan[sp] = (byStatusPekerjaan[sp] || 0) + 1;
       }
 
@@ -270,8 +289,8 @@ export default function SummaryDashboard() {
 
     const total      = records.length;
     const doneBai    = valDone     ? (byStatusPA[valDone]     || 0) : 0;
-    const onProgress = valProgress ? (byStatusPA[valProgress] || 0) : 0;
     const paCancel   = valCancel   ? (byStatusPA[valCancel]   || 0) : 0;
+    const onProgress = Math.max(0, total - doneBai - paCancel);
     const donePct    = total > 0 ? Math.round((doneBai / total) * 100) : 0;
 
     return {
@@ -299,7 +318,7 @@ export default function SummaryDashboard() {
     <div className="p-4 md:p-5 space-y-4 overflow-auto h-full custom-scrollbar view-enter pb-20 md:pb-5">
 
       {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+      <div className="kpi-grid grid grid-cols-4 gap-1.5 sm:grid-cols-2 xl:grid-cols-4 sm:gap-3 md:gap-4">
         <KpiCard label="Total PA" value={stats.total.toLocaleString("id-ID")} sub="Semua record aktif" accent="#3b82f6"
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
         />
@@ -315,6 +334,8 @@ export default function SummaryDashboard() {
           value={stats.onProgress.toLocaleString("id-ID")}
           sub={stats.valProgress ? `Status PA = ${stats.valProgress}` : "Sedang berjalan"}
           accent="#f59e0b"
+          clickable
+          onClick={handleOnProgressClick}
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
         />
         <KpiCard
@@ -352,7 +373,7 @@ export default function SummaryDashboard() {
             }}
           />
         </div>
-        <div className="flex justify-between mt-2">
+        <div className="flex flex-col gap-1 mt-2 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
             {stats.doneBai.toLocaleString("id-ID")} {stats.valDone || "Done"}
           </span>
@@ -388,10 +409,10 @@ export default function SummaryDashboard() {
       )}
 
       {/* ── Chart Row 1 ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+      <div className="grid min-w-0 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
         <SectionCard
           title={`Per ${cols?.colStatusPekerjaan ?? "Status Pekerjaan"} On Progress`}
-          subtitle={`Filter: ${cols?.colStatusPa ?? "Status PA"} = ${stats.valProgress || "On Progress"}`}
+          subtitle={`Filter: semua ${cols?.colStatusPa ?? "Status PA"} kecuali Done BAI dan PA Cancel`}
         >
           <div className="space-y-2.5">
             {Object.entries(stats.byStatusPekerjaan)
@@ -400,8 +421,8 @@ export default function SummaryDashboard() {
                 <HBar key={sp} label={sp} value={count} max={maxSP}
                   color={CHART_COLORS[i % CHART_COLORS.length]}
                   pct={totalSP > 0 ? `${Math.round(count / totalSP * 100)}%` : ""}
-                  onClick={() => handleBarClick("Status Pekerjaan", sp)}
-                  isActive={dashboardFilter?.column === "Status Pekerjaan" && dashboardFilter?.value === sp}
+                  onClick={() => handleBarClick("Status Pekerjaan", sp === "Tidak Diketahui" ? "__EMPTY__" : sp)}
+                  isActive={dashboardFilter?.column === "Status Pekerjaan" && dashboardFilter?.value === (sp === "Tidak Diketahui" ? "__EMPTY__" : sp)}
                 />
               ))}
           </div>
@@ -439,7 +460,7 @@ export default function SummaryDashboard() {
       </div>
 
       {/* ── Chart Row 2 ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+      <div className="grid min-w-0 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
         <SectionCard title="Top 10 NAMA CUSTOMER" subtitle="Customer terbanyak">
           <div className="space-y-2.5">
             {Object.entries(stats.byNamaCustomer)

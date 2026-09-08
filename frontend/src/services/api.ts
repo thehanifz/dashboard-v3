@@ -3,7 +3,7 @@
  * Axios instance dengan interceptor auth.
  * Import authStore langsung — tidak pakai require() karena tidak support di browser (ESM).
  */
-import axios, { AxiosInstance } from "axios";
+import axios, { AxiosInstance, AxiosResponse, AxiosRequestConfig } from "axios";
 import { useAuthStore } from "../state/authStore";
 
 const api: AxiosInstance = axios.create({
@@ -39,10 +39,15 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    if (useAuthStore.getState().isLoggingOut) {
+      return Promise.reject(error);
+    }
+
     if (
       originalRequest.url?.includes("/auth/login") ||
       originalRequest.url?.includes("/auth/refresh") ||
-      originalRequest.url?.includes("/auth/me")
+      originalRequest.url?.includes("/auth/me") ||
+      originalRequest.url?.includes("/auth/logout")
     ) {
       return Promise.reject(error);
     }
@@ -63,7 +68,19 @@ api.interceptors.response.use(
     isRefreshing = true;
 
     try {
+      // Logout selalu menang sebelum refresh dimulai.
+      if (useAuthStore.getState().isLoggingOut) {
+        throw new axios.CanceledError("Logout sedang diproses");
+      }
+
       const { data } = await api.post<{ access_token: string }>("/auth/refresh");
+
+      // Refresh bisa selesai bersamaan dengan klik Logout. Jangan hidupkan
+      // kembali token yang baru saja dinyatakan tidak valid oleh user.
+      if (useAuthStore.getState().isLoggingOut) {
+        throw new axios.CanceledError("Logout sedang diproses");
+      }
+
       const newToken = data.access_token;
       useAuthStore.getState().setToken(newToken);
       originalRequest.headers["Authorization"] = `Bearer ${newToken}`;
@@ -71,13 +88,36 @@ api.interceptors.response.use(
       return api(originalRequest);
     } catch (refreshError) {
       processQueue(refreshError, null);
-      useAuthStore.getState().clearAuth();
-      window.location.href = "/";
+      if (!useAuthStore.getState().isLoggingOut) {
+        useAuthStore.getState().clearAuth();
+        window.location.href = "/";
+      }
       return Promise.reject(refreshError);
     } finally {
       isRefreshing = false;
     }
   }
 );
+
+const inFlightGets = new Map<string, Promise<unknown>>();
+
+/** Share identical concurrent GET requests across components. */
+export function getDeduped<T = unknown>(
+  url: string,
+  config?: AxiosRequestConfig,
+): Promise<AxiosResponse<T>> {
+  const params = config?.params ? JSON.stringify(config.params) : "";
+  const authState = useAuthStore.getState();
+  const sessionKey = `${authState.user?.username ?? "public"}:${authState.user?.role ?? ""}:${authState.accessToken ?? ""}`;
+  const key = `${sessionKey}|${url}?${params}`;
+  const existing = inFlightGets.get(key);
+  if (existing) return existing as Promise<AxiosResponse<T>>;
+
+  const request = api.get<T>(url, config).finally(() => {
+    inFlightGets.delete(key);
+  });
+  inFlightGets.set(key, request);
+  return request;
+}
 
 export default api;

@@ -10,7 +10,7 @@
  *   engineer  → EngineerDashboardPanel | EngineerDetailPanel |
  *               AsBuiltPage | TeskomPage | MitraTableConfigPage | SyncDashboardPage | SettingsPage
  *
- * Halaman profile ditangani di App.tsx (shared semua role).
+ * Halaman profile ditangani di LayoutShell (shared semua role).
  */
 import { useState } from "react";
 import { useAuthStore } from "../state/authStore";
@@ -35,13 +35,14 @@ import TeskomPage           from "./TeskomPage";
 import MitraTableConfigPage from "./MitraTableConfigPage";
 import SyncDashboardPage    from "./SyncDashboardPage";
 import SettingsPage         from "./SettingsPage";
+import ProfilePage          from "./ProfilePage";
 
 // Panel superuser
 import SuperuserPanel from "../components/superuser/SuperuserPanel";
 
 /**
  * LayoutShell — wrapper Sidebar+Topbar untuk page bare (tanpa layout sendiri).
- * Dipakai untuk MitraTableConfigPage, SyncDashboardPage, SettingsPage, dan SuperuserPanel.
+ * Dipakai untuk ProfilePage, MitraTableConfigPage, SyncDashboardPage, SettingsPage, dan SuperuserPanel.
  */
 function LayoutShell({ children, onRefresh }: { children: React.ReactNode; onRefresh?: () => void }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -69,6 +70,12 @@ export default function MainPage() {
   const { user }    = useAuthStore();
   const { currentPage: page } = useAppStore();
 
+  // Profile selalu dirender di dalam shell aplikasi agar desktop/mobile konsisten
+  // dengan halaman lain dan tidak membuka layout standalone.
+  if (page === "profile") {
+    return <LayoutShell><ProfilePage /></LayoutShell>;
+  }
+
   // ── Superuser ──────────────────────────────────────────────────────────────
   // Sebelumnya SuperuserPanel self-contained (tanpa Sidebar), sehingga tombol
   // Settings di Sidebar tidak pernah muncul. Sekarang dibungkus LayoutShell
@@ -92,6 +99,7 @@ export default function MainPage() {
 
   // ── Mitra ─────────────────────────────────────────────────────────────────
   if (user?.role === "mitra") {
+    if (page === "teskom") return <TeskomPage />;
     return <MitraDashboardPanel />;
   }
 

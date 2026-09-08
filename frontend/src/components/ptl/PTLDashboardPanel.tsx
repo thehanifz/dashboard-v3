@@ -14,7 +14,6 @@ import Sidebar               from "../layout/Sidebar";
 import ToastContainer        from "../ui/ToastContainer";
 import PTLSummaryDashboard   from "./PTLSummaryDashboard";
 import api                   from "../../services/api";
-import type { PTLSheetData } from "../../state/taskStore";
 
 export default function PTLDashboardPanel() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -24,46 +23,36 @@ export default function PTLDashboardPanel() {
   const { setPage: setAppPage } = useAppStore();
   const ptlSheetData            = useTaskStore((s) => s.ptlSheetData);
   const ptlLoading              = useTaskStore((s) => s.ptlLoading);
-  const setPtlSheetData         = useTaskStore((s) => s.setPtlSheetData);
   const setPtlLoading           = useTaskStore((s) => s.setPtlLoading);
-  const hasLoadedData           = useTaskStore((s) => s.hasLoadedData);
-  const setHasLoadedData        = useTaskStore((s) => s.setHasLoadedData);
-  const refreshStatusOnly       = useTaskStore((s) => s.refreshStatusOnly);
+  const fetchPtlSheet           = useTaskStore((s) => s.fetchPtlSheet);
+  const fetchStatusMaster       = useTaskStore((s) => s.fetchStatusMaster);
   const { toasts, show: showToast } = useToast();
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
-  const fetchSheet = useCallback(async () => {
+  const fetchSheet = useCallback(async (forceNetwork = false) => {
     try {
-      setPtlLoading(true);
-      const res = await api.get<PTLSheetData>("/records/ptl-sheet");
-      setPtlSheetData(res.data);
+      await fetchPtlSheet(forceNetwork);
     } catch {
       showToast("Gagal memuat data GSheet", "error");
-    } finally {
-      setPtlLoading(false);
     }
-  }, [showToast, setPtlLoading, setPtlSheetData]);
+  }, [fetchPtlSheet, showToast]);
 
-  // First load: fetch status master + PTL data in parallel
+  // First load: baca cache permanen terlebih dahulu. Network hanya jika cache belum ada.
   useEffect(() => {
-    if (!hasLoadedData) {
-      Promise.all([
-        refreshStatusOnly().catch(console.error),
-        fetchSheet()
-      ]).then(() => {
-        setHasLoadedData();
-      });
-    }
-  }, []); // Only run on mount
+    Promise.all([
+      fetchStatusMaster().catch(console.error),
+      fetchSheet(false),
+    ]);
+  }, [fetchSheet, fetchStatusMaster]);
 
   // Show loading only on first load when no data yet
   const showLoading = ptlLoading && ptlSheetData === null;
 
   const handleRefresh = async () => {
-    await fetchSheet();
+    await fetchSheet(true);
     showToast("Data diperbarui", "success");
   };
 

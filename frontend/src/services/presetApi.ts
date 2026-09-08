@@ -5,7 +5,7 @@
  * pinnedColumns disimpan di dalam widths sebagai key "__pinned" (array JSON).
  * Backend menerima widths: dict[str, Any] sehingga bisa menyimpan list.
  */
-import api from "./api";
+import api, { getDeduped } from "./api";
 
 export type PresetScope = "engineer" | "ptl" | "kanban_engineer" | "kanban_ptl";
 
@@ -58,7 +58,7 @@ export function decodeWidths(widths?: Record<string, any>): Record<string, numbe
 
 const presetApi = {
   list: (scope: PresetScope): Promise<DBPreset[]> =>
-    api.get<DBPreset[]>("/presets", { params: { scope } }).then(r => r.data),
+    getDeduped<DBPreset[]>("/presets", { params: { scope } }).then(r => r.data),
 
   create: (
     scopeOrPayload: PresetScope | PresetCreatePayload,
@@ -80,7 +80,7 @@ const presetApi = {
     api.delete(`/presets/${id}`).then(() => undefined),
 
   getEditableColumns: (scope: PresetScope = "engineer"): Promise<string[]> =>
-    api.get<string[]>("/presets/editable-columns", { params: { scope } }).then(r => r.data),
+    getDeduped<string[]>("/presets/editable-columns", { params: { scope } }).then(r => r.data),
 
   saveEditableColumns: (columns: string[], scope: PresetScope = "engineer"): Promise<void> =>
     api.put("/presets/editable-columns", { columns }, { params: { scope } }).then(() => undefined),

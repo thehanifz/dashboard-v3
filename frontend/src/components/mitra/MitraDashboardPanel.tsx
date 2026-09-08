@@ -7,7 +7,7 @@
  *
  * Dipindah dari pages/MitraDashboardPage.tsx
  */
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useTaskStore }        from "../../state/taskStore";
 import { useThemeStore }       from "../../state/themeStore";
 import { useMitraConfigStore } from "../../state/mitraConfigStore";
@@ -15,6 +15,9 @@ import { useToast }            from "../../utils/useToast";
 import Topbar          from "../layout/Topbar";
 import Sidebar         from "../layout/Sidebar";
 import ToastContainer  from "../ui/ToastContainer";
+import MobileRecordList from "../table/MobileRecordList";
+import MobileFilterSheet from "../table/MobileFilterSheet";
+import TeskomActionButton from "../table/TeskomActionButton";
 
 type DashView = "summary" | "kanban" | "table";
 const DEFAULT_COL_WIDTH = 150;
@@ -26,16 +29,21 @@ export default function MitraDashboardPanel() {
   const [editingCell, setEditingCell]           = useState<{ rowId: number; col: string } | null>(null);
   const [editingValue, setEditingValue]         = useState("");
   const [page, setPage]                         = useState(1);
+  const [activeFilters, setActiveFilters]       = useState<Record<string, string[]>>({});
+  const [filterRefreshKey, setFilterRefreshKey] = useState(0);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const PAGE_SIZE                               = 20;
 
   const { toasts, show: showToast } = useToast();
   const { theme }                   = useThemeStore();
   const refreshAll                  = useTaskStore((s) => s.refreshAll);
-  const refreshStatusOnly           = useTaskStore((s) => s.refreshStatusOnly);
+  const fetchStatusMaster            = useTaskStore((s) => s.fetchStatusMaster);
   const hasLoadedData               = useTaskStore((s) => s.hasLoadedData);
   const records                     = useTaskStore((s) => s.records) ?? [];
   const updateCell                  = useTaskStore((s) => s.updateCell);
+  const updateStatus                = useTaskStore((s) => s.updateStatus);
   const isLoading                   = useTaskStore((s) => s.isLoading);
+  const statusMaster                = useTaskStore((s) => s.statusMaster);
 
   const {
     visibleColumns,
@@ -51,22 +59,57 @@ export default function MitraDashboardPanel() {
 
   useEffect(() => {
     fetchConfig();
-    refreshStatusOnly().catch(console.error);
     if (!hasLoadedData) {
+      // refreshAll memuat status + records melalui cache-first masing-masing.
       refreshAll().catch(() => showToast("Gagal memuat data", "error"));
+    } else {
+      // Navigasi balik: cukup baca status dari cache dan sync di background.
+      fetchStatusMaster().catch(console.error);
     }
-  }, [hasLoadedData]);
+  }, [hasLoadedData, fetchConfig, fetchStatusMaster, refreshAll, showToast]);
+
+  const filterSnapshotRef = useRef<{ signature: string; rowIds: Set<number> } | null>(null);
 
   const filteredRecords = useMemo(() => {
-    if (!search.trim()) return records;
-    const q = search.toLowerCase();
-    return records.filter((r) =>
-      Object.values(r.data ?? {}).some((v) => String(v).toLowerCase().includes(q))
-    );
-  }, [records, search]);
+    let result = [...records];
+
+    if (Object.keys(activeFilters).length > 0) {
+      const signature = `${filterRefreshKey}:${JSON.stringify(activeFilters)}:${records.length > 0 ? "loaded" : "empty"}`;
+      const cached = filterSnapshotRef.current;
+      if (!cached || cached.signature !== signature) {
+        const rowIds = new Set(
+          records
+            .filter(record =>
+              Object.entries(activeFilters).every(([key, values]) =>
+                values.includes(String(record.data?.[key] ?? ""))
+              )
+            )
+            .map(record => record.row_id)
+        );
+        filterSnapshotRef.current = { signature, rowIds };
+      }
+      result = result.filter(record => filterSnapshotRef.current!.rowIds.has(record.row_id));
+    } else {
+      filterSnapshotRef.current = null;
+    }
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter((r) =>
+        Object.values(r.data ?? {}).some((v) => String(v).toLowerCase().includes(q))
+      );
+    }
+
+    return result;
+  }, [records, search, activeFilters, filterRefreshKey]);
 
   const totalPage    = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE));
+  const filterCount = Object.keys(activeFilters).length;
   const pagedRecords = filteredRecords.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  useEffect(() => {
+    if (page > totalPage) setPage(totalPage);
+  }, [page, totalPage]);
 
   const canEdit = (col: string) => editableColumns.includes(col);
 
@@ -93,7 +136,8 @@ export default function MitraDashboardPanel() {
 
   const handleRefresh = async () => {
     try {
-      await refreshAll();
+      await refreshAll(true);
+      setFilterRefreshKey(v => v + 1);
       showToast("Data berhasil diperbarui", "success");
     } catch {
       showToast("Gagal memuat data", "error");
@@ -115,7 +159,7 @@ export default function MitraDashboardPanel() {
           onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
         />
 
-        <main className="flex-1 overflow-hidden p-4 space-y-4">
+        <main className="flex-1 min-h-0 overflow-hidden p-4 space-y-4 flex flex-col">
 
           {/* Header info */}
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -127,7 +171,8 @@ export default function MitraDashboardPanel() {
                 {records.length} pekerjaan · {editableColumns.length} kolom bisa diedit
               </p>
             </div>
-            <div className="relative">
+            <div className="w-full md:w-auto flex items-center gap-2">
+            <div className="relative flex-1 md:flex-none">
               <svg className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
                 fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
                 style={{ color: "var(--text-muted)" }}>
@@ -138,9 +183,25 @@ export default function MitraDashboardPanel() {
                 placeholder="Cari data..."
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                className="th-input pl-8 pr-3 py-1.5 text-xs w-48"
+                className="th-input pl-8 pr-3 py-2 md:py-1.5 text-xs w-full md:w-48"
               />
             </div>
+            <button
+              type="button"
+              onClick={() => setMobileFilterOpen(true)}
+              className="md:hidden inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium shrink-0"
+              style={{
+                background: filterCount > 0 ? "var(--accent-soft)" : "var(--bg-surface)",
+                color: filterCount > 0 ? "var(--accent)" : "var(--text-secondary)",
+                border: `1px solid ${filterCount > 0 ? "var(--accent)" : "var(--border)"}`,
+              }}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4-2A1 1 0 018 17v-3.586L3.293 6.707A1 1 0 013 6V4z" />
+              </svg>
+              Filter{filterCount > 0 ? ` ${filterCount}` : ""}
+            </button>
+          </div>
           </div>
 
           {/* Loading */}
@@ -152,7 +213,7 @@ export default function MitraDashboardPanel() {
 
           {/* Keterangan editable columns */}
           {loaded && editableColumns.length > 0 && (
-            <div className="flex flex-wrap gap-2 items-center">
+            <div className="hidden md:flex flex-wrap gap-2 items-center">
               <span className="text-xs" style={{ color: "var(--text-muted)" }}>Kolom yang bisa diedit:</span>
               {editableColumns.map((col) => (
                 <span key={col} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
@@ -166,13 +227,54 @@ export default function MitraDashboardPanel() {
             </div>
           )}
 
-          {/* Tabel */}
+          {/* Mobile: card list — urutan kolom mengikuti konfigurasi Mitra. */}
           {loaded && displayColumns.length > 0 && (
-            <div className="rounded-2xl border overflow-auto custom-scrollbar"
+            <div className="md:hidden flex-1 min-h-0 overflow-y-auto custom-scrollbar pb-3">
+              <MobileRecordList
+                records={pagedRecords}
+                columns={displayColumns}
+                statusMaster={statusMaster}
+                canEditColumn={col => editableColumns.includes(col)}
+                onCommit={async (rowId, col, value) => {
+                  try {
+                    await updateCell(rowId, col, value);
+                    showToast("Data berhasil disimpan", "success");
+                  } catch {
+                    showToast("Gagal menyimpan data", "error");
+                    throw new Error("update failed");
+                  }
+                }}
+                onStatusChange={async (rowId, status, detail) => {
+                  await updateStatus(rowId, status, detail);
+                }}
+                renderActions={record => (
+                  <TeskomActionButton
+                    idPa={record.data["ID PA"] || ""}
+                    data={record.data}
+                  />
+                )}
+              />
+            </div>
+          )}
+
+          {/* Desktop: tabel existing. */}
+          {loaded && displayColumns.length > 0 && (
+            <div className="hidden md:block rounded-2xl border overflow-auto custom-scrollbar"
               style={{ background: "var(--bg-surface)", borderColor: "var(--border)", maxHeight: "calc(100vh - 260px)" }}>
               <table className="text-xs border-collapse" style={{ tableLayout: "fixed", width: "max-content", minWidth: "100%" }}>
                 <thead className="sticky top-0 z-10 th-table-head">
                   <tr>
+                    <th
+                      className="sticky left-0 z-10 px-2 py-2.5 text-center font-semibold"
+                      style={{
+                        width: 40, minWidth: 40,
+                        borderBottom: "2px solid var(--border)",
+                        borderRight: "1px solid var(--border)",
+                        background: "var(--bg-surface)",
+                        color: "var(--text-muted)",
+                      }}
+                      title="Aksi"
+                    />
                     {displayColumns.map((col) => (
                       <th key={col}
                         className="px-3 py-2.5 text-left font-semibold"
@@ -199,6 +301,17 @@ export default function MitraDashboardPanel() {
                     <tr key={r.row_id}
                       className="th-table-row"
                       style={{ background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)" }}>
+                      <td
+                        className="sticky left-0 z-10 px-1 py-1 text-center"
+                        style={{
+                          width: 40, minWidth: 40,
+                          borderRight: "1px solid var(--border)",
+                          borderBottom: "1px solid var(--border)",
+                          background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)",
+                        }}
+                      >
+                        <TeskomActionButton idPa={r.data["ID PA"] || ""} data={r.data} />
+                      </td>
                       {displayColumns.map((col) => {
                         const isEditing = editingCell?.rowId === r.row_id && editingCell?.col === col;
                         const editable  = canEdit(col);
@@ -263,7 +376,7 @@ export default function MitraDashboardPanel() {
 
           {/* Pagination */}
           {filteredRecords.length > PAGE_SIZE && (
-            <div className="flex items-center justify-between px-3 py-2 rounded-xl shrink-0"
+            <div className="flex items-center justify-between px-3 py-2 rounded-xl shrink-0 md:mx-0 mx-3"
               style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
               <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                 <b style={{ color: "var(--text-primary)" }}>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredRecords.length)}</b> dari <b style={{ color: "var(--text-primary)" }}>{filteredRecords.length}</b>
@@ -280,6 +393,25 @@ export default function MitraDashboardPanel() {
 
         </main>
       </div>
+
+      <MobileFilterSheet
+        open={mobileFilterOpen}
+        columns={displayColumns}
+        records={records}
+        activeFilters={activeFilters}
+        onToggle={(column, value) => {
+          setActiveFilters(prev => {
+            const current = prev[column] ?? [];
+            const next = current.includes(value) ? current.filter(item => item !== value) : [...current, value];
+            const updated = { ...prev };
+            if (next.length === 0) delete updated[column]; else updated[column] = next;
+            return updated;
+          });
+          setPage(1);
+        }}
+        onReset={() => { setActiveFilters({}); setPage(1); }}
+        onClose={() => setMobileFilterOpen(false)}
+      />
 
       <ToastContainer toasts={toasts} />
     </div>

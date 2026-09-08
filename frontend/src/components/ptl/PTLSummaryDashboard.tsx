@@ -8,7 +8,7 @@
  * dengan filter otomatis terapasang.
  */
 import { useMemo, useState, useEffect } from "react";
-import { calcAging, getAgingTierStyles, DEFAULT_THRESHOLDS } from "../../utils/aging";
+import { calcAgingFromDays, getAgingTierStyles, DEFAULT_THRESHOLDS } from "../../utils/aging";
 import type { AgingThresholds } from "../../utils/aging";
 import { getAgingThresholds } from "../../services/settingsApi";
 import { useAppStore } from "../../state/appStore";
@@ -48,7 +48,7 @@ function KpiCard({ label, value, sub, accent, icon, onClick, clickable }: {
       title={clickable ? `Klik untuk lihat detail` : undefined}
     >
       <div className="flex items-center justify-between mb-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: accent + "22" }}>
+        <div className="kpi-icon w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: accent + "22" }}>
           <span style={{ color: accent }}>{icon}</span>
         </div>
         {clickable && (
@@ -58,9 +58,9 @@ function KpiCard({ label, value, sub, accent, icon, onClick, clickable }: {
           </svg>
         )}
       </div>
-      <p className="text-3xl font-extrabold leading-none" style={{ color: "var(--text-primary)" }}>{value}</p>
-      <p className="text-xs font-semibold mt-1.5" style={{ color: "var(--text-secondary)" }}>{label}</p>
-      {sub && <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{sub}</p>}
+      <p className="kpi-value text-3xl font-extrabold leading-none" style={{ color: "var(--text-primary)" }}>{value}</p>
+      <p className="kpi-label text-xs font-semibold mt-1.5" style={{ color: "var(--text-secondary)" }}>{label}</p>
+      {sub && <p className="kpi-sub text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{sub}</p>}
     </div>
   );
 }
@@ -124,8 +124,7 @@ function SectionCard({ title, subtitle, children }: {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function PTLSummaryDashboard({ records, loading }: Props) {
   const [thresholds, setThresholds] = useState<AgingThresholds>(DEFAULT_THRESHOLDS);
-  const tglCol    = "TGL TERBIT PA";
-  const baiCol    = "TGL UPLOAD BAI";
+  const agingCol  = "Aging";
   const statusCol = "Status PA";
 
   const drillToPtlDetail = useAppStore(s => s.drillToPtlDetail);
@@ -142,16 +141,27 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
   // ─── Stats ───────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
     const byStatusPekerjaan: Record<string, number> = {};
+    const isOnProgress = (status: string) => {
+      const normalized = status.trim().toLowerCase();
+      return normalized !== "done bai" && normalized !== "pa cancel";
+    };
     const byLayanan:         Record<string, number> = {};
     const byJenisMutasi:     Record<string, number> = {};
     const byStatusPA:        Record<string, number> = {};
-    const agingTiers = { safe: 0, warning: 0, danger: 0, critical: 0 };
-    const agingRowIds: Record<string, number[]> = { safe: [], warning: [], danger: [], critical: [] };
+    const agingTiers = {
+      doneBai: { safe: 0, warning: 0, danger: 0, critical: 0 },
+      onProgress: { safe: 0, warning: 0, danger: 0, critical: 0 },
+    };
+    const agingRowIds: Record<string, number[]> = {
+      doneBai: [],
+      onProgress: [],
+    };
 
     records.forEach(r => {
-      // Status Pekerjaan — hanya yang Status PA = On Progress
-      if ((r.data[statusCol] || "") === "On Progress") {
-        const sp = r.data["Status Pekerjaan"] || "Tidak Diketahui";
+      // On Progress = semua kecuali Done BAI dan PA Cancel
+      if (isOnProgress((r.data[statusCol] || "").trim())) {
+        const rawSp = (r.data["Status Pekerjaan"] || "").trim();
+        const sp = rawSp || "Tidak Diketahui";
         byStatusPekerjaan[sp] = (byStatusPekerjaan[sp] || 0) + 1;
       }
 
@@ -164,23 +174,28 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
       const mutasi = r.data["JENIS MUTASI"] || "Lainnya";
       byJenisMutasi[mutasi] = (byJenisMutasi[mutasi] || 0) + 1;
 
-      // Aging: freeze saat Done BAI, live saat On Progress
-      const aging = calcAging(
-        r.data[tglCol],
-        thresholds,
-        r.data[baiCol],
-        r.data[statusCol]
-      );
-      if (aging) {
-        agingTiers[aging.tier]++;
-        agingRowIds[aging.tier].push(r.row_id);
+      // Aging dashboard: gunakan nilai literal kolom "Aging".
+      // Hanya Done BAI dan On Progres yang dihitung; Cancel diabaikan.
+      const normalizedStatus = String(r.data[statusCol] ?? "").trim().toLowerCase();
+      const agingGroup = normalizedStatus === "done bai"
+        ? "doneBai"
+        : normalizedStatus === "on progres" || normalizedStatus === "on progress"
+          ? "onProgress"
+          : null;
+
+      if (agingGroup) {
+        const aging = calcAgingFromDays(String(r.data[agingCol] ?? ""), thresholds);
+        if (aging) {
+          agingTiers[agingGroup][aging.tier]++;
+          agingRowIds[agingGroup].push(r.row_id);
+        }
       }
     });
 
     const total      = records.length;
     const doneBai    = byStatusPA["Done BAI"]    || 0;
-    const onProgress = byStatusPA["On Progress"] || 0;
     const paCancel   = byStatusPA["PA Cancel"]   || 0;
+    const onProgress = Math.max(0, total - doneBai - paCancel);
     const donePct    = total > 0 ? Math.round((doneBai / total) * 100) : 0;
 
     return {
@@ -199,6 +214,9 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
   // ─── Drill handlers ───────────────────────────────────────────────────────
   const drillByStatusPA = (value: string) =>
     drillToPtlDetail({ column: "Status PA", values: [value], label: `Status PA = ${value}` });
+
+  const drillOnProgress = () =>
+    drillToPtlDetail({ column: "__status_pa_bucket", values: ["__ON_PROGRESS__"], label: "Status PA = On Progress (kecuali Done BAI & PA Cancel)" });
 
   const drillByStatusPekerjaan = (value: string) =>
     drillToPtlDetail({
@@ -223,8 +241,12 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
   const drillByMutasi = (value: string) =>
     drillToPtlDetail({ column: "JENIS MUTASI", values: [value], label: `Jenis Mutasi = ${value}` });
 
-  const drillByAging = (tier: string, label: string) =>
-    drillToPtlDetail({ column: "__aging_tier", values: [tier], label: `Aging: ${label}` });
+  const drillByAging = (group: "doneBai" | "onProgress", tier: string, label: string) =>
+    drillToPtlDetail({
+      column: "__aging_status_tier",
+      values: [`${group}:${tier}`],
+      label: `Aging ${group === "doneBai" ? "Done BAI" : "On Progres"}: ${label}`,
+    });
 
   if (loading && records.length === 0) {
     return (
@@ -240,7 +262,7 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
     <div className="p-4 md:p-5 space-y-4 overflow-auto h-full custom-scrollbar view-enter pb-20 md:pb-5">
 
       {/* ── KPI Cards — by Status PA ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+      <div className="kpi-grid grid grid-cols-4 gap-1.5 sm:grid-cols-2 xl:grid-cols-4 sm:gap-3 md:gap-4">
         <KpiCard label="Total PA" value={stats.total} sub="Semua record aktif" accent="#3b82f6"
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
         />
@@ -249,7 +271,7 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
         />
         <KpiCard label="On Progress" value={stats.onProgress} sub="Status PA = On Progress" accent="#f59e0b"
-          clickable onClick={() => drillByStatusPA("On Progress")}
+          clickable onClick={drillOnProgress}
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
         />
         <KpiCard label="PA Cancel" value={stats.paCancel} sub="Status PA = PA Cancel" accent="#ef4444"
@@ -282,16 +304,16 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
             }}
           />
         </div>
-        <div className="flex justify-between mt-2">
+        <div className="flex flex-col gap-1 mt-2 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{stats.doneBai} Done BAI</span>
           <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{stats.onProgress} On Progress · {stats.paCancel} PA Cancel</span>
         </div>
       </div>
 
       {/* ── Chart Row — 3 Bar Horizontal ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+      <div className="grid min-w-0 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
 
-        <SectionCard title="Per Status Pekerjaan On Progress" subtitle="Klik bar untuk filter tabel">
+        <SectionCard title="Per Status Pekerjaan On Progress" subtitle="Semua status PA kecuali Done BAI & PA Cancel • Klik bar untuk filter tabel">
           <div className="space-y-1">
             {Object.entries(stats.byStatusPekerjaan)
               .sort((a, b) => b[1] - a[1])
@@ -299,7 +321,7 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
                 <HBar key={sp} label={sp} value={count} max={maxSP}
                   color={CHART_COLORS[i % CHART_COLORS.length]}
                   pct={`${Math.round(count / totalSP * 100)}%`}
-                  onClick={() => drillByStatusPekerjaan(sp)}
+                  onClick={() => drillByStatusPekerjaan(sp === "Tidak Diketahui" ? "__EMPTY__" : sp)}
                 />
               ))}
           </div>
@@ -334,44 +356,56 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
         </SectionCard>
       </div>
 
-      {/* ── Distribusi Aging — tiles clickable ── */}
+      {/* ── Distribusi Aging — Done BAI vs On Progres ── */}
       <div className="rounded-2xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
         <div className="mb-4">
           <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Distribusi Aging PA</h3>
           <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-            {`Tier: ≤${thresholds.tier1}h · ≤${thresholds.tier2}h · ≤${thresholds.tier3}h · >${thresholds.tier3}h`}
-            {" · "}<span style={{ color: "var(--accent)", fontWeight: 600 }}>Klik tier untuk filter tabel</span>
+            Aging diambil dari kolom <strong>Aging</strong> · skala mengikuti config existing · <span style={{ color: "var(--accent)", fontWeight: 600 }}>Klik tier untuk filter tabel</span>
           </p>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {(["safe", "warning", "danger", "critical"] as const).map(tier => {
-            const count = stats.agingTiers[tier];
-            const s     = tierStyles[tier];
-            const pct   = stats.total > 0 ? Math.round(count / stats.total * 100) : 0;
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+          {([
+            ["doneBai", "Done BAI"],
+            ["onProgress", "On Progres"],
+          ] as const).map(([group, groupLabel]) => {
+            const groupTotal = Object.values(stats.agingTiers[group]).reduce((a, b) => a + b, 0);
             return (
-              <div key={tier}
-                className="rounded-xl p-4 text-center"
-                onClick={() => drillByAging(tier, s.label)}
-                style={{
-                  background: "var(--bg-surface2)",
-                  border: "1px solid var(--border)",
-                  cursor: "pointer",
-                  transition: "box-shadow 150ms, transform 150ms",
-                }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLElement).style.boxShadow = `0 4px 12px ${AGING_COLORS[tier]}33`;
-                  (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)";
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLElement).style.boxShadow = "";
-                  (e.currentTarget as HTMLElement).style.transform = "";
-                }}
-                title={`Klik untuk filter tabel: aging ${s.label}`}
-              >
-                <div className="w-2.5 h-2.5 rounded-full mx-auto mb-2" style={{ background: AGING_COLORS[tier] }} />
-                <p className="text-2xl font-extrabold" style={{ color: "var(--text-primary)" }}>{count}</p>
-                <p className="text-[11px] font-semibold mt-1" style={{ color: "var(--text-secondary)" }}>{s.label}</p>
-                <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{pct}% dari total</p>
+              <div key={group} className="rounded-xl p-4" style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{groupLabel}</p>
+                    <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{groupTotal} record</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {(["safe", "warning", "danger", "critical"] as const).map(tier => {
+                    const count = stats.agingTiers[group][tier];
+                    const s = tierStyles[tier];
+                    const pct = groupTotal > 0 ? Math.round(count / groupTotal * 100) : 0;
+                    return (
+                      <div key={tier}
+                        className="rounded-xl p-3 text-center"
+                        onClick={() => drillByAging(group, tier, s.label)}
+                        style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", cursor: "pointer", transition: "box-shadow 150ms, transform 150ms" }}
+                        onMouseEnter={e => {
+                          (e.currentTarget as HTMLElement).style.boxShadow = `0 4px 12px ${AGING_COLORS[tier]}33`;
+                          (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)";
+                        }}
+                        onMouseLeave={e => {
+                          (e.currentTarget as HTMLElement).style.boxShadow = "";
+                          (e.currentTarget as HTMLElement).style.transform = "";
+                        }}
+                        title={`Klik untuk filter tabel: ${groupLabel} · ${s.label}`}
+                      >
+                        <div className="w-2.5 h-2.5 rounded-full mx-auto mb-2" style={{ background: AGING_COLORS[tier] }} />
+                        <p className="text-2xl font-extrabold" style={{ color: "var(--text-primary)" }}>{count}</p>
+                        <p className="text-[11px] font-semibold mt-1" style={{ color: "var(--text-secondary)" }}>{s.label}</p>
+                        <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{pct}%</p>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             );
           })}

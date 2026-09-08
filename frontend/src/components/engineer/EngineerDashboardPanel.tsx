@@ -17,7 +17,7 @@ export default function EngineerDashboardPanel() {
   const { toasts, show: showToast }             = useToast();
 
   const refreshAll        = useTaskStore((s) => s.refreshAll);
-  const refreshStatusOnly = useTaskStore((s) => s.refreshStatusOnly);
+  const fetchStatusMaster = useTaskStore((s) => s.fetchStatusMaster);
   const hasLoadedData     = useTaskStore((s) => s.hasLoadedData);
   const loadCacheMeta     = useTaskStore((s) => s.loadCacheMeta);
   const theme             = useThemeStore((s) => s.theme);
@@ -39,16 +39,16 @@ export default function EngineerDashboardPanel() {
 
   useEffect(() => {
     console.log("[EngineerDashboard] Mounting...");
-    refreshStatusOnly().catch(console.error);
 
     if (!hasLoadedData) {
-      // Pertama kali: coba dari cache dulu (forceNetwork = false)
+      // refreshAll memuat status + records melalui cache-first masing-masing.
       refreshAll(false).catch((err) => {
         console.error("Gagal load data:", err);
         showToast("Gagal memuat data", "error");
       });
     } else {
-      // Sudah ada di store (navigasi balik), cukup refresh meta cache di topbar
+      // Navigasi balik: status tetap cache-first, tanpa memicu refreshAll kedua.
+      fetchStatusMaster().catch(console.error);
       loadCacheMeta();
     }
   }, []);

@@ -2,7 +2,7 @@
  * profileApi.ts
  * API calls untuk halaman profil user.
  */
-import api from "./api";
+import api, { getDeduped } from "./api";
 
 export interface ProfileData {
   username:          string;
@@ -17,7 +17,7 @@ export interface ProfileData {
 
 export const profileApi = {
   getMe: async (): Promise<ProfileData> => {
-    const res = await api.get<ProfileData>("/profile/me");
+    const res = await getDeduped<ProfileData>("/profile/me");
     return res.data;
   },
 

@@ -35,7 +35,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-950">
       <div className="w-full max-w-sm bg-gray-900 border border-gray-700 rounded-2xl p-8 shadow-2xl">
         <div className="text-center mb-8">
-          <div className="text-3xl font-bold text-white tracking-tight">Dashboard V3</div>
+          <div className="text-3xl font-bold text-white tracking-tight">OverSee</div>
           <div className="text-sm text-gray-400 mt-1">Masuk untuk melanjutkan</div>
         </div>
 

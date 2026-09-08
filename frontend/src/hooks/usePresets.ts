@@ -10,6 +10,7 @@ import presetApi, {
   Preset, PresetScope, PresetCreatePayload, PresetUpdatePayload,
   encodeWidths, decodePinned, decodeWidths,
 } from "../services/presetApi";
+import { getPresetCache, setPresetCache } from "../services/presetCache";
 
 // ── Tipe preset dengan pinnedColumns yang sudah di-decode ────────────────────
 export interface DecodedPreset extends Omit<Preset, "widths"> {
@@ -45,6 +46,16 @@ function decodePreset(p: Preset): DecodedPreset {
   };
 }
 
+function encodeCachedPresets(presets: DecodedPreset[]): Preset[] {
+  return presets.map(p => ({
+    id: p.id,
+    scope: p.scope,
+    name: p.name,
+    columns: p.columns,
+    widths: encodeWidths(p.widths ?? {}, p.pinnedColumns ?? []),
+  }));
+}
+
 // ── Main hook ─────────────────────────────────────────────────────────────────
 export function usePresets(scope: PresetScope) {
   const [presets,  setPresets]  = useState<DecodedPreset[]>([]);
@@ -60,28 +71,44 @@ export function usePresets(scope: PresetScope) {
 
   const activePreset = presets.find(p => p.id === activePresetId) ?? null;
 
+  const applyPresets = useCallback((data: Preset[]) => {
+    setPresets(data.map(decodePreset));
+    if (activePresetId !== null && !data.find(p => p.id === activePresetId)) {
+      setActivePresetId(null);
+    }
+  }, [activePresetId, setActivePresetId]);
+
   const fetchPresets = useCallback(async () => {
-    try {
+    setError(null);
+    const cached = await getPresetCache(scope);
+    if (cached) {
+      applyPresets(cached);
+      setLoading(false);
+    } else {
       setLoading(true);
-      setError(null);
+    }
+
+    try {
       const data = await presetApi.list(scope);
-      setPresets(data.map(decodePreset));
-      if (activePresetId !== null && !data.find(p => p.id === activePresetId)) {
-        setActivePresetId(null);
-      }
+      await setPresetCache(scope, data);
+      applyPresets(data);
     } catch {
-      setError("Gagal memuat preset");
+      if (!cached) setError("Gagal memuat preset");
     } finally {
       setLoading(false);
     }
-  }, [scope]);
+  }, [scope, applyPresets]);
 
   useEffect(() => { fetchPresets(); }, [fetchPresets]);
 
   const createPreset = useCallback(async (payload: Omit<PresetCreatePayload, "scope">) => {
     const created = await presetApi.create({ ...payload, scope });
     const decoded = decodePreset(created);
-    setPresets(prev => [...prev, decoded]);
+    setPresets(prev => {
+      const next = [...prev, decoded];
+      void setPresetCache(scope, encodeCachedPresets(next));
+      return next;
+    });
     setActivePresetId(decoded.id);
     return decoded;
   }, [scope, setActivePresetId]);
@@ -108,7 +135,11 @@ export function usePresets(scope: PresetScope) {
 
     const updated = await presetApi.update(id, apiPayload);
     const decoded = decodePreset(updated);
-    setPresets(prev => prev.map(p => p.id === id ? decoded : p));
+    setPresets(prev => {
+      const next = prev.map(p => p.id === id ? decoded : p);
+      void setPresetCache(scope, encodeCachedPresets(next));
+      return next;
+    });
     return decoded;
   }, [presets]);
 
@@ -116,6 +147,7 @@ export function usePresets(scope: PresetScope) {
     await presetApi.remove(id);
     setPresets(prev => {
       const next = prev.filter(p => p.id !== id);
+      void setPresetCache(scope, encodeCachedPresets(next));
       if (activePresetId === id) setActivePresetId(next[0]?.id ?? null);
       return next;
     });

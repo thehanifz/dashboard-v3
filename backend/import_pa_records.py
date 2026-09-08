@@ -33,10 +33,9 @@ from psycopg2.extras import execute_values
 load_dotenv()
 
 # ── Koneksi DB ────────────────────────────────────────────────────────────────
-DB_URL_SYNC = os.getenv(
-    "DB_URL_SYNC",
-    "postgresql+psycopg2://db_dashboard_pro:1c0nplus_db-thehanifz@localhost:5433/dashboard_pro"
-)
+DB_URL_SYNC = os.getenv("DB_URL_SYNC")
+if not DB_URL_SYNC:
+    raise RuntimeError("DB_URL_SYNC tidak ditemukan di .env")
 
 # Hapus prefix SQLAlchemy jika ada
 PSYCOPG2_DSN = DB_URL_SYNC.replace("postgresql+psycopg2://", "postgresql://")

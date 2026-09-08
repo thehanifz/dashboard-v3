@@ -228,10 +228,10 @@ export default function TemplateFillGenerator({ onToast, selectedTemplate: exter
 
   // ── MODE STANDALONE: form kiri + preview kanan ────────────────────────────
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full flex-col lg:flex-row overflow-hidden">
 
       {/* Panel Kiri: Form Field */}
-      <div className="w-72 shrink-0 flex flex-col overflow-hidden"
+      <div className="w-full h-[58%] lg:h-full lg:w-[40%] xl:w-72 shrink-0 flex flex-col overflow-hidden"
         style={{ borderRight: "1px solid var(--border)" }}>
 
         <div className="px-4 py-3 shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
@@ -311,7 +311,7 @@ export default function TemplateFillGenerator({ onToast, selectedTemplate: exter
           </div>
           {generating && <div className="spinner shrink-0" />}
         </div>
-        <div className="flex-1 overflow-auto flex items-center justify-center p-4 custom-scrollbar"
+        <div className="flex-1 min-h-[220px] overflow-auto flex items-center justify-center p-4 custom-scrollbar"
           style={{ background: "var(--bg-surface2)" }}>
           {!selected ? (
             <div className="text-center" style={{ color: "var(--text-muted)" }}>

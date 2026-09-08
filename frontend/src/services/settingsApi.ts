@@ -3,7 +3,8 @@
  * API client untuk endpoint /api/settings
  * Pakai axios instance (api.ts) agar token auto-refresh berjalan.
  */
-import api from "./api";
+import api, { getDeduped } from "./api";
+import { getGlobal, setGlobal, delGlobal } from "./cacheStore";
 
 export type DashboardSetting = {
   id:          number;
@@ -20,7 +21,7 @@ export type DashboardSetting = {
 
 // ── GET /api/settings — semua settings (butuh login) ─────────────────────────────
 export async function fetchAllSettings(): Promise<DashboardSetting[]> {
-  const { data } = await api.get<DashboardSetting[]>("/settings/");
+  const { data } = await getDeduped<DashboardSetting[]>("/settings/");
   return data;
 }
 
@@ -39,9 +40,23 @@ export async function invalidateSettingsCache(): Promise<void> {
 }
 
 // ── GET /api/settings/public — tanpa auth ────────────────────────────────────
-export async function fetchPublicSettings(): Promise<Record<string, unknown>> {
-  const { data } = await api.get<Record<string, unknown>>("/settings/public");
+export async function fetchPublicSettings(forceNetwork = false): Promise<Record<string, unknown>> {
+  if (!forceNetwork) {
+    const cached = await getGlobal<Record<string, unknown>>("public-settings");
+    if (cached) return cached;
+  }
+  const { data } = await getDeduped<Record<string, unknown>>("/settings/public");
+  await setGlobal("public-settings", data);
   return data;
+}
+
+/** Refresh public configuration once during login/session initialization. */
+export async function refreshPublicSettingsCache(): Promise<void> {
+  await fetchPublicSettings(true);
+}
+
+export async function clearPublicSettingsCache(): Promise<void> {
+  await delGlobal("public-settings");
 }
 
 // ── Legacy: getAgingThresholds — baca dari public settings ───────────────────
@@ -145,14 +160,14 @@ export async function getDynamicTableConfig(): Promise<DynamicTableConfig> {
 
 // ── getAppInfo — nama, subtitle, versi aplikasi untuk Sidebar ──────────────────
 export interface AppInfo {
-  appName:     string;  // key: app_name     → "Dashboard v3"
-  appSubtitle: string;  // key: app_subtitle → "PA PLN Icon+"
+  appName:     string;  // key: app_name     → "OverSee"
+  appSubtitle: string;  // key: app_subtitle → "PA PLN ICONPLUS"
   appVersion:  string;  // key: app_version  → "3.2"
 }
 
 const APP_INFO_DEFAULTS: AppInfo = {
-  appName:     import.meta.env.VITE_APP_NAME     ?? "Dashboard v3",
-  appSubtitle: import.meta.env.VITE_APP_SUBTITLE ?? "PA PLN Icon+",
+  appName:     import.meta.env.VITE_APP_NAME     ?? "OverSee",
+  appSubtitle: import.meta.env.VITE_APP_SUBTITLE ?? "PA PLN ICONPLUS",
   appVersion:  import.meta.env.VITE_APP_VERSION  ?? "3.2",
 };
 

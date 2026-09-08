@@ -24,6 +24,7 @@ export function useCellEditor(
 ) {
   const { canEditColumn } = useRole();
   const updateCell = useTaskStore(s => s.updateCell);
+  const isOffline = useTaskStore(s => s.isOffline);
 
   const statusColumn = statusMaster?.status_column ?? "";
   const detailColumn = statusMaster?.detail_column ?? "";
@@ -36,6 +37,7 @@ export function useCellEditor(
    * (ditangani oleh StatusCell / dropdown khusus).
    */
   function canEditCell(col: string): boolean {
+    if (isOffline) return false;
     if (statusColumn && col === statusColumn) return false;
     if (detailColumn && col === detailColumn) return false;
     return canEditColumn(col, ptlEditableSet);

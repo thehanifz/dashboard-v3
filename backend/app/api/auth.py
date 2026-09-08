@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import SUPERUSER_USERNAME, SUPERUSER_PASSWORD_HASH
+from app.core.config import SUPERUSER_USERNAME, SUPERUSER_PASSWORD_HASH, REFRESH_TOKEN_EXPIRE_DAYS
 from app.core.security import (
     verify_password,
     create_access_token,
@@ -24,7 +24,7 @@ from app.core.security import (
     hash_refresh_token,
 )
 from app.db.database import get_db
-from app.db.models import AuditLog, RefreshToken, User
+from app.db.models import AuditLog, RefreshToken, SuperuserRefreshToken, User
 from app.core.deps import get_current_user
 
 router = APIRouter(tags=["auth"])
@@ -91,10 +91,21 @@ async def login(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Username atau password salah")
 
         access_token = create_access_token({"sub": SUPERUSER_USERNAME, "role": "superuser"})
-        # Superuser: access token only, tidak ada refresh token di DB
+        raw_rt, hashed_rt, expires_at = create_refresh_token()
+        db.add(
+            SuperuserRefreshToken(
+                username=SUPERUSER_USERNAME,
+                token_hash=hashed_rt,
+                expires_at=expires_at,
+            )
+        )
         response.set_cookie(
-            key=REFRESH_COOKIE, value="superuser-no-refresh",
-            httponly=True, secure=True, samesite="strict", max_age=60 * 60 * 8,
+            key=REFRESH_COOKIE,
+            value=raw_rt,
+            httponly=True,
+            secure=True,
+            samesite="strict",
+            max_age=60 * 60 * 24 * REFRESH_TOKEN_EXPIRE_DAYS,
         )
         await _write_audit(db, SUPERUSER_USERNAME, "superuser", "LOGIN_SUCCESS", request)
         return LoginResponse(
@@ -121,7 +132,7 @@ async def login(
     db.add(RefreshToken(user_id=user.id, token_hash=hashed_rt, expires_at=expires_at))
     response.set_cookie(
         key=REFRESH_COOKIE, value=raw_rt,
-        httponly=True, secure=True, samesite="strict", max_age=60 * 60 * 24 * 7,
+        httponly=True, secure=True, samesite="strict", max_age=60 * 60 * 24 * REFRESH_TOKEN_EXPIRE_DAYS,
     )
 
     await _write_audit(db, user.username, user.role.value, "LOGIN_SUCCESS", request)
@@ -141,12 +152,13 @@ async def refresh_token(
     db: AsyncSession = Depends(get_db),
 ):
     raw_rt = request.cookies.get(REFRESH_COOKIE)
-    if not raw_rt or raw_rt == "superuser-no-refresh":
+    if not raw_rt:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token tidak ditemukan")
 
     hashed = hash_refresh_token(raw_rt)
     now = datetime.now(timezone.utc)
 
+    # User biasa: refresh token terikat ke row users.
     result = await db.execute(
         select(RefreshToken)
         .where(RefreshToken.token_hash == hashed)
@@ -154,27 +166,70 @@ async def refresh_token(
         .where(RefreshToken.expires_at > now)
     )
     rt_row: RefreshToken | None = result.scalar_one_or_none()
-    if not rt_row:
+    if rt_row:
+        result2 = await db.execute(select(User).where(User.id == rt_row.user_id))
+        user: User | None = result2.scalar_one_or_none()
+        if not user or not user.is_active:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User tidak valid")
+
+        rt_row.is_revoked = True
+        rt_row.revoked_at = now
+        raw_new, hashed_new, expires_new = create_refresh_token()
+        db.add(RefreshToken(user_id=user.id, token_hash=hashed_new, expires_at=expires_new))
+        response.set_cookie(
+            key=REFRESH_COOKIE,
+            value=raw_new,
+            httponly=True,
+            secure=True,
+            samesite="strict",
+            max_age=60 * 60 * 24 * REFRESH_TOKEN_EXPIRE_DAYS,
+        )
+
+        return {
+            "access_token": create_access_token({"sub": user.username, "role": user.role.value}),
+            "token_type": "bearer",
+            "username": user.username,
+            "role": user.role.value,
+            "nama_lengkap": user.nama_lengkap,
+        }
+
+    # Superuser tidak ada di tabel users; gunakan tabel refresh khusus.
+    super_result = await db.execute(
+        select(SuperuserRefreshToken)
+        .where(SuperuserRefreshToken.token_hash == hashed)
+        .where(SuperuserRefreshToken.username == SUPERUSER_USERNAME)
+        .where(SuperuserRefreshToken.is_revoked == False)
+        .where(SuperuserRefreshToken.expires_at > now)
+    )
+    super_rt = super_result.scalar_one_or_none()
+    if not super_rt:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token tidak valid atau expired")
 
-    result2 = await db.execute(select(User).where(User.id == rt_row.user_id))
-    user: User | None = result2.scalar_one_or_none()
-    if not user or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User tidak valid")
-
-    # Rotate token
-    rt_row.is_revoked = True
-    rt_row.revoked_at = now
+    super_rt.is_revoked = True
+    super_rt.revoked_at = now
     raw_new, hashed_new, expires_new = create_refresh_token()
-    db.add(RefreshToken(user_id=user.id, token_hash=hashed_new, expires_at=expires_new))
+    db.add(
+        SuperuserRefreshToken(
+            username=SUPERUSER_USERNAME,
+            token_hash=hashed_new,
+            expires_at=expires_new,
+        )
+    )
     response.set_cookie(
-        key=REFRESH_COOKIE, value=raw_new,
-        httponly=True, secure=True, samesite="strict", max_age=60 * 60 * 24 * 7,
+        key=REFRESH_COOKIE,
+        value=raw_new,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=60 * 60 * 24 * REFRESH_TOKEN_EXPIRE_DAYS,
     )
 
     return {
-        "access_token": create_access_token({"sub": user.username, "role": user.role.value}),
+        "access_token": create_access_token({"sub": SUPERUSER_USERNAME, "role": "superuser"}),
         "token_type": "bearer",
+        "username": SUPERUSER_USERNAME,
+        "role": "superuser",
+        "nama_lengkap": "Super Admin",
     }
 
 
@@ -186,13 +241,20 @@ async def logout(
     db: AsyncSession = Depends(get_db),
 ):
     raw_rt = request.cookies.get(REFRESH_COOKIE)
-    if raw_rt and raw_rt != "superuser-no-refresh":
+    if raw_rt:
         hashed = hash_refresh_token(raw_rt)
+        now = datetime.now(timezone.utc)
         await db.execute(
             update(RefreshToken)
             .where(RefreshToken.token_hash == hashed)
             .where(RefreshToken.is_revoked == False)
-            .values(is_revoked=True, revoked_at=datetime.now(timezone.utc))
+            .values(is_revoked=True, revoked_at=now)
+        )
+        await db.execute(
+            update(SuperuserRefreshToken)
+            .where(SuperuserRefreshToken.token_hash == hashed)
+            .where(SuperuserRefreshToken.is_revoked == False)
+            .values(is_revoked=True, revoked_at=now)
         )
     response.delete_cookie(key=REFRESH_COOKIE, httponly=True, secure=True, samesite="strict")
     return {"ok": True}

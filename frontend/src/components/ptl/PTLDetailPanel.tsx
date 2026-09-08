@@ -7,7 +7,7 @@
  * Drill-down: saat masuk dari PTL Dashboard (via appStore.ptlDrillFilter),
  * filter langsung diterapkan dan banner info ditampilkan.
  */
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { useThemeStore }     from "../../state/themeStore";
@@ -18,7 +18,7 @@ import { useAppearanceStore } from "../../state/appearanceStore";
 import { useAppStore }        from "../../state/appStore";
 import { useTaskStore }       from "../../state/taskStore";
 import { useTableSettings }    from "../../hooks/useTableSettings";
-import { calcAging, DEFAULT_THRESHOLDS } from "../../utils/aging";
+import { calcAgingFromDays, DEFAULT_THRESHOLDS } from "../../utils/aging";
 import type { AgingThresholds } from "../../utils/aging";
 import { getAgingThresholds } from "../../services/settingsApi";
 import Sidebar               from "../layout/Sidebar";
@@ -29,7 +29,10 @@ import ColumnFilter          from "../table/ColumnFilter";
 import PresetEditorModal     from "../preset/PresetEditorModal";
 import { TableHeaderCell }   from "../table/TableHeaderCell";
 import TableToolbar          from "../table/TableToolbar";
+import { TablePagination }   from "../table/TablePagination";
 import EditableCell          from "../table/EditableCell";
+import MobileRecordList       from "../table/MobileRecordList";
+import MobileFilterSheet      from "../table/MobileFilterSheet";
 import api                   from "../../services/api";
 import baiApi                from "../../services/baiApi";
 
@@ -41,8 +44,9 @@ const DEFAULT_COL_WIDTH = 160;
 const MIN_COL_WIDTH     = 60;
 
 // ─── BAI Button ───────────────────────────────────────────────────────────────
-function PtlBaiButton({ rowId, idPa, namaPerusahaan, onToast }: {
+function PtlBaiButton({ rowId, idPa, namaPerusahaan, onToast, disabled = false }: {
   rowId: number; idPa: string; namaPerusahaan: string;
+  disabled?: boolean;
   onToast: (msg: string, type?: "success" | "error") => void;
 }) {
   const [showModal, setShowModal] = useState(false);
@@ -73,7 +77,8 @@ function PtlBaiButton({ rowId, idPa, namaPerusahaan, onToast }: {
 
   return (
     <>
-      <button onClick={e => { e.stopPropagation(); setShowModal(true); }}
+      <button onClick={e => { e.stopPropagation(); if (!disabled) setShowModal(true); }}
+        disabled={disabled}
         title={`Generate BAI — ${idPa}`}
         className="flex items-center justify-center w-6 h-6 rounded-md transition-all"
         style={{ color: "var(--text-muted)" }}
@@ -142,11 +147,11 @@ function PtlBaiButton({ rowId, idPa, namaPerusahaan, onToast }: {
 }
 
 // ─── Teskom Button ────────────────────────────────────────────────────────────
-function PtlTeskomButton({ idPa }: { idPa: string }) {
+function PtlTeskomButton({ idPa, data }: { idPa: string; data: Record<string, string> }) {
   const setNavPage        = useAppStore(s => s.setPage);
   const setTeskomAutofill = useAppStore(s => s.setTeskomAutofill);
   return (
-    <button onClick={e => { e.stopPropagation(); if (!idPa) return; setTeskomAutofill(idPa); setNavPage("teskom"); }}
+    <button onClick={e => { e.stopPropagation(); if (!idPa) return; setTeskomAutofill(idPa, data, "ptl"); setNavPage("teskom"); }}
       title={`Buka Teskom — ${idPa}`}
       className="flex items-center justify-center w-6 h-6 rounded-md transition-all"
       style={{ color: "var(--text-muted)" }}
@@ -187,17 +192,20 @@ export default function PTLDetailPanel() {
   const [localRecords, setLocalRecords]         = useState<SheetRecord[]>([]);
   const [search, setSearch]                     = useState("");
   const [saving, setSaving]                     = useState(false);
+  const isOffline                               = useTaskStore(s => s.isOffline);
   const [thresholds, setThresholds]             = useState<AgingThresholds>(DEFAULT_THRESHOLDS);
 
   const { pageSize, tablePage, setPageSize, setTablePage } = useTableSettings(20);
 
   const [activeFilters, setActiveFilters]       = useState<Record<string, string[]>>({});
   const [activeFilterCol, setActiveFilterCol]   = useState<string | null>(null);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [filterPos, setFilterPos]               = useState({ top: 0, left: 0 });
   const [presetDropdownOpen, setPresetDropdown] = useState(false);
   const [showCreatePreset, setShowCreatePreset] = useState(false);
   const [editingPresetId, setEditingPresetId]   = useState<number | null>(null);
   const [drillLabel, setDrillLabel]             = useState<string | null>(null);
+  const [filterRefreshKey, setFilterRefreshKey] = useState(0);
 
   const { theme }                   = useThemeStore();
   const { user }                    = useAuthStore();
@@ -209,6 +217,8 @@ export default function PTLDetailPanel() {
   const setPtlSheetData       = useTaskStore((s) => s.setPtlSheetData);
   const ptlLoading            = useTaskStore((s) => s.ptlLoading);
   const setPtlLoading         = useTaskStore((s) => s.setPtlLoading);
+  const fetchPtlSheet         = useTaskStore((s) => s.fetchPtlSheet);
+  const updatePtlCache        = useTaskStore((s) => s.updatePtlCache);
   const statusMaster          = useTaskStore((s) => s.statusMaster);
   const refreshAll            = useTaskStore((s) => s.refreshAll);
 
@@ -264,8 +274,8 @@ export default function PTLDetailPanel() {
   useEffect(() => {
     if (!ptlDrillFilter) return;
     const { column, values, label } = ptlDrillFilter;
-    if (column === "__aging_tier") {
-      setActiveFilters({ ["__aging_tier"]: values });
+    if (column === "__aging_tier" || column === "__aging_status_tier") {
+      setActiveFilters({ [column]: values });
     } else {
       setActiveFilters({ [column]: values });
     }
@@ -278,45 +288,37 @@ export default function PTLDetailPanel() {
   const records    = localRecords;
   const idPaCol    = allColumns.find(c => c === "ID PA") ?? "ID PA";
   const namaCol    = allColumns.find(c => c.toLowerCase().includes("perusahaan")) ?? "";
-  const tglCol     = "TGL TERBIT PA";
-  const baiCol     = "TGL UPLOAD BAI";
   const statusPaCol = "Status PA";
 
   const statusCol = statusMaster?.status_column ?? "Status Pekerjaan";
   const detailCol = statusMaster?.detail_column ?? "Detail Progres";
 
-  const refreshPtlData = useCallback(async () => {
+  const refreshPtlData = useCallback(async (forceNetwork = false) => {
     try {
-      const [statusRes, sheetRes] = await Promise.all([
-        api.get("/status"),
-        api.get<PTLSheetData>("/records/ptl-sheet")
-      ]);
-      useTaskStore.getState().fetchStatusMaster();
-      setPtlSheetData(sheetRes.data);
-      if (sheetRes.data.records) {
-        setLocalRecords(sheetRes.data.records);
-      }
+      await fetchPtlSheet(forceNetwork);
+      const data = useTaskStore.getState().ptlSheetData;
+      if (data?.records) setLocalRecords(data.records);
     } catch (err) {
       console.error("[PTLDetail] refreshPtlData error:", err);
       showToast("Gagal memuat data GSheet", "error");
     }
-  }, [showToast, setPtlSheetData]);
+  }, [fetchPtlSheet, showToast]);
 
   useEffect(() => {
     if (!ptlSheetData?.records && !ptlLoading) {
-      console.log("[PTLDetail] No data in store, fetching...");
-      refreshPtlData();
+      refreshPtlData(false);
     }
   }, [ptlSheetData, ptlLoading, refreshPtlData]);
 
   const handleUpdateCell = useCallback(async (rowId: number, col: string, value: string) => {
+    if (isOffline || (typeof navigator !== "undefined" && !navigator.onLine)) { showToast("Offline — data hanya dapat dibaca", "error"); return; }
     setLocalRecords(prev =>
       prev.map(r => r.row_id === rowId ? { ...r, data: { ...r.data, [col]: value } } : r)
     );
     setSaving(true);
     try {
       await api.post(`/records/ptl-sheet/${rowId}/cells`, { updates: { [col]: value } });
-      await refreshPtlData();
+      await updatePtlCache(rowId, { [col]: value });
     } catch (err: any) {
       setLocalRecords(prev =>
         prev.map(r => r.row_id === rowId ? { ...r, data: { ...r.data, [col]: localRecords.find(s => s.row_id === rowId)?.data[col] ?? value } } : r)
@@ -325,9 +327,10 @@ export default function PTLDetailPanel() {
     } finally {
       setSaving(false);
     }
-  }, [showToast, refreshPtlData, localRecords]);
+  }, [showToast, updatePtlCache, localRecords, isOffline]);
 
   const handleUpdateStatus = useCallback(async (rowId: number, status: string, detail?: string) => {
+    if (isOffline || (typeof navigator !== "undefined" && !navigator.onLine)) { showToast("Offline — data hanya dapat dibaca", "error"); return; }
     setLocalRecords(prev =>
       prev.map(r => {
         if (r.row_id !== rowId) return r;
@@ -343,29 +346,24 @@ export default function PTLDetailPanel() {
     );
     setSaving(true);
     try {
-      await api.post(`/records/ptl-sheet/${rowId}/cells`, {
-        updates: {
-          [statusCol]: status,
-          ...(detail !== undefined ? { [detailCol]: detail } : {}),
-        },
-      });
-      await refreshPtlData();
+      const updates = {
+        [statusCol]: status,
+        ...(detail !== undefined ? { [detailCol]: detail } : {}),
+      };
+      await api.post(`/records/ptl-sheet/${rowId}/cells`, { updates });
+      await updatePtlCache(rowId, updates);
     } catch (err: any) {
       showToast(err?.response?.data?.detail ?? "Gagal menyimpan status", "error");
-      await refreshPtlData();
     } finally {
       setSaving(false);
     }
-  }, [statusCol, detailCol, showToast, refreshPtlData]);
+  }, [statusCol, detailCol, showToast, updatePtlCache, isOffline]);
 
   const handleRefresh = async () => {
     try {
       setPtlLoading(true);
-      const res = await api.get<PTLSheetData>("/records/ptl-sheet");
-      setPtlSheetData(res.data);
-      if (res.data.records) {
-        setLocalRecords(res.data.records);
-      }
+      await refreshPtlData(true);
+      setFilterRefreshKey(v => v + 1);
       showToast("Data diperbarui", "success");
     } catch {
       showToast("Gagal memuat data GSheet", "error");
@@ -374,39 +372,77 @@ export default function PTLDetailPanel() {
     }
   };
 
-  // ── Filter + search — termasuk aging tier virtual ──
+  // ── Filter + search — filter membership is snapshotted until filter refresh/reset ──
+  const filterSnapshotRef = useRef<{ signature: string; rowIds: Set<number> } | null>(null);
+
   const filteredRecords = useMemo(() => {
     let result = [...records];
+    const hasFilters = Object.keys(activeFilters).length > 0;
 
-    const normalFilters = Object.fromEntries(
-      Object.entries(activeFilters).filter(([k]) => k !== "__aging_tier")
-    );
-    if (Object.keys(normalFilters).length > 0) {
-      result = result.filter(r =>
-        Object.entries(normalFilters).every(([key, vals]) => vals.includes(String(r.data[key] || "")))
-      );
-    }
-
-    // Filter aging tier virtual — pakai tglUploadBAI + statusPa agar freeze konsisten
-    if (activeFilters["__aging_tier"]) {
-      const tiers = activeFilters["__aging_tier"];
-      result = result.filter(r => {
-        const aging = calcAging(
-          r.data[tglCol],
-          thresholds,
-          r.data[baiCol],
-          r.data[statusPaCol]
+    if (hasFilters) {
+      const signature = `${filterRefreshKey}:${JSON.stringify(activeFilters)}:${JSON.stringify(thresholds)}:${records.length > 0 ? "loaded" : "empty"}`;
+      const cached = filterSnapshotRef.current;
+      if (!cached || cached.signature !== signature) {
+        const normalFilters = Object.fromEntries(
+          Object.entries(activeFilters).filter(([k]) => k !== "__aging_tier" && k !== "__aging_status_tier")
         );
-        return aging ? tiers.includes(aging.tier) : false;
-      });
+
+        const rowIds = new Set(
+          records
+            .filter(r => {
+              if (Object.keys(normalFilters).length > 0) {
+                const matchesNormal = Object.entries(normalFilters).every(([key, vals]) => {
+                  // Dashboard drill-down uses a virtual filter instead of a real column.
+                  if (key === "__status_pa_bucket") {
+                    const status = String(r.data[statusPaCol] ?? "").trim().toLowerCase();
+                    return vals.includes("__ON_PROGRESS__")
+                      ? status !== "done bai" && status !== "pa cancel"
+                      : false;
+                  }
+
+                  // __EMPTY__ represents a genuinely empty cell.
+                  const raw = String(r.data[key] ?? "");
+                  return vals.some(v => v === "__EMPTY__" ? raw.trim() === "" : raw === v);
+                });
+                if (!matchesNormal) return false;
+              }
+
+              if (activeFilters["__aging_status_tier"]) {
+                const filters = activeFilters["__aging_status_tier"];
+                const status = String(r.data[statusPaCol] ?? "").trim().toLowerCase();
+                const group = status === "done bai"
+                  ? "doneBai"
+                  : status === "on progres" || status === "on progress"
+                    ? "onProgress"
+                    : null;
+                const aging = calcAgingFromDays(String(r.data["Aging"] ?? ""), thresholds);
+                if (!group || !aging || !filters.includes(`${group}:${aging.tier}`)) return false;
+              } else if (activeFilters["__aging_tier"]) {
+                // Backward compatibility for existing persisted/drill filters.
+                const tiers = activeFilters["__aging_tier"];
+                const aging = calcAgingFromDays(String(r.data["Aging"] ?? ""), thresholds);
+                if (!aging || !tiers.includes(aging.tier)) return false;
+              }
+
+              return true;
+            })
+            .map(r => r.row_id)
+        );
+        filterSnapshotRef.current = { signature, rowIds };
+      }
+
+      result = result.filter(r => filterSnapshotRef.current!.rowIds.has(r.row_id));
+    } else {
+      filterSnapshotRef.current = null;
     }
 
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(r => Object.values(r.data ?? {}).some(v => String(v).toLowerCase().includes(q)));
     }
+
     return result;
-  }, [records, search, activeFilters, thresholds]);
+  }, [records, search, activeFilters, thresholds, filterRefreshKey, statusPaCol]);
 
   const totalPage    = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
   const pagedRecords = filteredRecords.slice((tablePage - 1) * pageSize, tablePage * pageSize);
@@ -426,6 +462,22 @@ export default function PTLDetailPanel() {
   const handleResetFilter = () => {
     setActiveFilters({});
     setDrillLabel(null);
+  };
+
+  const onProgressFilterActive = (activeFilters["__status_pa_bucket"] ?? []).includes("__ON_PROGRESS__");
+
+  const toggleOnProgressQuickFilter = () => {
+    setActiveFilters(prev => {
+      const next = { ...prev };
+      if ((prev["__status_pa_bucket"] ?? []).includes("__ON_PROGRESS__")) {
+        delete next["__status_pa_bucket"];
+      } else {
+        next["__status_pa_bucket"] = ["__ON_PROGRESS__"];
+      }
+      return next;
+    });
+    setDrillLabel(null);
+    setTablePage(1);
   };
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -511,21 +563,81 @@ export default function PTLDetailPanel() {
             onEditPreset={id => setEditingPresetId(id as number)}
             filterCount={filterCount}
             onResetFilter={handleResetFilter}
+            onOpenMobileFilter={() => setMobileFilterOpen(true)}
             filteredCount={filteredRecords.length}
             totalCount={records.length}
+            quickFilterLabel="On Progress"
+            quickFilterActive={onProgressFilterActive}
+            onQuickFilter={toggleOnProgressQuickFilter}
           />
 
-          {view === "kanban" && (
-            <div className="flex-1 overflow-hidden">
-              {ptlLoading && localRecords.length === 0
-                ? <div className="p-6 text-xs" style={{ color: "var(--text-muted)" }}>Memuat data...</div>
-                : <PTLKanbanBoard records={records} onUpdateCell={handleUpdateCell} />
-              }
+          {/* Mobile: selalu gunakan card list. Kanban tidak ditampilkan di mobile. */}
+          <div className="md:hidden flex-1 min-h-0 overflow-y-auto custom-scrollbar px-3 pb-3">
+            {drillLabel && (
+              <div className="mb-2.5">
+                <DrillBanner label={drillLabel} onClear={handleResetFilter} />
+              </div>
+            )}
+
+            {!activePreset ? (
+              <div className="flex min-h-40 flex-col items-center justify-center rounded-2xl p-6 text-center"
+                style={{ background: "var(--bg-surface)", border: "2px dashed var(--border)" }}>
+                <p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+                  {presetLoading ? "Memuat preset..." : "Belum ada preset kolom"}
+                </p>
+              </div>
+            ) : (
+              <MobileRecordList
+                records={pagedRecords}
+                columns={columns}
+                statusMaster={statusMaster}
+                canEditColumn={col => !isOffline && ptlEditableColumns.includes(col) && col !== statusCol && col !== detailCol}
+                canEditStatus={!isOffline}
+                onCommit={handleUpdateCell}
+                onStatusChange={handleUpdateStatus}
+                renderActions={record => (
+                  <>
+                    <PtlBaiButton
+                      rowId={record.row_id}
+                      idPa={record.data[idPaCol] ?? ""}
+                      namaPerusahaan={namaCol ? (record.data[namaCol] ?? "") : ""}
+                      onToast={showToast}
+                      disabled={isOffline}
+                    />
+                    <PtlTeskomButton idPa={record.data[idPaCol] ?? ""} data={record.data} />
+                  </>
+                )}
+              />
+            )}
+
+          </div>
+
+          {filteredRecords.length > 0 && (
+            <div className="md:hidden shrink-0 px-3 pb-3">
+              <TablePagination
+                page={tablePage}
+                pageSize={pageSize}
+                totalPage={totalPage}
+                total={filteredRecords.length}
+                setPage={setTablePage}
+                setPageSize={setPageSize}
+              />
             </div>
           )}
 
-          {view === "table" && (
-            <div className="flex-1 overflow-hidden flex flex-col px-4 pt-3 pb-4 gap-2.5">
+          {/* Desktop: behavior existing tetap dipertahankan, termasuk Kanban. */}
+          <div className="hidden md:flex flex-1 overflow-hidden flex-col">
+            {view === "kanban" && (
+              <div className="flex-1 overflow-hidden">
+                {ptlLoading && localRecords.length === 0
+                  ? <div className="p-6 text-xs" style={{ color: "var(--text-muted)" }}>Memuat data...</div>
+                  : <PTLKanbanBoard records={records} onUpdateCell={handleUpdateCell} />
+                }
+              </div>
+            )}
+
+            {view === "table" && (
+              <div className="flex-1 overflow-hidden flex flex-col px-4 pt-3 pb-4 gap-2.5">
 
               {drillLabel && (
                 <DrillBanner label={drillLabel} onClear={handleResetFilter} />
@@ -595,8 +707,8 @@ export default function PTLDetailPanel() {
                                 <td className="sticky left-0"
                                   style={{ zIndex: 10, width: 72, minWidth: 72, padding: "4px 8px", textAlign: "center", borderRight: "1px solid var(--border)", borderBottom: "1px solid var(--border)", background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)" }}>
                                   <div className="flex items-center justify-center gap-0.5">
-                                    <PtlBaiButton rowId={r.row_id} idPa={idPaVal} namaPerusahaan={namaVal} onToast={showToast} />
-                                    <PtlTeskomButton idPa={idPaVal} />
+                                    <PtlBaiButton rowId={r.row_id} idPa={idPaVal} namaPerusahaan={namaVal} onToast={showToast} disabled={isOffline} />
+                                    <PtlTeskomButton idPa={idPaVal} data={r.data} />
                                   </div>
                                 </td>
                                 {columns.map(col => {
@@ -633,7 +745,7 @@ export default function PTLDetailPanel() {
                                       title={currentVal}>
 
                                       {isStatusCol && statusMaster && (
-                                        <select value={currentVal}
+                                        <select disabled={isOffline} value={currentVal}
                                           onChange={e => handleUpdateStatus(r.row_id, e.target.value, undefined)}
                                           className="text-xs border rounded px-1 py-0.5 w-full"
                                           style={{ background: "var(--bg-surface2)", color: "var(--text-primary)", borderColor: "var(--border)" }}>
@@ -645,7 +757,7 @@ export default function PTLDetailPanel() {
                                       )}
 
                                       {isDetailCol && statusMaster && (
-                                        <select value={currentVal}
+                                        <select disabled={isOffline} value={currentVal}
                                           onChange={e => handleUpdateStatus(r.row_id, r.data[statusCol] ?? "", e.target.value)}
                                           className="text-xs border rounded px-1 py-0.5 w-full"
                                           style={{ background: "var(--bg-surface2)", color: "var(--text-primary)", borderColor: "var(--border)" }}>
@@ -708,10 +820,27 @@ export default function PTLDetailPanel() {
               )}
             </div>
           )}
+          </div>
         </main>
       </div>
 
       <ToastContainer toasts={toasts} />
+
+      <MobileFilterSheet
+        open={mobileFilterOpen}
+        columns={columns}
+        records={records}
+        activeFilters={activeFilters}
+        onToggle={(col, val) => {
+          toggleFilter(col, val);
+          setTablePage(1);
+        }}
+        onReset={() => {
+          handleResetFilter();
+          setTablePage(1);
+        }}
+        onClose={() => setMobileFilterOpen(false)}
+      />
 
       {activeFilterCol && (
         <ColumnFilter

@@ -32,8 +32,12 @@ type Props = {
   onEditPreset:    (id: string | number) => void;
   filterCount:    number;
   onResetFilter:  () => void;
+  onOpenMobileFilter?: () => void;
   filteredCount: number;
   totalCount:    number;
+  quickFilterLabel?: string;
+  quickFilterActive?: boolean;
+  onQuickFilter?: () => void;
 };
 
 export default function TableToolbar({
@@ -41,8 +45,9 @@ export default function TableToolbar({
   view, onViewChange,
   search, onSearch,
   presets, activePreset, presetLoading, onSelectPreset, onCreatePreset, onEditPreset,
-  filterCount, onResetFilter,
+  filterCount, onResetFilter, onOpenMobileFilter,
   filteredCount, totalCount,
+  quickFilterLabel, quickFilterActive, onQuickFilter,
 }: Props) {
   return (
     <div className="shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
@@ -53,11 +58,10 @@ export default function TableToolbar({
         view={view} onViewChange={onViewChange}
       />
 
-      {view !== "kanban" && (
-        <div className="px-5 pb-3 flex items-center gap-2 flex-wrap">
+      <div className={`px-3 md:px-5 pb-3 flex items-center gap-2 flex-wrap ${view === "kanban" ? "md:hidden" : ""}`}>
 
           {/* Search */}
-          <div className="relative">
+          <div className="relative w-full md:w-auto">
             <svg className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
               fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
               style={{ color: "var(--text-muted)" }}>
@@ -66,7 +70,7 @@ export default function TableToolbar({
             <input
               type="text" placeholder="Cari data..." value={search}
               onChange={e => onSearch(e.target.value)}
-              className="th-input pl-8 pr-3 py-1.5 text-xs w-44"
+              className="th-input pl-8 pr-3 py-2 md:py-1.5 text-xs w-full md:w-44"
             />
           </div>
 
@@ -76,9 +80,49 @@ export default function TableToolbar({
             onSelectPreset={onSelectPreset} onCreatePreset={onCreatePreset} onEditPreset={onEditPreset}
           />
 
+          {/* Quick filter */}
+          {onQuickFilter && quickFilterLabel && (
+            <button
+              type="button"
+              onClick={onQuickFilter}
+              aria-pressed={quickFilterActive}
+              className="inline-flex items-center gap-1.5 px-3 py-2 md:py-1.5 rounded-xl text-xs font-medium transition-colors"
+              style={{
+                background: quickFilterActive ? "var(--accent-soft)" : "var(--bg-surface)",
+                color: quickFilterActive ? "var(--accent)" : "var(--text-secondary)",
+                border: `1px solid ${quickFilterActive ? "var(--accent)" : "var(--border)"}`,
+              }}
+              title={`${quickFilterActive ? "Matikan" : "Aktifkan"} filter ${quickFilterLabel}`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4-2A1 1 0 018 17v-3.586L3.293 6.707A1 1 0 013 6V4z" />
+              </svg>
+              {quickFilterLabel}
+            </button>
+          )}
+
+          {/* Mobile filter trigger */}
+          {onOpenMobileFilter && (
+            <button
+              type="button"
+              onClick={onOpenMobileFilter}
+              className="md:hidden inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium"
+              style={{
+                background: filterCount > 0 ? "var(--accent-soft)" : "var(--bg-surface)",
+                color: filterCount > 0 ? "var(--accent)" : "var(--text-secondary)",
+                border: `1px solid ${filterCount > 0 ? "var(--accent)" : "var(--border)"}`,
+              }}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4-2A1 1 0 018 17v-3.586L3.293 6.707A1 1 0 013 6V4z" />
+              </svg>
+              Filter{filterCount > 0 ? ` ${filterCount}` : ""}
+            </button>
+          )}
+
           {/* Filter badge */}
           {filterCount > 0 && (
-            <div className="flex items-center gap-1.5">
+            <div className="hidden md:flex items-center gap-1.5">
               <span className="text-xs px-2.5 py-1.5 rounded-lg font-medium flex items-center gap-1.5"
                 style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--accent)" }}>
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ width: 11, height: 11 }}>
@@ -103,8 +147,7 @@ export default function TableToolbar({
               {filteredCount} / {totalCount} baris
             </span>
           </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
