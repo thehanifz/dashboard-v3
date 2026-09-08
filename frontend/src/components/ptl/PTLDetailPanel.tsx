@@ -221,6 +221,7 @@ export default function PTLDetailPanel() {
   const updatePtlCache        = useTaskStore((s) => s.updatePtlCache);
   const statusMaster          = useTaskStore((s) => s.statusMaster);
   const refreshAll            = useTaskStore((s) => s.refreshAll);
+  const fetchStatusMaster     = useTaskStore((s) => s.fetchStatusMaster);
 
   const ptlDrillFilter     = useAppStore(s => s.ptlDrillFilter);
   const clearPtlDrillFilter = useAppStore(s => s.clearPtlDrillFilter);
@@ -257,6 +258,11 @@ export default function PTLDetailPanel() {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
+
+  // Status master must be available immediately from scoped cache on direct detail loads.
+  useEffect(() => {
+    fetchStatusMaster().catch((err) => console.error("[PTLDetail] status master load error:", err));
+  }, [fetchStatusMaster]);
 
   useEffect(() => {
     console.log("[PTLDetail] ptlSheetData changed:", ptlSheetData);

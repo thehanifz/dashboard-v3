@@ -5,7 +5,8 @@
  */
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import presetApi from "../services/presetApi";
+import presetApi, { type DBPreset } from "../services/presetApi";
+import { getPresetCache, setPresetCache } from "../services/presetCache";
 
 export type PTLTablePreset = {
   id:             string;
@@ -31,17 +32,28 @@ type PTLPresetState = {
   loadFromDB: () => Promise<void>;
 };
 
+async function persistPtlCache(presets: PTLTablePreset[]) {
+  const dbPresets: DBPreset[] = presets
+    .filter(p => Number.isFinite(p.db_id))
+    .map(p => ({
+      id: p.db_id as number,
+      scope: "ptl" as const,
+      name: p.name,
+      columns: p.columns,
+      widths: p.widths ?? {},
+    }));
+  await setPresetCache("ptl", dbPresets);
+}
+
 export const usePTLPresetStore = create<PTLPresetState>()(
   persist(
     (set, get) => ({
       presets:        [],
       activePresetId: null,
 
-      // ── Load dari DB ──────────────────────────────────────────────────────
+      // ── Load cache-first, lalu background sync dari backend ──────────────
       loadFromDB: async () => {
-        try {
-          const dbPresets = await presetApi.list("ptl");
-          if (!dbPresets || !dbPresets.length) return;
+        const applyPresets = (dbPresets: DBPreset[]) => {
           const merged: PTLTablePreset[] = dbPresets.map(p => ({
             id:      p.id.toString(),
             db_id:   p.id,
@@ -55,7 +67,26 @@ export const usePTLPresetStore = create<PTLPresetState>()(
               ? state.activePresetId
               : (merged[0]?.id ?? null),
           }));
-        } catch {}
+        };
+
+        const cached = await getPresetCache("ptl");
+        if (cached) {
+          applyPresets(cached);
+        }
+
+        try {
+          const fresh = await presetApi.list("ptl");
+          const changed = JSON.stringify(cached ?? null) !== JSON.stringify(fresh);
+          if (changed) {
+            await setPresetCache("ptl", fresh);
+            applyPresets(fresh);
+          } else if (!cached) {
+            await setPresetCache("ptl", fresh);
+            applyPresets(fresh);
+          }
+        } catch {
+          // Cache tetap menjadi fallback ketika backend tidak tersedia.
+        }
       },
 
       // ── addPreset ─────────────────────────────────────────────────────────
@@ -64,13 +95,14 @@ export const usePTLPresetStore = create<PTLPresetState>()(
         const preset: PTLTablePreset = { id: tempId, name, columns, widths: {} };
         set(state => ({ presets: [...(state.presets ?? []), preset], activePresetId: tempId }));
 
-        presetApi.create("ptl", name, columns).then(created => {
+        presetApi.create("ptl", name, columns).then(async created => {
           set(state => ({
             presets: (state.presets ?? []).map(p =>
               p.id === tempId ? { ...p, db_id: created.id, id: created.id.toString() } : p
             ),
             activePresetId: state.activePresetId === tempId ? created.id.toString() : state.activePresetId,
           }));
+          await persistPtlCache(get().presets ?? []);
         }).catch(() => {});
       },
 
@@ -78,14 +110,14 @@ export const usePTLPresetStore = create<PTLPresetState>()(
       renamePreset: (id, name) => {
         set(state => ({ presets: (state.presets ?? []).map(p => p.id === id ? { ...p, name } : p) }));
         const preset = (get().presets ?? []).find(p => p.id === id);
-        if (preset?.db_id) presetApi.update(preset.db_id, { name }).catch(() => {});
+        if (preset?.db_id) presetApi.update(preset.db_id, { name }).then(() => persistPtlCache(get().presets ?? [])).catch(() => {});
       },
 
       // ── updatePresetColumns ───────────────────────────────────────────────
       updatePresetColumns: (id, columns) => {
         set(state => ({ presets: (state.presets ?? []).map(p => p.id === id ? { ...p, columns } : p) }));
         const preset = (get().presets ?? []).find(p => p.id === id);
-        if (preset?.db_id) presetApi.update(preset.db_id, { columns }).catch(() => {});
+        if (preset?.db_id) presetApi.update(preset.db_id, { columns }).then(() => persistPtlCache(get().presets ?? [])).catch(() => {});
       },
 
       // ── updatePreset ──────────────────────────────────────────────────────
@@ -98,7 +130,7 @@ export const usePTLPresetStore = create<PTLPresetState>()(
             ...(name    !== undefined && { name }),
             ...(columns !== undefined && { columns }),
             ...(widths  !== undefined && { widths }),
-          }).catch(() => {});
+          }).then(() => persistPtlCache(get().presets ?? [])).catch(() => {});
         }
       },
 
@@ -106,7 +138,7 @@ export const usePTLPresetStore = create<PTLPresetState>()(
       reorderColumns: (id, newOrder) => {
         set(state => ({ presets: (state.presets ?? []).map(p => p.id === id ? { ...p, columns: newOrder } : p) }));
         const preset = (get().presets ?? []).find(p => p.id === id);
-        if (preset?.db_id) presetApi.update(preset.db_id, { columns: newOrder }).catch(() => {});
+        if (preset?.db_id) presetApi.update(preset.db_id, { columns: newOrder }).then(() => persistPtlCache(get().presets ?? [])).catch(() => {});
       },
 
       // ── deletePreset ──────────────────────────────────────────────────────
@@ -119,7 +151,7 @@ export const usePTLPresetStore = create<PTLPresetState>()(
             activePresetId: state.activePresetId === id ? (next[0]?.id ?? null) : state.activePresetId,
           };
         });
-        if (preset?.db_id) presetApi.remove(preset.db_id).catch(() => {});
+        if (preset?.db_id) presetApi.remove(preset.db_id).then(() => persistPtlCache(get().presets ?? [])).catch(() => {});
       },
 
       // ── setActivePreset ───────────────────────────────────────────────────

@@ -25,7 +25,7 @@ export default function PTLDashboardPanel() {
   const ptlLoading              = useTaskStore((s) => s.ptlLoading);
   const setPtlLoading           = useTaskStore((s) => s.setPtlLoading);
   const fetchPtlSheet           = useTaskStore((s) => s.fetchPtlSheet);
-  const refreshStatusOnly       = useTaskStore((s) => s.refreshStatusOnly);
+  const fetchStatusMaster       = useTaskStore((s) => s.fetchStatusMaster);
   const { toasts, show: showToast } = useToast();
 
   useEffect(() => {
@@ -43,10 +43,10 @@ export default function PTLDashboardPanel() {
   // First load: baca cache permanen terlebih dahulu. Network hanya jika cache belum ada.
   useEffect(() => {
     Promise.all([
-      refreshStatusOnly().catch(console.error),
+      fetchStatusMaster().catch(console.error),
       fetchSheet(false),
     ]);
-  }, [fetchSheet, refreshStatusOnly]);
+  }, [fetchSheet, fetchStatusMaster]);
 
   // Show loading only on first load when no data yet
   const showLoading = ptlLoading && ptlSheetData === null;

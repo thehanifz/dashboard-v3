@@ -59,11 +59,14 @@ export default function MitraDashboardPanel() {
 
   useEffect(() => {
     fetchConfig();
-    fetchStatusMaster().catch(console.error);
     if (!hasLoadedData) {
+      // refreshAll memuat status + records melalui cache-first masing-masing.
       refreshAll().catch(() => showToast("Gagal memuat data", "error"));
+    } else {
+      // Navigasi balik: cukup baca status dari cache dan sync di background.
+      fetchStatusMaster().catch(console.error);
     }
-  }, [hasLoadedData, fetchStatusMaster]);
+  }, [hasLoadedData, fetchConfig, fetchStatusMaster, refreshAll, showToast]);
 
   const filterSnapshotRef = useRef<{ signature: string; rowIds: Set<number> } | null>(null);
 
