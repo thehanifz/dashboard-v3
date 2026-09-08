@@ -154,11 +154,32 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
 
   const drillToPtlDetail = useAppStore(s => s.drillToPtlDetail);
 
-  // Fetch threshold dari backend saat mount (read-only untuk PTL)
+  // Fetch threshold dari DB saat mount dan saat dashboard kembali aktif.
   useEffect(() => {
-    getAgingThresholds()
-      .then(setThresholds)
-      .catch(() => {});
+    let cancelled = false;
+
+    const loadThresholds = async () => {
+      try {
+        const latest = await getAgingThresholds();
+        if (!cancelled) setThresholds(latest);
+      } catch {
+        // Jangan mengganti dengan nilai hardcoded jika fetch gagal.
+      }
+    };
+
+    void loadThresholds();
+    window.addEventListener("focus", loadThresholds);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void loadThresholds();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", loadThresholds);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   const tierStyles = useMemo(
