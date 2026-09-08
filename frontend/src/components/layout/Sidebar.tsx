@@ -358,7 +358,7 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
       )}
 
       <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 z-50 bottom-nav flex items-center gap-1 overflow-x-auto px-1 py-1"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-50 bottom-nav flex items-stretch overflow-hidden px-1 py-1"
         style={{
           paddingBottom: "env(safe-area-inset-bottom)",
           WebkitOverflowScrolling: "touch",
@@ -370,7 +370,7 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
             <button
               key={p.id}
               onClick={() => setPage(p.id)}
-              className="relative shrink-0 w-[72px] min-w-[72px] flex flex-col items-center justify-center gap-0.5 px-1 py-2 rounded-xl transition-all"
+              className="relative flex-1 min-w-0 basis-0 flex flex-col items-center justify-center gap-0.5 px-1 py-2 rounded-xl transition-all"
               style={{
                 color: isActive ? "var(--accent)" : "var(--text-muted)",
                 background: isActive ? "var(--accent-soft)" : "transparent",
@@ -385,7 +385,7 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
                   {p.badge > 99 ? "99+" : p.badge}
                 </span>
               )}
-              <span className="text-[10px] font-semibold leading-tight text-center whitespace-nowrap">
+              <span className="w-full min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[10px] font-semibold leading-tight text-center">
                 {p.label}
               </span>
             </button>
@@ -394,7 +394,7 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
 
         <button
           onClick={() => setMobileSettingsOpen(true)}
-          className="relative shrink-0 w-[72px] min-w-[72px] flex flex-col items-center justify-center gap-0.5 px-1 py-2 rounded-xl transition-all"
+          className="relative flex-1 min-w-0 basis-0 flex flex-col items-center justify-center gap-0.5 px-1 py-2 rounded-xl transition-all"
           style={{
             color: mobileSettingsOpen || currentPage === "profile"
               ? "var(--accent)"
@@ -406,7 +406,7 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
           aria-label="Buka settings"
         >
           <IconSettings />
-          <span className="text-[10px] font-semibold leading-tight text-center whitespace-nowrap">
+          <span className="w-full min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[10px] font-semibold leading-tight text-center">
             Setting
           </span>
         </button>

@@ -8,7 +8,7 @@
  * dengan filter otomatis terapasang.
  */
 import { useMemo, useState, useEffect } from "react";
-import { calcAging, getAgingTierStyles, DEFAULT_THRESHOLDS } from "../../utils/aging";
+import { calcAgingFromDays, getAgingTierStyles, DEFAULT_THRESHOLDS } from "../../utils/aging";
 import type { AgingThresholds } from "../../utils/aging";
 import { getAgingThresholds } from "../../services/settingsApi";
 import { useAppStore } from "../../state/appStore";
@@ -124,8 +124,7 @@ function SectionCard({ title, subtitle, children }: {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function PTLSummaryDashboard({ records, loading }: Props) {
   const [thresholds, setThresholds] = useState<AgingThresholds>(DEFAULT_THRESHOLDS);
-  const tglCol    = "TGL TERBIT PA";
-  const baiCol    = "TGL UPLOAD BAI";
+  const agingCol  = "Aging";
   const statusCol = "Status PA";
 
   const drillToPtlDetail = useAppStore(s => s.drillToPtlDetail);
@@ -149,8 +148,14 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
     const byLayanan:         Record<string, number> = {};
     const byJenisMutasi:     Record<string, number> = {};
     const byStatusPA:        Record<string, number> = {};
-    const agingTiers = { safe: 0, warning: 0, danger: 0, critical: 0 };
-    const agingRowIds: Record<string, number[]> = { safe: [], warning: [], danger: [], critical: [] };
+    const agingTiers = {
+      doneBai: { safe: 0, warning: 0, danger: 0, critical: 0 },
+      onProgress: { safe: 0, warning: 0, danger: 0, critical: 0 },
+    };
+    const agingRowIds: Record<string, number[]> = {
+      doneBai: [],
+      onProgress: [],
+    };
 
     records.forEach(r => {
       // On Progress = semua kecuali Done BAI dan PA Cancel
@@ -169,16 +174,21 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
       const mutasi = r.data["JENIS MUTASI"] || "Lainnya";
       byJenisMutasi[mutasi] = (byJenisMutasi[mutasi] || 0) + 1;
 
-      // Aging: freeze saat Done BAI, live saat On Progress
-      const aging = calcAging(
-        r.data[tglCol],
-        thresholds,
-        r.data[baiCol],
-        r.data[statusCol]
-      );
-      if (aging) {
-        agingTiers[aging.tier]++;
-        agingRowIds[aging.tier].push(r.row_id);
+      // Aging dashboard: gunakan nilai literal kolom "Aging".
+      // Hanya Done BAI dan On Progres yang dihitung; Cancel diabaikan.
+      const normalizedStatus = String(r.data[statusCol] ?? "").trim().toLowerCase();
+      const agingGroup = normalizedStatus === "done bai"
+        ? "doneBai"
+        : normalizedStatus === "on progres" || normalizedStatus === "on progress"
+          ? "onProgress"
+          : null;
+
+      if (agingGroup) {
+        const aging = calcAgingFromDays(String(r.data[agingCol] ?? ""), thresholds);
+        if (aging) {
+          agingTiers[agingGroup][aging.tier]++;
+          agingRowIds[agingGroup].push(r.row_id);
+        }
       }
     });
 
@@ -231,8 +241,12 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
   const drillByMutasi = (value: string) =>
     drillToPtlDetail({ column: "JENIS MUTASI", values: [value], label: `Jenis Mutasi = ${value}` });
 
-  const drillByAging = (tier: string, label: string) =>
-    drillToPtlDetail({ column: "__aging_tier", values: [tier], label: `Aging: ${label}` });
+  const drillByAging = (group: "doneBai" | "onProgress", tier: string, label: string) =>
+    drillToPtlDetail({
+      column: "__aging_status_tier",
+      values: [`${group}:${tier}`],
+      label: `Aging ${group === "doneBai" ? "Done BAI" : "On Progres"}: ${label}`,
+    });
 
   if (loading && records.length === 0) {
     return (
@@ -342,44 +356,56 @@ export default function PTLSummaryDashboard({ records, loading }: Props) {
         </SectionCard>
       </div>
 
-      {/* ── Distribusi Aging — tiles clickable ── */}
+      {/* ── Distribusi Aging — Done BAI vs On Progres ── */}
       <div className="rounded-2xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
         <div className="mb-4">
           <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Distribusi Aging PA</h3>
           <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-            {`Tier: ≤${thresholds.tier1}h · ≤${thresholds.tier2}h · ≤${thresholds.tier3}h · >${thresholds.tier3}h`}
-            {" · "}<span style={{ color: "var(--accent)", fontWeight: 600 }}>Klik tier untuk filter tabel</span>
+            Aging diambil dari kolom <strong>Aging</strong> · skala mengikuti config existing · <span style={{ color: "var(--accent)", fontWeight: 600 }}>Klik tier untuk filter tabel</span>
           </p>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {(["safe", "warning", "danger", "critical"] as const).map(tier => {
-            const count = stats.agingTiers[tier];
-            const s     = tierStyles[tier];
-            const pct   = stats.total > 0 ? Math.round(count / stats.total * 100) : 0;
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+          {([
+            ["doneBai", "Done BAI"],
+            ["onProgress", "On Progres"],
+          ] as const).map(([group, groupLabel]) => {
+            const groupTotal = Object.values(stats.agingTiers[group]).reduce((a, b) => a + b, 0);
             return (
-              <div key={tier}
-                className="rounded-xl p-4 text-center"
-                onClick={() => drillByAging(tier, s.label)}
-                style={{
-                  background: "var(--bg-surface2)",
-                  border: "1px solid var(--border)",
-                  cursor: "pointer",
-                  transition: "box-shadow 150ms, transform 150ms",
-                }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLElement).style.boxShadow = `0 4px 12px ${AGING_COLORS[tier]}33`;
-                  (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)";
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLElement).style.boxShadow = "";
-                  (e.currentTarget as HTMLElement).style.transform = "";
-                }}
-                title={`Klik untuk filter tabel: aging ${s.label}`}
-              >
-                <div className="w-2.5 h-2.5 rounded-full mx-auto mb-2" style={{ background: AGING_COLORS[tier] }} />
-                <p className="text-2xl font-extrabold" style={{ color: "var(--text-primary)" }}>{count}</p>
-                <p className="text-[11px] font-semibold mt-1" style={{ color: "var(--text-secondary)" }}>{s.label}</p>
-                <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{pct}% dari total</p>
+              <div key={group} className="rounded-xl p-4" style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{groupLabel}</p>
+                    <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{groupTotal} record</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {(["safe", "warning", "danger", "critical"] as const).map(tier => {
+                    const count = stats.agingTiers[group][tier];
+                    const s = tierStyles[tier];
+                    const pct = groupTotal > 0 ? Math.round(count / groupTotal * 100) : 0;
+                    return (
+                      <div key={tier}
+                        className="rounded-xl p-3 text-center"
+                        onClick={() => drillByAging(group, tier, s.label)}
+                        style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", cursor: "pointer", transition: "box-shadow 150ms, transform 150ms" }}
+                        onMouseEnter={e => {
+                          (e.currentTarget as HTMLElement).style.boxShadow = `0 4px 12px ${AGING_COLORS[tier]}33`;
+                          (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)";
+                        }}
+                        onMouseLeave={e => {
+                          (e.currentTarget as HTMLElement).style.boxShadow = "";
+                          (e.currentTarget as HTMLElement).style.transform = "";
+                        }}
+                        title={`Klik untuk filter tabel: ${groupLabel} · ${s.label}`}
+                      >
+                        <div className="w-2.5 h-2.5 rounded-full mx-auto mb-2" style={{ background: AGING_COLORS[tier] }} />
+                        <p className="text-2xl font-extrabold" style={{ color: "var(--text-primary)" }}>{count}</p>
+                        <p className="text-[11px] font-semibold mt-1" style={{ color: "var(--text-secondary)" }}>{s.label}</p>
+                        <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{pct}%</p>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             );
           })}

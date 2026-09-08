@@ -18,7 +18,7 @@ import { useAppearanceStore } from "../../state/appearanceStore";
 import { useAppStore }        from "../../state/appStore";
 import { useTaskStore }       from "../../state/taskStore";
 import { useTableSettings }    from "../../hooks/useTableSettings";
-import { calcAging, DEFAULT_THRESHOLDS } from "../../utils/aging";
+import { calcAgingFromDays, DEFAULT_THRESHOLDS } from "../../utils/aging";
 import type { AgingThresholds } from "../../utils/aging";
 import { getAgingThresholds } from "../../services/settingsApi";
 import Sidebar               from "../layout/Sidebar";
@@ -221,7 +221,6 @@ export default function PTLDetailPanel() {
   const updatePtlCache        = useTaskStore((s) => s.updatePtlCache);
   const statusMaster          = useTaskStore((s) => s.statusMaster);
   const refreshAll            = useTaskStore((s) => s.refreshAll);
-  const fetchStatusMaster     = useTaskStore((s) => s.fetchStatusMaster);
 
   const ptlDrillFilter     = useAppStore(s => s.ptlDrillFilter);
   const clearPtlDrillFilter = useAppStore(s => s.clearPtlDrillFilter);
@@ -259,11 +258,6 @@ export default function PTLDetailPanel() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
-  // Status master must be available immediately from scoped cache on direct detail loads.
-  useEffect(() => {
-    fetchStatusMaster().catch((err) => console.error("[PTLDetail] status master load error:", err));
-  }, [fetchStatusMaster]);
-
   useEffect(() => {
     console.log("[PTLDetail] ptlSheetData changed:", ptlSheetData);
     if (ptlSheetData?.records) {
@@ -280,8 +274,8 @@ export default function PTLDetailPanel() {
   useEffect(() => {
     if (!ptlDrillFilter) return;
     const { column, values, label } = ptlDrillFilter;
-    if (column === "__aging_tier") {
-      setActiveFilters({ ["__aging_tier"]: values });
+    if (column === "__aging_tier" || column === "__aging_status_tier") {
+      setActiveFilters({ [column]: values });
     } else {
       setActiveFilters({ [column]: values });
     }
@@ -294,8 +288,6 @@ export default function PTLDetailPanel() {
   const records    = localRecords;
   const idPaCol    = allColumns.find(c => c === "ID PA") ?? "ID PA";
   const namaCol    = allColumns.find(c => c.toLowerCase().includes("perusahaan")) ?? "";
-  const tglCol     = "TGL TERBIT PA";
-  const baiCol     = "TGL UPLOAD BAI";
   const statusPaCol = "Status PA";
 
   const statusCol = statusMaster?.status_column ?? "Status Pekerjaan";
@@ -392,7 +384,7 @@ export default function PTLDetailPanel() {
       const cached = filterSnapshotRef.current;
       if (!cached || cached.signature !== signature) {
         const normalFilters = Object.fromEntries(
-          Object.entries(activeFilters).filter(([k]) => k !== "__aging_tier")
+          Object.entries(activeFilters).filter(([k]) => k !== "__aging_tier" && k !== "__aging_status_tier")
         );
 
         const rowIds = new Set(
@@ -415,14 +407,20 @@ export default function PTLDetailPanel() {
                 if (!matchesNormal) return false;
               }
 
-              if (activeFilters["__aging_tier"]) {
+              if (activeFilters["__aging_status_tier"]) {
+                const filters = activeFilters["__aging_status_tier"];
+                const status = String(r.data[statusPaCol] ?? "").trim().toLowerCase();
+                const group = status === "done bai"
+                  ? "doneBai"
+                  : status === "on progres" || status === "on progress"
+                    ? "onProgress"
+                    : null;
+                const aging = calcAgingFromDays(String(r.data["Aging"] ?? ""), thresholds);
+                if (!group || !aging || !filters.includes(`${group}:${aging.tier}`)) return false;
+              } else if (activeFilters["__aging_tier"]) {
+                // Backward compatibility for existing persisted/drill filters.
                 const tiers = activeFilters["__aging_tier"];
-                const aging = calcAging(
-                  r.data[tglCol],
-                  thresholds,
-                  r.data[baiCol],
-                  r.data[statusPaCol]
-                );
+                const aging = calcAgingFromDays(String(r.data["Aging"] ?? ""), thresholds);
                 if (!aging || !tiers.includes(aging.tier)) return false;
               }
 
@@ -444,7 +442,7 @@ export default function PTLDetailPanel() {
     }
 
     return result;
-  }, [records, search, activeFilters, thresholds, filterRefreshKey, tglCol, baiCol, statusPaCol]);
+  }, [records, search, activeFilters, thresholds, filterRefreshKey, statusPaCol]);
 
   const totalPage    = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
   const pagedRecords = filteredRecords.slice((tablePage - 1) * pageSize, tablePage * pageSize);
