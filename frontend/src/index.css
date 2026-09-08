@@ -119,6 +119,25 @@
 /* ─── Base ─────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
+/*
+ * Viewport sizing:
+ * Keep the application root bounded to the browser viewport. Firefox is
+ * stricter about percentage heights than Chromium, so the full height chain
+ * must be explicit: html → body → #root. The application owns scrolling
+ * inside its content panes, not on the document/body.
+ */
+html,
+body,
+#root {
+  height: 100%;
+  min-height: 0;
+}
+
+html,
+body {
+  overflow: hidden;
+}
+
 body {
   font-family: 'Plus Jakarta Sans', sans-serif;
   background-color: var(--bg-app);
