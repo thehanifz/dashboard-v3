@@ -6,6 +6,10 @@ Semua endpoint yang butuh config pakai fungsi get() bukan query DB langsung.
 import json
 from datetime import datetime, timedelta
 from typing import Any, Optional
+import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,6 +44,7 @@ async def _reload(db: AsyncSession) -> None:
     rows = result.scalars().all()
     _cache = {row.key: _coerce(row.value, row.value_type) for row in rows}
     _cache_time = datetime.utcnow()
+    logger.info("[AGING_DEBUG][CACHE_RELOAD] pid=%s tiers=%s", os.getpid(), {k: _cache.get(k) for k in ("aging.tier1", "aging.tier2", "aging.tier3")})
 
 
 async def get(key: str, db: AsyncSession, fallback: Any = None) -> Any:
@@ -50,7 +55,10 @@ async def get(key: str, db: AsyncSession, fallback: Any = None) -> Any:
     global _cache_time
     if _cache_time is None or datetime.utcnow() - _cache_time > TTL:
         await _reload(db)
-    return _cache.get(key, fallback)
+    value = _cache.get(key, fallback)
+    if key.startswith("aging."):
+        logger.info("[AGING_DEBUG][CACHE_GET] pid=%s key=%s value=%s cached=%s", os.getpid(), key, value, _cache_time is not None)
+    return value
 
 
 async def get_all(db: AsyncSession) -> dict[str, Any]:
@@ -67,3 +75,4 @@ def invalidate() -> None:
     """
     global _cache_time
     _cache_time = None
+    logger.info("[AGING_DEBUG][CACHE_INVALIDATE] pid=%s", os.getpid())

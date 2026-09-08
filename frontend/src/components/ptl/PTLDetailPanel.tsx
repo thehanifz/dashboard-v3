@@ -24,7 +24,6 @@ import { getAgingThresholds } from "../../services/settingsApi";
 import Sidebar               from "../layout/Sidebar";
 import Topbar                from "../layout/Topbar";
 import ToastContainer        from "../ui/ToastContainer";
-import PTLKanbanBoard        from "./PTLKanbanBoard";
 import ColumnFilter          from "../table/ColumnFilter";
 import PresetEditorModal     from "../preset/PresetEditorModal";
 import { TableHeaderCell }   from "../table/TableHeaderCell";
@@ -39,7 +38,6 @@ import baiApi                from "../../services/baiApi";
 import type { SheetRecord, PTLSheetData, StatusMaster } from "../../state/taskStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type DetailView = "kanban" | "table";
 const DEFAULT_COL_WIDTH = 160;
 const MIN_COL_WIDTH     = 60;
 
@@ -188,12 +186,17 @@ function DrillBanner({ label, onClear }: { label: string; onClear: () => void })
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 export default function PTLDetailPanel() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [view, setView]                         = useState<DetailView>("table");
   const [localRecords, setLocalRecords]         = useState<SheetRecord[]>([]);
   const [search, setSearch]                     = useState("");
   const [saving, setSaving]                     = useState(false);
   const isOffline                               = useTaskStore(s => s.isOffline);
   const [thresholds, setThresholds]             = useState<AgingThresholds>(DEFAULT_THRESHOLDS);
+
+  useEffect(() => {
+    getAgingThresholds().then(setThresholds).catch((err) => {
+      console.error("[AGING_DEBUG][PTL_DETAIL_LOAD]", err);
+    });
+  }, []);
 
   const { pageSize, tablePage, setPageSize, setTablePage } = useTableSettings(20);
 
@@ -564,8 +567,6 @@ export default function PTLDetailPanel() {
             userName={user?.nama_lengkap ?? ""}
             saving={saving}
             onRefresh={handleRefresh}
-            view={view}
-            onViewChange={setView}
             search={search}
             onSearch={v => { setSearch(v); setTablePage(1); }}
             presets={presets.map(p => ({ id: p.id, name: p.name, columns: p.columns ?? [] }))}
@@ -638,18 +639,7 @@ export default function PTLDetailPanel() {
             </div>
           )}
 
-          {/* Desktop: behavior existing tetap dipertahankan, termasuk Kanban. */}
           <div className="hidden md:flex flex-1 overflow-hidden flex-col">
-            {view === "kanban" && (
-              <div className="flex-1 overflow-hidden">
-                {ptlLoading && localRecords.length === 0
-                  ? <div className="p-6 text-xs" style={{ color: "var(--text-muted)" }}>Memuat data...</div>
-                  : <PTLKanbanBoard records={records} onUpdateCell={handleUpdateCell} />
-                }
-              </div>
-            )}
-
-            {view === "table" && (
               <div className="flex-1 overflow-hidden flex flex-col px-4 pt-3 pb-4 gap-2.5">
 
               {drillLabel && (
@@ -832,7 +822,6 @@ export default function PTLDetailPanel() {
                 </>
               )}
             </div>
-          )}
           </div>
         </main>
       </div>

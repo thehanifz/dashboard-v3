@@ -31,6 +31,7 @@ export async function updateSetting(
   value: string
 ): Promise<DashboardSetting> {
   const { data } = await api.put<DashboardSetting>(`/settings/${key}`, { value });
+  await clearPublicSettingsCache();
   return data;
 }
 
@@ -67,12 +68,24 @@ export interface AgingThresholds {
 }
 
 export async function getAgingThresholds(): Promise<AgingThresholds> {
-  const settings = await fetchPublicSettings();
-  return {
-    tier1: Number(settings["aging.tier1"] ?? 11),
-    tier2: Number(settings["aging.tier2"] ?? 30),
-    tier3: Number(settings["aging.tier3"] ?? 60),
-  };
+  const settings = await fetchPublicSettings(true);
+  const tier1 = Number(settings["aging.tier1"]);
+  const tier2 = Number(settings["aging.tier2"]);
+  const tier3 = Number(settings["aging.tier3"]);
+  if (!Number.isFinite(tier1) || !Number.isFinite(tier2) || !Number.isFinite(tier3) || tier1 <= 0 || tier2 <= tier1 || tier3 <= tier2) {
+    throw new Error("Konfigurasi Aging dari database tidak valid");
+  }
+  return { tier1, tier2, tier3 };
+}
+
+/** Update seluruh threshold Aging dalam satu transaksi. */
+export async function updateAgingThresholds(t: AgingThresholds): Promise<AgingThresholds> {
+  if (!Number.isFinite(t.tier1) || !Number.isFinite(t.tier2) || !Number.isFinite(t.tier3) || t.tier1 <= 0 || t.tier2 <= t.tier1 || t.tier3 <= t.tier2) {
+    throw new Error("Harus: Tier 1 < Tier 2 < Tier 3 dan semua > 0");
+  }
+  const { data } = await api.put<AgingThresholds>("/settings/aging-thresholds", t);
+  await clearPublicSettingsCache();
+  return data;
 }
 
 // ── getDashboardColumns — nama kolom GSheet untuk SummaryDashboard ─────────────

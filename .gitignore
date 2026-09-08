@@ -57,3 +57,5 @@ temp/
 *.csv
 *.json
 *.zip
+*psd
+*png

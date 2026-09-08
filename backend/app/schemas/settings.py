@@ -32,6 +32,13 @@ class SettingUpdate(BaseModel):
     updated_by: Optional[str] = None  # diisi otomatis dari current_user di endpoint
 
 
+class AgingThresholdUpdate(BaseModel):
+    """Schema untuk update atomik seluruh threshold Aging."""
+    tier1: int
+    tier2: int
+    tier3: int
+
+
 class SettingPublic(BaseModel):
     """
     Schema ringkas untuk frontend — hanya key + coerced value.

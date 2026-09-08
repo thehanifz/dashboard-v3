@@ -7,6 +7,7 @@ import { calcAgingFromDays, getAgingTierStyles, DEFAULT_THRESHOLDS } from "../..
 import type { AgingThresholds }  from "../../utils/aging";
 import {
   getAgingThresholds,
+  updateAgingThresholds,
   getDashboardColumns,
   type DashboardColumns,
 } from "../../services/settingsApi";
@@ -172,7 +173,8 @@ export default function SummaryDashboard() {
   }, []);
 
   const handleSaveThresholds = async (t: AgingThresholds) => {
-    setThresholds(t);
+    const saved = await updateAgingThresholds(t);
+    setThresholds(saved);
   };
 
   const tierStyles = useMemo(() => getAgingTierStyles(thresholds), [thresholds]);
