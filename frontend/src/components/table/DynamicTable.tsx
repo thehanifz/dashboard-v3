@@ -39,6 +39,7 @@ type Props = {
 export default function DynamicTable({ view, onViewChange, toolbarOnly = false, filterRefreshKey = 0 }: Props = {}) {
   /* ── Stores ────────────────────────────────────────────────────────────── */
   const records         = useTaskStore(s => s.records) ?? [];
+  const isOffline       = useTaskStore(s => s.isOffline);
   const statusMaster    = useTaskStore(s => s.statusMaster);
   const presets         = usePresetStore(s => s.presets) ?? [];
   const activePresetId  = usePresetStore(s => s.activePresetId);
@@ -187,6 +188,7 @@ export default function DynamicTable({ view, onViewChange, toolbarOnly = false, 
                       throw new Error("update failed");
                     }
                   }}
+                  canEditStatus={!isOffline}
                   onStatusChange={async (rowId, status, detail) => {
                     await updateStatus(rowId, status, detail);
                   }}

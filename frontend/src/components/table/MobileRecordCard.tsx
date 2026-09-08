@@ -10,6 +10,7 @@ type Props = {
   canEditColumn?: (column: string) => boolean;
   onCommit?: (rowId: number, column: string, value: string) => Promise<void> | void;
   onStatusChange?: (rowId: number, status: string, detail?: string) => Promise<void> | void;
+  canEditStatus?: boolean;
   actions?: ReactNode;
 };
 
@@ -215,6 +216,7 @@ export default function MobileRecordCard({
   canEditColumn,
   onCommit,
   onStatusChange,
+  canEditStatus = true,
   actions,
 }: Props) {
   const { canEditColumn: roleCanEditColumn } = useRole();
@@ -302,6 +304,7 @@ export default function MobileRecordCard({
       return (
         <div className="min-w-0" onClick={e => e.stopPropagation()}>
           <select
+            disabled={!canEditStatus}
             value={value}
             onChange={e => onStatusChange(
               record.row_id,

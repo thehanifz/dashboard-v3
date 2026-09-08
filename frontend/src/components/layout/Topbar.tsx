@@ -36,6 +36,8 @@ export default function Topbar({ onRefresh, sidebarCollapsed, onToggleSidebar }:
   const setAutoRefresh = useTaskStore(s => s.setAutoRefresh);
   const records        = useTaskStore(s => s.records);
   const cacheMeta      = useTaskStore(s => s.cacheMeta);
+  const isOffline      = useTaskStore(s => s.isOffline);
+  const setOffline     = useTaskStore(s => s.setOffline);
 
   const [label, setLabel]         = useState("Belum dimuat");
   const [showAuto, setShowAuto]   = useState(false);
@@ -51,6 +53,17 @@ export default function Topbar({ onRefresh, sidebarCollapsed, onToggleSidebar }:
     setNowStr(new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" }));
     return () => clearInterval(t);
   }, [lastUpdated]);
+
+  useEffect(() => {
+    const handleOffline = () => setOffline(true);
+    const handleOnline = () => setOffline(false);
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [setOffline]);
 
   useEffect(() => {
     if (!autoEnabled) return;
@@ -85,6 +98,18 @@ export default function Topbar({ onRefresh, sidebarCollapsed, onToggleSidebar }:
 
       {/* Right */}
       <div className="flex items-center gap-2">
+
+        {isOffline && (
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium"
+            style={{ background: "var(--accent-soft)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+            title="Backend tidak tersedia; data cache tetap dapat dibaca"
+          >
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--text-muted)" }} />
+            <span className="hidden sm:inline">Offline · cache</span>
+            <span className="sm:hidden">Offline</span>
+          </div>
+        )}
 
         {/* Total pill */}
         <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"

@@ -9,6 +9,7 @@ type Props = {
   canEditColumn?: (column: string) => boolean;
   onCommit?: (rowId: number, column: string, value: string) => Promise<void> | void;
   onStatusChange?: (rowId: number, status: string, detail?: string) => Promise<void> | void;
+  canEditStatus?: boolean;
   renderActions?: (record: SheetRecord) => ReactNode;
   emptyText?: string;
 };
@@ -20,6 +21,7 @@ export default function MobileRecordList({
   canEditColumn,
   onCommit,
   onStatusChange,
+  canEditStatus = true,
   renderActions,
   emptyText = "Tidak ada data yang sesuai.",
 }: Props) {
@@ -45,6 +47,7 @@ export default function MobileRecordList({
           canEditColumn={canEditColumn}
           onCommit={onCommit}
           onStatusChange={onStatusChange}
+          canEditStatus={canEditStatus}
           actions={renderActions?.(record)}
         />
       ))}

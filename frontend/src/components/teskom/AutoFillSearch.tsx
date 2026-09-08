@@ -1,6 +1,7 @@
 import { useState } from "react";
 import teskomApi, { AutoFillResult } from "../../services/teskomApi";
 import { useAuthStore } from "../../state/authStore";
+import { useTaskStore } from "../../state/taskStore";
 
 interface Props {
   onAutofill: (data: AutoFillResult["autofill"]) => void;
@@ -13,12 +14,16 @@ export default function AutoFillSearch({ onAutofill, onToast }: Props) {
   const [loading, setLoading] = useState(false);
 
   const { user }    = useAuthStore();
+  const isOffline    = useTaskStore((s) => s.isOffline);
   const isPtl       = user?.role === "ptl";
   const sourceLabel = isPtl ? "GSheet PTL" : "database";
 
   const handleSearch = async () => {
     const trimmed = query.trim();
-    if (!trimmed) return;
+    if (!trimmed || isOffline) {
+      if (isOffline) onToast("Offline — pencarian manual membutuhkan koneksi backend", "error");
+      return;
+    }
     setLoading(true);
     try {
       const result = isPtl
@@ -92,9 +97,9 @@ export default function AutoFillSearch({ onAutofill, onToast }: Props) {
 
         <button
           onClick={handleSearch}
-          disabled={loading || !query.trim()}
+          disabled={loading || isOffline || !query.trim()}
           className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition-opacity"
-          style={{ background: "var(--accent)", opacity: loading || !query.trim() ? 0.5 : 1 }}
+          style={{ background: "var(--accent)", opacity: loading || isOffline || !query.trim() ? 0.5 : 1 }}
         >
           {loading ? "Mencari..." : "Cari"}
         </button>

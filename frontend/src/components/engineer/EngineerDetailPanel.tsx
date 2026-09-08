@@ -27,7 +27,7 @@ export default function EngineerDetailPanel() {
 
   const handleRefresh = useCallback(async () => {
     try {
-      await refreshAll();
+      await refreshAll(true);
       setFilterRefreshKey(v => v + 1);
       showToast("Data berhasil diperbarui", "success");
     } catch {

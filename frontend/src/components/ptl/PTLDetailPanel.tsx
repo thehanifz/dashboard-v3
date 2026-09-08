@@ -44,8 +44,9 @@ const DEFAULT_COL_WIDTH = 160;
 const MIN_COL_WIDTH     = 60;
 
 // ─── BAI Button ───────────────────────────────────────────────────────────────
-function PtlBaiButton({ rowId, idPa, namaPerusahaan, onToast }: {
+function PtlBaiButton({ rowId, idPa, namaPerusahaan, onToast, disabled = false }: {
   rowId: number; idPa: string; namaPerusahaan: string;
+  disabled?: boolean;
   onToast: (msg: string, type?: "success" | "error") => void;
 }) {
   const [showModal, setShowModal] = useState(false);
@@ -76,7 +77,8 @@ function PtlBaiButton({ rowId, idPa, namaPerusahaan, onToast }: {
 
   return (
     <>
-      <button onClick={e => { e.stopPropagation(); setShowModal(true); }}
+      <button onClick={e => { e.stopPropagation(); if (!disabled) setShowModal(true); }}
+        disabled={disabled}
         title={`Generate BAI — ${idPa}`}
         className="flex items-center justify-center w-6 h-6 rounded-md transition-all"
         style={{ color: "var(--text-muted)" }}
@@ -190,6 +192,7 @@ export default function PTLDetailPanel() {
   const [localRecords, setLocalRecords]         = useState<SheetRecord[]>([]);
   const [search, setSearch]                     = useState("");
   const [saving, setSaving]                     = useState(false);
+  const isOffline                               = useTaskStore(s => s.isOffline);
   const [thresholds, setThresholds]             = useState<AgingThresholds>(DEFAULT_THRESHOLDS);
 
   const { pageSize, tablePage, setPageSize, setTablePage } = useTableSettings(20);
@@ -310,6 +313,7 @@ export default function PTLDetailPanel() {
   }, [ptlSheetData, ptlLoading, refreshPtlData]);
 
   const handleUpdateCell = useCallback(async (rowId: number, col: string, value: string) => {
+    if (isOffline || (typeof navigator !== "undefined" && !navigator.onLine)) { showToast("Offline — data hanya dapat dibaca", "error"); return; }
     setLocalRecords(prev =>
       prev.map(r => r.row_id === rowId ? { ...r, data: { ...r.data, [col]: value } } : r)
     );
@@ -325,9 +329,10 @@ export default function PTLDetailPanel() {
     } finally {
       setSaving(false);
     }
-  }, [showToast, updatePtlCache, localRecords]);
+  }, [showToast, updatePtlCache, localRecords, isOffline]);
 
   const handleUpdateStatus = useCallback(async (rowId: number, status: string, detail?: string) => {
+    if (isOffline || (typeof navigator !== "undefined" && !navigator.onLine)) { showToast("Offline — data hanya dapat dibaca", "error"); return; }
     setLocalRecords(prev =>
       prev.map(r => {
         if (r.row_id !== rowId) return r;
@@ -354,7 +359,7 @@ export default function PTLDetailPanel() {
     } finally {
       setSaving(false);
     }
-  }, [statusCol, detailCol, showToast, updatePtlCache]);
+  }, [statusCol, detailCol, showToast, updatePtlCache, isOffline]);
 
   const handleRefresh = async () => {
     try {
@@ -582,7 +587,8 @@ export default function PTLDetailPanel() {
                 records={pagedRecords}
                 columns={columns}
                 statusMaster={statusMaster}
-                canEditColumn={col => ptlEditableColumns.includes(col) && col !== statusCol && col !== detailCol}
+                canEditColumn={col => !isOffline && ptlEditableColumns.includes(col) && col !== statusCol && col !== detailCol}
+                canEditStatus={!isOffline}
                 onCommit={handleUpdateCell}
                 onStatusChange={handleUpdateStatus}
                 renderActions={record => (
@@ -592,6 +598,7 @@ export default function PTLDetailPanel() {
                       idPa={record.data[idPaCol] ?? ""}
                       namaPerusahaan={namaCol ? (record.data[namaCol] ?? "") : ""}
                       onToast={showToast}
+                      disabled={isOffline}
                     />
                     <PtlTeskomButton idPa={record.data[idPaCol] ?? ""} data={record.data} />
                   </>
@@ -696,7 +703,7 @@ export default function PTLDetailPanel() {
                                 <td className="sticky left-0"
                                   style={{ zIndex: 10, width: 72, minWidth: 72, padding: "4px 8px", textAlign: "center", borderRight: "1px solid var(--border)", borderBottom: "1px solid var(--border)", background: rowIdx % 2 !== 0 ? "var(--table-row-alt)" : "var(--bg-surface)" }}>
                                   <div className="flex items-center justify-center gap-0.5">
-                                    <PtlBaiButton rowId={r.row_id} idPa={idPaVal} namaPerusahaan={namaVal} onToast={showToast} />
+                                    <PtlBaiButton rowId={r.row_id} idPa={idPaVal} namaPerusahaan={namaVal} onToast={showToast} disabled={isOffline} />
                                     <PtlTeskomButton idPa={idPaVal} data={r.data} />
                                   </div>
                                 </td>
@@ -734,7 +741,7 @@ export default function PTLDetailPanel() {
                                       title={currentVal}>
 
                                       {isStatusCol && statusMaster && (
-                                        <select value={currentVal}
+                                        <select disabled={isOffline} value={currentVal}
                                           onChange={e => handleUpdateStatus(r.row_id, e.target.value, undefined)}
                                           className="text-xs border rounded px-1 py-0.5 w-full"
                                           style={{ background: "var(--bg-surface2)", color: "var(--text-primary)", borderColor: "var(--border)" }}>
@@ -746,7 +753,7 @@ export default function PTLDetailPanel() {
                                       )}
 
                                       {isDetailCol && statusMaster && (
-                                        <select value={currentVal}
+                                        <select disabled={isOffline} value={currentVal}
                                           onChange={e => handleUpdateStatus(r.row_id, r.data[statusCol] ?? "", e.target.value)}
                                           className="text-xs border rounded px-1 py-0.5 w-full"
                                           style={{ background: "var(--bg-surface2)", color: "var(--text-primary)", borderColor: "var(--border)" }}>

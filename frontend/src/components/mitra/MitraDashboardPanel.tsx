@@ -37,7 +37,7 @@ export default function MitraDashboardPanel() {
   const { toasts, show: showToast } = useToast();
   const { theme }                   = useThemeStore();
   const refreshAll                  = useTaskStore((s) => s.refreshAll);
-  const refreshStatusOnly           = useTaskStore((s) => s.refreshStatusOnly);
+  const fetchStatusMaster            = useTaskStore((s) => s.fetchStatusMaster);
   const hasLoadedData               = useTaskStore((s) => s.hasLoadedData);
   const records                     = useTaskStore((s) => s.records) ?? [];
   const updateCell                  = useTaskStore((s) => s.updateCell);
@@ -59,11 +59,11 @@ export default function MitraDashboardPanel() {
 
   useEffect(() => {
     fetchConfig();
-    refreshStatusOnly().catch(console.error);
+    fetchStatusMaster().catch(console.error);
     if (!hasLoadedData) {
       refreshAll().catch(() => showToast("Gagal memuat data", "error"));
     }
-  }, [hasLoadedData]);
+  }, [hasLoadedData, fetchStatusMaster]);
 
   const filterSnapshotRef = useRef<{ signature: string; rowIds: Set<number> } | null>(null);
 
@@ -133,7 +133,7 @@ export default function MitraDashboardPanel() {
 
   const handleRefresh = async () => {
     try {
-      await refreshAll();
+      await refreshAll(true);
       setFilterRefreshKey(v => v + 1);
       showToast("Data berhasil diperbarui", "success");
     } catch {

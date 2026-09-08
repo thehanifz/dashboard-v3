@@ -6,6 +6,7 @@ import FormFields from "./forms/FormFields";
 import { FORM_REGISTRY, Tipe } from "./formRegistry";
 import teskomApi, { AutoFillResult, autofillFromCache } from "../../services/teskomApi";
 import { useAppStore } from "../../state/appStore";
+import { useTaskStore } from "../../state/taskStore";
 import { useAuthStore } from "../../state/authStore";
 
 interface Props {
@@ -43,6 +44,7 @@ export default function TeskomForm({ onToast }: Props) {
   // Role-aware autofill: ptl → autofillPtl, engineer/mitra → autofill
   const { user } = useAuthStore();
   const isPtl    = user?.role === "ptl";
+  const isOffline = useTaskStore((s) => s.isOffline);
 
   // Autofill dari tabel dashboard (deep-link)
   const teskomAutofillId     = useAppStore((s) => s.teskomAutofillId);
@@ -108,8 +110,7 @@ export default function TeskomForm({ onToast }: Props) {
     const cachedData = teskomAutofillData;
     const cachedSource = teskomAutofillSource;
 
-    // Data dari row dashboard/PTL sudah berasal dari cache lokal.
-    // Gunakan langsung agar klik Teskom tidak round-trip ke PostgreSQL/GSheet.
+    // Table action selalu membawa row cache. Tidak ada fallback network untuk autofill dari tabel.
     if (cachedData) {
       const result = autofillFromCache(cachedData, cachedSource || (isPtl ? "ptl" : "records"));
       handleAutofill(result.autofill);
@@ -118,22 +119,8 @@ export default function TeskomForm({ onToast }: Props) {
       return;
     }
 
-    // Fallback untuk deep-link/manual state lama yang tidak membawa row cache.
-    const request = isPtl
-      ? teskomApi.autofillPtl(idPa)
-      : teskomApi.autofill(idPa);
-
-    request
-      .then((result) => {
-        handleAutofill(result.autofill);
-        const src = isPtl ? "GSheet PTL" : "database";
-        onToast(`Data "${idPa}" berhasil dimuat dari ${src}`, "success");
-      })
-      .catch((err: any) => {
-        const msg = err?.response?.data?.detail || `Gagal autofill ID PA "${idPa}"`;
-        onToast(msg, "error");
-      })
-      .finally(() => setTeskomAutofill(null));
+    setTeskomAutofill(null);
+    onToast(`Data "${idPa}" tidak tersedia di cache`, "error");
   }, [teskomAutofillId, teskomAutofillData, teskomAutofillSource, isPtl, handleAutofill, setTeskomAutofill, onToast]);
 
   // IntersectionObserver — tab aktif ikut scroll
@@ -162,6 +149,7 @@ export default function TeskomForm({ onToast }: Props) {
   };
 
   const handleGenerate = async () => {
+    if (isOffline) { onToast("Offline — generate dokumen membutuhkan koneksi backend", "error"); return; }
     if (!form.no_pa) { onToast("No. PA wajib diisi", "error"); return; }
     setGenerating(true);
     try {
@@ -228,9 +216,9 @@ export default function TeskomForm({ onToast }: Props) {
             {isPtl ? "Sumber data: GSheet PTL" : "Sumber data: database"}
           </p>
         </div>
-        <button onClick={handleGenerate} disabled={generating}
+        <button onClick={handleGenerate} disabled={generating || isOffline}
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white"
-          style={{ background: "var(--accent)", opacity: generating ? 0.6 : 1 }}>
+          style={{ background: "var(--accent)", opacity: generating || isOffline ? 0.6 : 1 }}>
           {generating ? "Membuat dokumen..." : "Generate DOCX"}
         </button>
       </div>

@@ -5,6 +5,7 @@ import { getColorTheme } from "../../utils/colorPalette";
 export function StatusCell({ row, col }: any) {
   const statusMaster = useTaskStore((s) => s.statusMaster);
   const updateStatus = useTaskStore((s) => s.updateStatus);
+  const isOffline = useTaskStore((s) => s.isOffline);
   const labelColors  = useAppearanceStore((s) => s.labelColors) || {};
   const value        = row.data?.[col] ?? "-";
 
@@ -16,6 +17,7 @@ export function StatusCell({ row, col }: any) {
   if (col === statusColumnName) {
     return (
       <select
+        disabled={isOffline}
         value={value}
         onChange={(e) => updateStatus(row.row_id, e.target.value, undefined)}
         className="text-xs border rounded px-1 py-0.5 w-full"
@@ -46,6 +48,7 @@ export function StatusCell({ row, col }: any) {
 
   return (
     <select
+      disabled={isOffline}
       value={value}
       onChange={(e) => updateStatus(row.row_id, currentStatusValue, e.target.value)}
       className="text-xs border rounded px-1 py-0.5 w-full"
