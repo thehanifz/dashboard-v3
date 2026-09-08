@@ -49,15 +49,15 @@ function LayoutShell({ children, onRefresh }: { children: React.ReactNode; onRef
   const { toasts, show: showToast } = useToast();
 
   return (
-    <div className="flex h-full overflow-hidden" style={{ background: "var(--bg-app)" }}>
+    <div className="flex h-full min-h-0 overflow-hidden" style={{ background: "var(--bg-app)" }}>
       <Sidebar collapsed={collapsed} onToast={showToast} />
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
         <Topbar
           onRefresh={onRefresh}
           sidebarCollapsed={collapsed}
           onToggleSidebar={() => setCollapsed(v => !v)}
         />
-        <main className="flex-1 overflow-auto pb-16 md:pb-0">
+        <main className="flex-1 min-h-0 overflow-auto pb-16 md:pb-0">
           {children}
         </main>
       </div>

@@ -19,7 +19,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (!authReady) {
     return (
-      <div className="h-screen flex items-center justify-center" style={{ background: "var(--bg-app, #0f172a)" }}>
+      <div className="h-[100dvh] min-h-0 flex items-center justify-center" style={{ background: "var(--bg-app, #0f172a)" }}>
         <div className="text-sm" style={{ color: "var(--text-muted, #94a3b8)" }}>Memulihkan sesi...</div>
       </div>
     );
@@ -34,7 +34,7 @@ export default function App() {
 
   return (
     <AuthGuard>
-      <div className="h-screen overflow-hidden flex flex-col">
+      <div className="h-[100dvh] min-h-0 overflow-hidden flex flex-col">
         {page === "settings" ? <SettingsPage /> : <MainPage />}
       </div>
     </AuthGuard>
