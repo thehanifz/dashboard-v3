@@ -11,8 +11,6 @@ interface SidebarProps {
 }
 
 // ── Icons ──────────────────────────────────────────────────────────────────
-const IconChart    = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>;
-const IconTable    = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 14h18M10 3v18M6 3h12a3 3 0 013 3v12a3 3 0 01-3 3H6a3 3 0 01-3-3V6a3 3 0 013-3z" /></svg>;
 const IconNetwork  = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" /></svg>;
 const IconDoc      = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>;
 const IconDash     = () => <svg className="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 7a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V7zm0 6a1 1 0 011-1h8a1 1 0 011 1v4a1 1 0 01-1 1H4a1 1 0 01-1-1v-4zm12 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg>;
@@ -38,7 +36,7 @@ const ROLE_LABEL: Record<string, string> = { engineer: "Engineer", ptl: "PTL", m
 const ROLE_COLOR: Record<string, string> = { engineer: "#2563eb", ptl: "#7c3aed", mitra: "#059669", superuser: "#d97706" };
 
 const ROLE_PAGES: Record<string, AppPage[]> = {
-  engineer:  ["dashboard", "detail", "asbuilt", "teskom", "mitra-config", "sync", "settings"],
+  engineer:  ["dashboard", "detail", "asbuilt", "teskom"],
   ptl:       ["dashboard", "detail", "asbuilt", "teskom"],
   mitra:     ["dashboard", "teskom"],
   superuser: ["settings"],
@@ -98,7 +96,6 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
 
   const [asbuiltOpen, setAsbuiltOpen]     = useState(currentPage === "asbuilt");
   const [mismatchCount, setMismatchCount] = useState(0);
-  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
 
   // ── App info dari DB (tidak hardcode) ────────────────────────────────────────
   const [appInfo, setAppInfo] = useState<AppInfo>({
@@ -136,9 +133,6 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
     { id: "detail",       label: "Detail Pekerjaan",       icon: <IconDetail /> },
     { id: "asbuilt",      label: "As-Built",               icon: <IconNetwork /> },
     { id: "teskom",       label: "Teskom",                 icon: <IconDoc /> },
-    { id: "mitra-config", label: "Pengaturan Tabel Mitra", icon: <IconTable /> },
-    { id: "sync",         label: "Sync Dashboard",         icon: <IconChart />, badge: mismatchCount },
-    { id: "settings",     label: "Pengaturan",             icon: <IconSettings /> },
   ];
 
   const visiblePages = ALL_PAGES.filter(p => allowedPages.includes(p.id));
@@ -253,6 +247,19 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
               )}
             </div>
           ))}
+
+          {(role === "engineer" || role === "superuser") && (
+            <div className="pt-1 mt-1" style={{ borderTop: "1px solid var(--sidebar-border, var(--border))" }}>
+              <SidebarBtn
+                onClick={() => setPage("settings")}
+                icon={<IconSettings />}
+                label="Pengaturan"
+                title="Pengaturan"
+                collapsed={collapsed}
+                active={currentPage === "settings"}
+              />
+            </div>
+          )}
         </nav>
 
         {/* Footer — toggle theme + versi dari DB */}
@@ -277,86 +284,6 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
       </aside>
 
       {/* ── Mobile Bottom Nav ── */}
-      {mobileSettingsOpen && (
-        <div
-          className="md:hidden fixed inset-0 z-[60]"
-          style={{ background: "rgba(0,0,0,0.42)" }}
-          onMouseDown={e => {
-            if (e.target === e.currentTarget) setMobileSettingsOpen(false);
-          }}
-        >
-          <div
-            className="absolute bottom-0 left-0 right-0 rounded-t-3xl p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl"
-            style={{ background: "var(--bg-surface)", borderTop: "1px solid var(--border)" }}
-            onMouseDown={e => e.stopPropagation()}
-          >
-            <div
-              className="w-10 h-1 rounded-full mx-auto mb-4"
-              style={{ background: "var(--border-strong)" }}
-            />
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-                  Settings
-                </p>
-                <h3 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
-                  Pengaturan cepat
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setMobileSettingsOpen(false)}
-                className="w-9 h-9 rounded-xl flex items-center justify-center"
-                style={{ background: "var(--bg-surface2)", color: "var(--text-muted)" }}
-                aria-label="Tutup settings"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileSettingsOpen(false);
-                  setPage("profile");
-                }}
-                className="min-h-12 rounded-2xl px-3 flex items-center gap-3 text-left"
-                style={{
-                  background: currentPage === "profile" ? "var(--accent-soft)" : "var(--bg-surface2)",
-                  color: "var(--text-primary)",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                  style={{ background: ROLE_COLOR[role] ?? "#2563eb" }}
-                >
-                  {user?.nama_lengkap?.charAt(0).toUpperCase() ?? "?"}
-                </div>
-                <span className="text-sm font-semibold">Profil</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={toggleTheme}
-                className="min-h-12 rounded-2xl px-3 flex items-center gap-3 text-left"
-                style={{
-                  background: "var(--bg-surface2)",
-                  color: "var(--text-primary)",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                {isDark ? <SunIcon /> : <MoonIcon />}
-                <span className="text-sm font-semibold">
-                  {isDark ? "Light Mode" : "Dark Mode"}
-                </span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <nav
         className="md:hidden fixed bottom-0 left-0 right-0 z-50 bottom-nav flex items-stretch overflow-hidden px-1 py-1"
         style={{
@@ -392,24 +319,33 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
           );
         })}
 
-        <button
-          onClick={() => setMobileSettingsOpen(true)}
-          className="relative flex-1 min-w-0 basis-0 flex flex-col items-center justify-center gap-0.5 px-1 py-2 rounded-xl transition-all"
-          style={{
-            color: mobileSettingsOpen || currentPage === "profile"
-              ? "var(--accent)"
-              : "var(--text-muted)",
-            background: mobileSettingsOpen || currentPage === "profile"
-              ? "var(--accent-soft)"
-              : "transparent",
-          }}
-          aria-label="Buka settings"
-        >
-          <IconSettings />
-          <span className="w-full min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[10px] font-semibold leading-tight text-center">
-            Setting
-          </span>
-        </button>
+        {(role === "engineer" || role === "superuser") ? (
+          <button
+            onClick={() => setPage("settings")}
+            className="relative flex-1 min-w-0 basis-0 flex flex-col items-center justify-center gap-0.5 px-1 py-2 rounded-xl transition-all"
+            style={{
+              color: currentPage === "settings" ? "var(--accent)" : "var(--text-muted)",
+              background: currentPage === "settings" ? "var(--accent-soft)" : "transparent",
+            }}
+            aria-label="Buka pengaturan"
+          >
+            <IconSettings />
+            <span className="w-full min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[10px] font-semibold leading-tight text-center">Setting</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => setPage("profile")}
+            className="relative flex-1 min-w-0 basis-0 flex flex-col items-center justify-center gap-0.5 px-1 py-2 rounded-xl transition-all"
+            style={{
+              color: currentPage === "profile" ? "var(--accent)" : "var(--text-muted)",
+              background: currentPage === "profile" ? "var(--accent-soft)" : "transparent",
+            }}
+            aria-label="Buka profil"
+          >
+            <IconSettings />
+            <span className="w-full min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[10px] font-semibold leading-tight text-center">Profil</span>
+          </button>
+        )}
       </nav>
     </>
   );
