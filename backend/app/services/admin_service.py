@@ -10,13 +10,9 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def _normalize_gsheet_url(role: str, gsheet_url: str | None) -> str | None:
+    # GSheet PTL bersifat opsional; dapat dikonfigurasi setelah akun dibuat.
     if role == "ptl":
-        if not gsheet_url:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="gsheet_url wajib diisi untuk role PTL",
-            )
-        return gsheet_url
+        return gsheet_url.strip() if gsheet_url and gsheet_url.strip() else None
     return None
 
 

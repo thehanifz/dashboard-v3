@@ -11,7 +11,7 @@ GET  /api/settings/{key}   — baca satu setting by key
 PUT  /api/settings/{key}   — engineer only: update satu setting
 POST /api/settings/cache/invalidate — engineer only: force reload cache
 
-Role superuser hanya untuk management user — tidak akses endpoint fitur operasional.
+Superuser dapat membaca konfigurasi; perubahan setting tetap dibatasi ke engineer.
 """
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -47,9 +47,9 @@ async def get_public_settings(db: AsyncSession = Depends(get_db)):
 @router.get("/", response_model=list[SettingRead])
 async def list_settings(
     db: AsyncSession = Depends(get_db),
-    _current_user=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    """Baca semua settings lengkap — butuh login."""
+    """Baca semua settings lengkap — user login, termasuk superuser."""
     result = await db.execute(
         select(DashboardSetting).order_by(DashboardSetting.category, DashboardSetting.key)
     )

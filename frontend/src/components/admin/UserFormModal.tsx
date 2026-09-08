@@ -52,12 +52,6 @@ export default function UserFormModal({ mode, open, user, loading, onClose, onSu
       setError("Nama lengkap wajib diisi");
       return;
     }
-
-    if (role === "ptl" && !gsheetUrl.trim()) {
-      setError("GSheet URL wajib diisi untuk role PTL");
-      return;
-    }
-
     if (mode === "create") {
       if (!username.trim()) {
         setError("Username wajib diisi");
@@ -164,7 +158,7 @@ export default function UserFormModal({ mode, open, user, loading, onClose, onSu
                 value={gsheetUrl}
                 onChange={(e) => setGsheetUrl(e.target.value)}
                 className="w-full rounded-lg border px-3 py-2"
-                placeholder="https://docs.google.com/spreadsheets/..."
+                placeholder="Opsional — bisa diisi nanti"
               />
             </div>
           )}
