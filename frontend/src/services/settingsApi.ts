@@ -31,7 +31,12 @@ export async function updateSetting(
   value: string
 ): Promise<DashboardSetting> {
   const { data } = await api.put<DashboardSetting>(`/settings/${key}`, { value });
+
+  // The public settings cache is browser-global and has no TTL/versioning.
+  // Clear it after a successful DB update so dashboards cannot keep using
+  // the old threshold values.
   await clearPublicSettingsCache();
+
   return data;
 }
 
@@ -68,24 +73,26 @@ export interface AgingThresholds {
 }
 
 export async function getAgingThresholds(): Promise<AgingThresholds> {
+  // Aging thresholds are authoritative DB settings. Do not read the
+  // browser-cached public settings here, otherwise PTL can keep an older
+  // value after Engineer changes the threshold.
   const settings = await fetchPublicSettings(true);
   const tier1 = Number(settings["aging.tier1"]);
   const tier2 = Number(settings["aging.tier2"]);
   const tier3 = Number(settings["aging.tier3"]);
-  if (!Number.isFinite(tier1) || !Number.isFinite(tier2) || !Number.isFinite(tier3) || tier1 <= 0 || tier2 <= tier1 || tier3 <= tier2) {
-    throw new Error("Konfigurasi Aging dari database tidak valid");
-  }
-  return { tier1, tier2, tier3 };
-}
 
-/** Update seluruh threshold Aging dalam satu transaksi. */
-export async function updateAgingThresholds(t: AgingThresholds): Promise<AgingThresholds> {
-  if (!Number.isFinite(t.tier1) || !Number.isFinite(t.tier2) || !Number.isFinite(t.tier3) || t.tier1 <= 0 || t.tier2 <= t.tier1 || t.tier3 <= t.tier2) {
-    throw new Error("Harus: Tier 1 < Tier 2 < Tier 3 dan semua > 0");
+  if (
+    !Number.isFinite(tier1) ||
+    !Number.isFinite(tier2) ||
+    !Number.isFinite(tier3) ||
+    tier1 <= 0 ||
+    tier2 <= tier1 ||
+    tier3 <= tier2
+  ) {
+    throw new Error("Invalid aging threshold settings");
   }
-  const { data } = await api.put<AgingThresholds>("/settings/aging-thresholds", t);
-  await clearPublicSettingsCache();
-  return data;
+
+  return { tier1, tier2, tier3 };
 }
 
 // ── getDashboardColumns — nama kolom GSheet untuk SummaryDashboard ─────────────
@@ -195,4 +202,32 @@ export async function getAppInfo(): Promise<AppInfo> {
   } catch {
     return { ...APP_INFO_DEFAULTS };
   }
+}
+
+
+export async function updateAgingThresholds(
+  thresholds: AgingThresholds
+): Promise<AgingThresholds> {
+  if (
+    !Number.isFinite(thresholds.tier1) ||
+    !Number.isFinite(thresholds.tier2) ||
+    !Number.isFinite(thresholds.tier3) ||
+    thresholds.tier1 <= 0 ||
+    thresholds.tier2 <= thresholds.tier1 ||
+    thresholds.tier3 <= thresholds.tier2
+  ) {
+    throw new Error("Invalid aging thresholds");
+  }
+
+  await Promise.all([
+    updateSetting("aging.tier1", String(thresholds.tier1)),
+    updateSetting("aging.tier2", String(thresholds.tier2)),
+    updateSetting("aging.tier3", String(thresholds.tier3)),
+  ]);
+
+  return {
+    tier1: thresholds.tier1,
+    tier2: thresholds.tier2,
+    tier3: thresholds.tier3,
+  };
 }
