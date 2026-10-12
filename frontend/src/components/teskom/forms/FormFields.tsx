@@ -1,10 +1,12 @@
 // frontend/src/components/teskom/forms/FormFields.tsx  ✏️ MODIFIED
-import { memo, useState } from "react";
+import { memo } from "react";
 
 interface Props {
   form: Record<string, string>;
   setField: (key: string, val: string) => void;
   tipe: string;
+  showWakil: boolean;
+  onShowWakilChange: (show: boolean) => void;
 }
 
 const InputField = memo(({ label, value, onChange, type = "text", placeholder = "" }: {
@@ -48,9 +50,7 @@ const Divider = ({ label }: { label: string }) => (
   </div>
 );
 
-export default memo(function FormFields({ form, setField, tipe }: Props) {
-  const [showWakil, setShowWakil] = useState(false);
-
+export default memo(function FormFields({ form, setField, tipe, showWakil, onShowWakilChange }: Props) {
   return (
     <>
       {/* ── Data Layanan ── */}
@@ -96,7 +96,7 @@ export default memo(function FormFields({ form, setField, tipe }: Props) {
           type="checkbox"
           id="toggle-wakil"
           checked={showWakil}
-          onChange={(e) => setShowWakil(e.target.checked)}
+          onChange={(e) => onShowWakilChange(e.target.checked)}
           className="w-4 h-4 cursor-pointer"
           style={{ accentColor: "var(--accent)" }}
         />

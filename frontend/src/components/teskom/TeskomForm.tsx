@@ -7,6 +7,8 @@ import { FORM_REGISTRY, Tipe } from "./formRegistry";
 import teskomApi, { AutoFillResult, autofillFromCache } from "../../services/teskomApi";
 import { useAppStore } from "../../state/appStore";
 import { useAuthStore } from "../../state/authStore";
+import { getScoped, setScoped, delScoped } from "../../services/cacheStore";
+import { getCurrentCacheScope } from "../../services/cacheScope";
 
 interface Props {
   onToast: (msg: string, type?: "success" | "error") => void;
@@ -21,6 +23,33 @@ const TABS = [
 
 const kategoriList = Object.entries(FORM_REGISTRY);
 const initialKategori = kategoriList[0][0];
+const INITIAL_FORM: Record<string, string> = {
+  tanggal_bai: "", nama_layanan: "", user: "", sid: "",
+  bandwidth: "", peruntukan_layanan: "", no_pa: "",
+  project_team: "", nama_wakil_user: "", jabatan_user: "",
+  no_hp_user: "", alamat_kantor_user: "", vendor_instalasi: "",
+  jarak_otdr: "", no_surat: "", tgl_surat: "",
+  nama_t: "", perangkat_t: "", kanal_t: "",
+  nama_o: "", perangkat_o: "", kanal_o: "",
+};
+const INITIAL_PHOTOS: Record<string, File | File[] | null> = {
+  foto_asplan: null,
+  foto_rack_pln_t: null, foto_perangkat_pln_t: null, foto_label_pln_t: null,
+  foto_rack_icp_t: null, foto_perangkat_icp_t: null, foto_label_icp_t: null,
+  foto_rack_pln_o: null, foto_perangkat_pln_o: null, foto_label_pln_o: null,
+  foto_rack_icp_o: null, foto_perangkat_icp_o: null, foto_label_icp_o: null,
+  foto_ping: null, foto_speedtest: null, foto_bert: null, foto_otdr: null,
+};
+
+interface TeskomDraft {
+  kategori: string;
+  tipe: Tipe;
+  form: Record<string, string>;
+  showWakil: boolean;
+}
+
+const DRAFT_KEY = "teskom-form-draft-v1";
+const DRAFT_PHOTOS_KEY = "teskom-form-photos-v1";
 
 const Divider = ({ label }: { label: string }) => (
   <div className="flex items-center gap-3 my-4">
@@ -38,7 +67,13 @@ export default function TeskomForm({ onToast }: Props) {
   const [tipe, setTipe]             = useState<Tipe>(FORM_REGISTRY[initialKategori].defaultTipe);
   const [generating, setGenerating] = useState(false);
   const [activeTab, setActiveTab]   = useState(TABS[0].id);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftTouched, setDraftTouched] = useState(false);
+  const [draftStatus, setDraftStatus] = useState("Memulihkan draft...");
+  const [resetKey, setResetKey] = useState(0);
+  const [showWakil, setShowWakil] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const draftRevision = useRef(0);
 
   // Role-aware autofill: ptl → autofillPtl, engineer/mitra → autofill
   const { user } = useAuthStore();
@@ -53,37 +88,126 @@ export default function TeskomForm({ onToast }: Props) {
   const supportedTipe = FORM_REGISTRY[kategori]?.supportedTipe ?? ["T", "OT"];
   const activeTipe: Tipe = supportedTipe.includes(tipe) ? tipe : FORM_REGISTRY[kategori].defaultTipe;
 
-  const [form, setFormState] = useState<Record<string, string>>({
-    tanggal_bai: "", nama_layanan: "", user: "", sid: "",
-    bandwidth: "", peruntukan_layanan: "", no_pa: "",
-    project_team: "", nama_wakil_user: "", jabatan_user: "",
-    no_hp_user: "", alamat_kantor_user: "", vendor_instalasi: "",
-    jarak_otdr: "", no_surat: "", tgl_surat: "",
-    nama_t: "", perangkat_t: "", kanal_t: "",
-    nama_o: "", perangkat_o: "", kanal_o: "",
-  });
+  const [form, setFormState] = useState<Record<string, string>>(INITIAL_FORM);
+  const [photos, setPhotos] = useState<Record<string, File | File[] | null>>(INITIAL_PHOTOS);
 
-  const [photos, setPhotos] = useState<Record<string, File | File[] | null>>({
-    foto_asplan: null,
-    foto_rack_pln_t: null, foto_perangkat_pln_t: null, foto_label_pln_t: null,
-    foto_rack_icp_t: null, foto_perangkat_icp_t: null, foto_label_icp_t: null,
-    foto_rack_pln_o: null, foto_perangkat_pln_o: null, foto_label_pln_o: null,
-    foto_rack_icp_o: null, foto_perangkat_icp_o: null, foto_label_icp_o: null,
-    foto_ping: null, foto_speedtest: null, foto_bert: null, foto_otdr: null,
-  });
+  // IndexedDB can retain File objects, so selected photos survive navigation and reload too.
+  useEffect(() => {
+    let cancelled = false;
+    const scope = getCurrentCacheScope();
+    if (!scope) {
+      setDraftStatus("Draft tidak tersedia");
+      setDraftReady(true);
+      return () => { cancelled = true; };
+    }
 
-  const setField = useCallback((key: string, val: string) =>
-    setFormState((p) => ({ ...p, [key]: val })), []);
+    void Promise.all([
+      getScoped<TeskomDraft>(DRAFT_KEY, scope),
+      getScoped<Record<string, File | File[] | null>>(DRAFT_PHOTOS_KEY, scope),
+    ]).then(([draft, savedPhotos]) => {
+      if (cancelled) return;
+      if (draft) {
+        setKategori(FORM_REGISTRY[draft.kategori] ? draft.kategori : initialKategori);
+        setTipe(draft.tipe === "T" || draft.tipe === "OT" ? draft.tipe : FORM_REGISTRY[initialKategori].defaultTipe);
+        setFormState({ ...INITIAL_FORM, ...draft.form });
+        setShowWakil(draft.showWakil === true);
+        setDraftTouched(true);
+        setDraftStatus("Draft dipulihkan");
+      } else {
+        setDraftStatus("Draft belum dibuat");
+      }
+      if (savedPhotos) {
+        setPhotos({ ...INITIAL_PHOTOS, ...savedPhotos });
+        setDraftTouched(true);
+        setDraftStatus("Draft dipulihkan");
+      }
+      setDraftReady(true);
+    }).catch(() => {
+      if (cancelled) return;
+      setDraftStatus("Draft tidak dapat dibaca");
+      setDraftReady(true);
+    });
 
-  const onPhotoChange = useCallback((key: string, val: File | File[] | null) =>
-    setPhotos((p) => ({ ...p, [key]: val })), []);
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady || !draftTouched) return;
+    const scope = getCurrentCacheScope();
+    if (!scope) return;
+    const revision = ++draftRevision.current;
+    setDraftStatus("Menyimpan draft...");
+    void setScoped<TeskomDraft>(DRAFT_KEY, scope, { kategori, tipe: activeTipe, form, showWakil })
+      .then(() => {
+        if (draftRevision.current === revision) setDraftStatus("Draft tersimpan otomatis");
+      })
+      .catch(() => {
+        if (draftRevision.current === revision) setDraftStatus("Gagal menyimpan draft");
+      });
+  }, [draftReady, draftTouched, kategori, activeTipe, form, showWakil]);
+
+  useEffect(() => {
+    if (!draftReady || !draftTouched) return;
+    const scope = getCurrentCacheScope();
+    if (!scope) return;
+    void setScoped(DRAFT_PHOTOS_KEY, scope, photos).catch(() => {
+      setDraftStatus("Gagal menyimpan foto draft");
+    });
+  }, [draftReady, draftTouched, photos]);
+
+  const setField = useCallback((key: string, val: string) => {
+    setDraftTouched(true);
+    setFormState((p) => ({ ...p, [key]: val }));
+  }, []);
+
+  const onPhotoChange = useCallback((key: string, val: File | File[] | null) => {
+    setDraftTouched(true);
+    setPhotos((p) => ({ ...p, [key]: val }));
+  }, []);
 
   const handleKategoriChange = (newKategori: string) => {
+    setDraftTouched(true);
     setKategori(newKategori);
     setTipe(FORM_REGISTRY[newKategori].defaultTipe);
   };
 
+  const clearStoredDraft = async () => {
+    const scope = getCurrentCacheScope();
+    if (!scope) return true;
+    try {
+      await Promise.all([
+        delScoped(DRAFT_KEY, scope),
+        delScoped(DRAFT_PHOTOS_KEY, scope),
+      ]);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const resetForm = () => {
+    draftRevision.current += 1;
+    setDraftTouched(false);
+    setKategori(initialKategori);
+    setTipe(FORM_REGISTRY[initialKategori].defaultTipe);
+    setFormState(INITIAL_FORM);
+    setPhotos(INITIAL_PHOTOS);
+    setShowWakil(false);
+    setActiveTab(TABS[0].id);
+    setResetKey((current) => current + 1);
+    setDraftStatus("Draft direset");
+  };
+
+  const resetDraft = async () => {
+    if (!(await clearStoredDraft())) {
+      onToast("Draft gagal dihapus dari penyimpanan", "error");
+      return;
+    }
+    resetForm();
+  };
+
   const handleAutofill = useCallback((data: AutoFillResult["autofill"]) => {
+    setDraftTouched(true);
     setFormState((prev) => ({
       ...prev,
       no_pa:            data.no_pa            || prev.no_pa,
@@ -175,7 +299,12 @@ export default function TeskomForm({ onToast }: Props) {
       a.download = `BAI_BATC_${(form.no_pa || "dokumen").replace(/\//g, "-")}.docx`;
       a.click();
       URL.revokeObjectURL(url);
-      onToast("Dokumen berhasil digenerate!", "success");
+      if (await clearStoredDraft()) {
+        resetForm();
+        onToast("Dokumen berhasil digenerate! Draft telah dihapus", "success");
+      } else {
+        onToast("Dokumen berhasil digenerate, tetapi draft gagal dihapus", "error");
+      }
     } catch (err: any) {
       onToast(err?.response?.data?.detail || "Gagal generate dokumen", "error");
     } finally {
@@ -205,6 +334,14 @@ export default function TeskomForm({ onToast }: Props) {
 
   const SpecificForm = FORM_REGISTRY[kategori]?.component;
 
+  if (!draftReady) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm" style={{ color: "var(--text-muted)" }}>
+        Memulihkan draft Teskom...
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ color: "var(--text-primary)" }}>
 
@@ -216,11 +353,19 @@ export default function TeskomForm({ onToast }: Props) {
             {isPtl ? "Sumber data: GSheet PTL" : "Sumber data: database"}
           </p>
         </div>
-        <button onClick={handleGenerate} disabled={generating}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white"
-          style={{ background: "var(--accent)", opacity: generating ? 0.6 : 1 }}>
-          {generating ? "Membuat dokumen..." : "Generate DOCX"}
-        </button>
+        <div className="flex items-center gap-3">
+          <span className="hidden sm:inline text-[11px]" style={{ color: "var(--text-muted)" }}>{draftStatus}</span>
+          <button onClick={() => void resetDraft()} disabled={generating}
+            className="px-3 py-2 rounded-lg text-xs font-semibold border"
+            style={{ borderColor: "var(--border)", color: "var(--text-secondary)", opacity: generating ? 0.6 : 1 }}>
+            Reset
+          </button>
+          <button onClick={handleGenerate} disabled={generating}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white"
+            style={{ background: "var(--accent)", opacity: generating ? 0.6 : 1 }}>
+            {generating ? "Membuat dokumen..." : "Generate DOCX"}
+          </button>
+        </div>
       </div>
 
       {/* ── Sticky Tabs ── */}
@@ -242,7 +387,7 @@ export default function TeskomForm({ onToast }: Props) {
 
         {/* Section 1: Layanan */}
         <div id="section-layanan">
-          <AutoFillSearch onAutofill={handleAutofill} onToast={onToast} />
+          <AutoFillSearch key={resetKey} onAutofill={handleAutofill} onToast={onToast} />
           <div className="grid grid-cols-2 gap-4 mb-2">
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
@@ -282,24 +427,26 @@ export default function TeskomForm({ onToast }: Props) {
         {/* Section 2: Info Umum */}
         <div id="section-info">
           <Divider label="Info Umum" />
-          <FormFields form={form} setField={setField} tipe={activeTipe} />
+          <FormFields key={resetKey} form={form} setField={setField} tipe={activeTipe}
+            showWakil={showWakil} onShowWakilChange={setShowWakil} />
         </div>
 
         {/* Section 3: Dokumentasi */}
         <div id="section-dokumentasi">
           <Divider label="Foto As-Plan" />
           <PhotoUpload
+            key={`asplan-${resetKey}`}
             slots={[{ key: "foto_asplan", label: "Foto As-Plan (bisa multiple)", multiple: true }]}
             files={photos} onChange={onPhotoChange} cols={3}
           />
 
           <Divider label={judulT} />
-          <PhotoUpload slots={FOTO_T} files={photos} onChange={onPhotoChange} cols={3} />
+          <PhotoUpload key={`foto-t-${resetKey}`} slots={FOTO_T} files={photos} onChange={onPhotoChange} cols={3} />
 
           {activeTipe === "OT" && (
             <>
               <Divider label={judulO} />
-              <PhotoUpload slots={FOTO_O} files={photos} onChange={onPhotoChange} cols={3} />
+              <PhotoUpload key={`foto-o-${resetKey}`} slots={FOTO_O} files={photos} onChange={onPhotoChange} cols={3} />
             </>
           )}
         </div>
