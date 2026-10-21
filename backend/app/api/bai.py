@@ -26,6 +26,7 @@ from app.db.models import User, PARecord
 from app.services.bai_renderer import render_bai
 from app.services.sync_engine import read_ptl_sheet
 from app.utils.file_helper import create_tmp_dir, cleanup_tmp_dir
+from app.api.teskom import format_ptl_name
 
 import re
 
@@ -64,7 +65,7 @@ def _build_bai_context_from_pa_record(record: PARecord, tanggal_bai_str: str) ->
         "bandwidth":         record.bandwidth or "",
         "no_surat":          record.id_permohonan or "",
         "vendor_instalasi":  "",  # tidak ada di PARecord, biarkan kosong
-        "project_team":      record.nama_ptl or "",
+        "project_team":      format_ptl_name(record.nama_ptl or ""),
         "nama_t":            record.alamat or "",
         "nama_o":            "",  # originating tidak ada di PARecord
         "sbu_terminating":   "",
@@ -97,7 +98,7 @@ def _build_bai_context_from_sheet(data: dict, tanggal_bai_str: str) -> dict:
         "bandwidth":         bandwidth,
         "no_surat":          data.get("No Surat Permohonan", ""),
         "vendor_instalasi":  data.get("MITRA TERMINATING", ""),
-        "project_team":      data.get("PTL TERMINATING", ""),
+        "project_team":      format_ptl_name(data.get("PTL TERMINATING", "")),
         "nama_t":            data.get("ALAMAT TERMINATING", ""),
         "nama_o":            data.get("ALAMAT ORIGINATING", ""),
         "sbu_terminating":   data.get("SBU TERMINATING", ""),

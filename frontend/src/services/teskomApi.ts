@@ -51,6 +51,16 @@ function parseBandwidth(keterangan: string): string {
     : "";
 }
 
+export function formatPtlName(raw: string): string {
+  if (!raw) return "";
+  const nameOnly = raw.split("|")[0].trim();
+  return nameOnly
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 /**
  * Mapping row yang sudah ada di cache dashboard → payload autofill Teskom.
  * Tidak melakukan network request.
@@ -77,7 +87,7 @@ export function autofillFromCache(
         : (data["BANDWIDTH"] || ""),
       no_surat: isPtl ? (data["No Surat Permohonan"] || "") : (data["ID PERMOHONAN"] || ""),
       vendor_instalasi: isPtl ? (data["MITRA TERMINATING"] || "") : "",
-      project_team: isPtl ? (data["PTL TERMINATING"] || "") : (data["Nama PTL"] || ""),
+      project_team: formatPtlName(isPtl ? (data["PTL TERMINATING"] || "") : (data["Nama PTL"] || "")),
       nama_t: isPtl ? (data["ALAMAT TERMINATING"] || "") : (data["ALAMAT"] || ""),
       nama_o: isPtl ? (data["ALAMAT ORIGINATING"] || "") : "",
       alamat_kantor_user: isPtl ? (data["ALAMAT TERMINATING"] || "") : (data["ALAMAT"] || ""),

@@ -74,6 +74,13 @@ def check_file_opt(upload: Optional[UploadFile], field_name: str):
         raise HTTPException(status_code=422, detail=f"[{field_name}] {err}")
 
 
+def format_ptl_name(raw: str) -> str:
+    if not raw:
+        return ""
+    name_only = raw.split("|")[0].strip()
+    return " ".join(word.capitalize() for word in name_only.split())
+
+
 def _build_autofill_from_pa_record(record: PARecord) -> dict:
     """Mapping PARecord (PostgreSQL) → autofill payload."""
     return {
@@ -89,7 +96,7 @@ def _build_autofill_from_pa_record(record: PARecord) -> dict:
             "bandwidth":          record.bandwidth or "",
             "no_surat":           record.id_permohonan or "",
             "vendor_instalasi":   "",  # tidak ada di PARecord, diisi manual
-            "project_team":       record.nama_ptl or "",
+            "project_team":       format_ptl_name(record.nama_ptl or ""),
             "nama_t":             record.alamat or "",
             "nama_o":             "",  # originating tidak ada di PARecord
             "alamat_kantor_user": record.alamat or "",
@@ -114,7 +121,7 @@ def _build_autofill_from_sheet_record(record: dict) -> dict:
             "bandwidth":          parse_bandwidth(data.get("KETERANGAN", "")),
             "no_surat":           data.get("No Surat Permohonan", ""),
             "vendor_instalasi":   data.get("MITRA TERMINATING", ""),
-            "project_team":       data.get("PTL TERMINATING", ""),
+            "project_team":       format_ptl_name(data.get("PTL TERMINATING", "")),
             "nama_t":             data.get("ALAMAT TERMINATING", ""),
             "nama_o":             data.get("ALAMAT ORIGINATING", ""),
             "alamat_kantor_user": data.get("ALAMAT TERMINATING", ""),
