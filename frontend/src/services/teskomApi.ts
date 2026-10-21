@@ -21,6 +21,23 @@ export interface AutoFillResult {
   };
 }
 
+export interface WakilUserRecord {
+  id: number;
+  nama_wakil_user: string;
+  jabatan_user: string;
+  no_hp_user: string;
+  alamat_kantor_user: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface WakilUserIn {
+  nama_wakil_user: string;
+  jabatan_user?: string;
+  no_hp_user?: string;
+  alamat_kantor_user?: string;
+}
+
 export type TeskomCacheSource = "records" | "ptl";
 
 function parseBandwidth(keterangan: string): string {
@@ -88,6 +105,18 @@ const teskomApi = {
         timeout: 60000,
       })
       .then((r) => r.data),
+
+  /** Daftar wakil user (perwakilan pelanggan) milik user yang login */
+  getWakilUsers: (): Promise<WakilUserRecord[]> =>
+    api.get("/teskom/wakil-users").then((r) => r.data),
+
+  /** Simpan wakil user baru ke database */
+  createWakilUser: (data: WakilUserIn): Promise<WakilUserRecord> =>
+    api.post("/teskom/wakil-users", data).then((r) => r.data),
+
+  /** Hapus wakil user dari database berdasarkan ID */
+  deleteWakilUser: (id: number): Promise<{ ok: boolean; message: string }> =>
+    api.delete(`/teskom/wakil-users/${id}`).then((r) => r.data),
 };
 
 export default teskomApi;

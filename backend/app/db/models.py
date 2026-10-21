@@ -62,6 +62,7 @@ class User(Base):
     password_reset_requests: Mapped[list["PasswordResetRequest"]]= relationship(back_populates="user", cascade="all, delete-orphan")
     presets                : Mapped[list["UserPreset"]]          = relationship(back_populates="user", cascade="all, delete-orphan")
     column_config          : Mapped[Optional["UserColumnConfig"]] = relationship(back_populates="user", uselist=False, cascade="all, delete-orphan")
+    teskom_wakil_users     : Mapped[list["TeskomWakilUser"]]     = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 # ── refresh_tokens ────────────────────────────────────────────────────────────
@@ -287,3 +288,23 @@ class DashboardSetting(Base):
     is_editable : Mapped[bool]          = mapped_column(Boolean, nullable=False, default=True)
     updated_by  : Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     updated_at  : Mapped[datetime]      = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+# ── teskom_wakil_users ────────────────────────────────────────────────────────
+class TeskomWakilUser(Base):
+    """
+    Data perwakilan user (pelanggan) yang disimpan per akun pengguna untuk Form Teskom.
+    """
+    __tablename__ = "teskom_wakil_users"
+
+    id                 : Mapped[int]       = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id            : Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    nama_wakil_user    : Mapped[str]       = mapped_column(String(150), nullable=False, index=True)
+    jabatan_user       : Mapped[str]       = mapped_column(String(100), nullable=False, default="", server_default="")
+    no_hp_user         : Mapped[str]       = mapped_column(String(50), nullable=False, default="", server_default="")
+    alamat_kantor_user : Mapped[str]       = mapped_column(Text, nullable=False, default="", server_default="")
+    created_at         : Mapped[datetime]  = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at         : Mapped[datetime]  = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user: Mapped["User"] = relationship(back_populates="teskom_wakil_users")
+

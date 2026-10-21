@@ -21,10 +21,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from starlette.background import BackgroundTask
 
+from pydantic import BaseModel, Field
+
 from app.core.config import MAX_UPLOAD_BYTES
-from app.core.deps import require_role
+from app.core.deps import require_role, get_current_user
 from app.db.database import get_db
-from app.db.models import User, PARecord
+from app.db.models import User, PARecord, TeskomWakilUser
 from app.services.renderer_registry import is_supported, all_kategori
 from app.services.sync_engine import read_ptl_sheet
 from app.services.doc_renderer import render_doc
@@ -308,3 +310,121 @@ async def generate_teskom(
     except Exception as e:
         cleanup_tmp_dir(tmp_dir)
         raise HTTPException(status_code=500, detail=f"Gagal generate dokumen: {str(e)}")
+
+
+# ── Wakil User (Perwakilan Pelanggan) Endpoints ───────────────────────────────
+
+class WakilUserIn(BaseModel):
+    nama_wakil_user: str = Field(..., min_length=1, max_length=150)
+    jabatan_user: Optional[str] = Field(default="", max_length=100)
+    no_hp_user: Optional[str] = Field(default="", max_length=50)
+    alamat_kantor_user: Optional[str] = Field(default="", max_length=500)
+
+
+class WakilUserOut(BaseModel):
+    id: int
+    nama_wakil_user: str
+    jabatan_user: str
+    no_hp_user: str
+    alamat_kantor_user: str
+    created_at: datetime
+    updated_at: datetime
+    model_config = {"from_attributes": True}
+
+
+@router.get("/wakil-users", response_model=List[WakilUserOut])
+async def list_wakil_users(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(TeskomWakilUser)
+        .where(TeskomWakilUser.user_id == current_user.id)
+        .order_by(TeskomWakilUser.nama_wakil_user.asc(), TeskomWakilUser.updated_at.desc())
+    )
+    all_records = result.scalars().all()
+    # Deduplikasi nama (pertahankan record terbaru dan bersihkan duplikat lama)
+    seen_names = set()
+    unique_records = []
+    has_dups = False
+    for r in all_records:
+        norm_name = r.nama_wakil_user.strip().lower()
+        if norm_name not in seen_names:
+            seen_names.add(norm_name)
+            unique_records.append(r)
+        else:
+            await db.delete(r)
+            has_dups = True
+
+    if has_dups:
+        await db.flush()
+
+    return unique_records
+
+
+@router.post("/wakil-users", response_model=WakilUserOut, status_code=200)
+async def create_wakil_user(
+    body: WakilUserIn,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    nama = body.nama_wakil_user.strip()
+    if not nama:
+        raise HTTPException(status_code=400, detail="Nama wakil user tidak boleh kosong")
+
+    # Cek apakah nama sudah ada (case-insensitive) untuk user ini
+    result = await db.execute(
+        select(TeskomWakilUser)
+        .where(
+            TeskomWakilUser.user_id == current_user.id,
+            func.lower(TeskomWakilUser.nama_wakil_user) == func.lower(nama),
+        )
+        .order_by(TeskomWakilUser.updated_at.desc())
+    )
+    existing_records = result.scalars().all()
+
+    if existing_records:
+        record = existing_records[0]
+        record.nama_wakil_user = nama
+        record.jabatan_user = (body.jabatan_user or "").strip()
+        record.no_hp_user = (body.no_hp_user or "").strip()
+        record.alamat_kantor_user = (body.alamat_kantor_user or "").strip()
+
+        # Bersihkan duplikat lama jika ada
+        for extra in existing_records[1:]:
+            await db.delete(extra)
+
+        await db.flush()
+        await db.refresh(record)
+        return record
+
+    record = TeskomWakilUser(
+        user_id=current_user.id,
+        nama_wakil_user=nama,
+        jabatan_user=(body.jabatan_user or "").strip(),
+        no_hp_user=(body.no_hp_user or "").strip(),
+        alamat_kantor_user=(body.alamat_kantor_user or "").strip(),
+    )
+    db.add(record)
+    await db.flush()
+    await db.refresh(record)
+    return record
+
+
+@router.delete("/wakil-users/{target_id}")
+async def delete_wakil_user(
+    target_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(TeskomWakilUser)
+        .where(TeskomWakilUser.id == target_id, TeskomWakilUser.user_id == current_user.id)
+    )
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(status_code=404, detail="Data wakil user tidak ditemukan")
+
+    await db.delete(record)
+    return {"ok": True, "message": "Data wakil user berhasil dihapus"}
+

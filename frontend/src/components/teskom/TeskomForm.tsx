@@ -210,43 +210,71 @@ export default function TeskomForm({ onToast }: Props) {
     setDraftTouched(true);
     setFormState((prev) => ({
       ...prev,
-      no_pa:            data.no_pa            || prev.no_pa,
-      sid:              data.sid              || prev.sid,
-      user:             data.user             || prev.user,
-      nama_layanan:     data.nama_layanan     || prev.nama_layanan,
-      bandwidth:        data.bandwidth        || prev.bandwidth,
-      no_surat:         data.no_surat         || prev.no_surat,
-      vendor_instalasi: data.vendor_instalasi || prev.vendor_instalasi,
-      project_team:     data.project_team     || prev.project_team,
-      nama_t:           data.nama_t           || prev.nama_t,
-      nama_o:           data.nama_o           || prev.nama_o,
+      no_pa:            data.no_pa            ?? "",
+      sid:              data.sid              ?? "",
+      user:             data.user             ?? "",
+      nama_layanan:     data.nama_layanan     ?? "",
+      bandwidth:        data.bandwidth        ?? "",
+      no_surat:         data.no_surat         ?? "",
+      vendor_instalasi: data.vendor_instalasi ?? "",
+      project_team:     data.project_team     ?? "",
+      nama_t:           data.nama_t           ?? "",
+      nama_o:           data.nama_o           ?? "",
       // alamat_kantor_user sengaja tidak diisi dari autofill
     }));
   }, []);
 
   // ── Autofill berdasarkan role saat halaman dibuka dari tabel ──
   useEffect(() => {
-    if (!teskomAutofillId) return;
+    if (!draftReady || !teskomAutofillId) return;
 
+    let cancelled = false;
     const idPa = teskomAutofillId;
     const cachedData = teskomAutofillData;
     const cachedSource = teskomAutofillSource;
 
-    // Data dari row dashboard/PTL sudah berasal dari cache lokal.
-    // Gunakan langsung agar klik Teskom tidak round-trip ke PostgreSQL/GSheet.
-    if (cachedData) {
-      const result = autofillFromCache(cachedData, cachedSource || (isPtl ? "ptl" : "records"));
-      handleAutofill(result.autofill);
-      setTeskomAutofill(null);
-      onToast(`Data "${idPa}" berhasil dimuat dari cache`, "success");
-      return;
-    }
-
-    // Teskom dari row/tabel wajib cache-only. Jika row cache tidak tersedia,
-    // jangan melakukan fallback ke endpoint autofill.
+    // Reset store state agar tidak terpanggil ganda
     setTeskomAutofill(null);
-    onToast(`Data "${idPa}" tidak tersedia di cache`, "error");
-  }, [teskomAutofillId, teskomAutofillData, teskomAutofillSource, isPtl, handleAutofill, setTeskomAutofill, onToast]);
+
+    const applyAutofill = async () => {
+      // 1. Coba dari cache lokal row tabel terlebih dahulu
+      if (cachedData) {
+        try {
+          const result = autofillFromCache(cachedData, cachedSource || (isPtl ? "ptl" : "records"));
+          if (!cancelled) {
+            handleAutofill(result.autofill);
+            onToast(`Data "${idPa}" berhasil dimuat dari tabel`, "success");
+            return;
+          }
+        } catch {
+          // fallback ke API call di bawah
+        }
+      }
+
+      // 2. Fallback: panggil API autofill persis seperti AutoFillSearch
+      try {
+        const result = isPtl
+          ? await teskomApi.autofillPtl(idPa)
+          : await teskomApi.autofill(idPa, "TERMINATING");
+
+        if (!cancelled) {
+          handleAutofill(result.autofill);
+          onToast(`Data "${idPa}" berhasil dimuat`, "success");
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          const msg = err?.response?.data?.detail || `Data "${idPa}" tidak dapat dimuat`;
+          onToast(msg, "error");
+        }
+      }
+    };
+
+    void applyAutofill();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draftReady, teskomAutofillId, teskomAutofillData, teskomAutofillSource, isPtl, handleAutofill, setTeskomAutofill, onToast]);
 
   // IntersectionObserver — tab aktif ikut scroll
   useEffect(() => {
@@ -299,12 +327,7 @@ export default function TeskomForm({ onToast }: Props) {
       a.download = `BAI_BATC_${(form.no_pa || "dokumen").replace(/\//g, "-")}.docx`;
       a.click();
       URL.revokeObjectURL(url);
-      if (await clearStoredDraft()) {
-        resetForm();
-        onToast("Dokumen berhasil digenerate! Draft telah dihapus", "success");
-      } else {
-        onToast("Dokumen berhasil digenerate, tetapi draft gagal dihapus", "error");
-      }
+      onToast("Dokumen berhasil digenerate!", "success");
     } catch (err: any) {
       onToast(err?.response?.data?.detail || "Gagal generate dokumen", "error");
     } finally {
@@ -428,7 +451,7 @@ export default function TeskomForm({ onToast }: Props) {
         <div id="section-info">
           <Divider label="Info Umum" />
           <FormFields key={resetKey} form={form} setField={setField} tipe={activeTipe}
-            showWakil={showWakil} onShowWakilChange={setShowWakil} />
+            showWakil={showWakil} onShowWakilChange={setShowWakil} onToast={onToast} />
         </div>
 
         {/* Section 3: Dokumentasi */}
