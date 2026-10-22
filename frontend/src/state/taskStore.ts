@@ -361,17 +361,18 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const scope = getCurrentCacheScope();
     if (!scope) return;
     await updateCachedPtlRecord(rowId, updates, scope);
-    const current = get().ptlSheetData;
-    if (!current) return;
-    set({
-      ptlSheetData: {
-        ...current,
-        records: current.records.map((record) =>
-          record.row_id === rowId
-            ? { ...record, data: { ...record.data, ...updates } }
-            : record
-        ),
-      },
+    set((state) => {
+      if (!state.ptlSheetData) return state;
+      return {
+        ptlSheetData: {
+          ...state.ptlSheetData,
+          records: state.ptlSheetData.records.map((record) =>
+            record.row_id === rowId
+              ? { ...record, data: { ...record.data, ...updates } }
+              : record
+          ),
+        },
+      };
     });
   },
 }));

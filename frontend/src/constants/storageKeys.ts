@@ -14,3 +14,6 @@ export const SESSION_LOGOUT_INTENT = "dash_v3_logout_intent";
 
 // localStorage — table settings (page size, halaman aktif per role)
 export const STORAGE_TABLE_SETTINGS = "dash_v3_table_settings";
+
+// localStorage — filter & search state tabel PTL
+export const STORAGE_PTL_TABLE_FILTER = "dash_v3_ptl_table_filter";

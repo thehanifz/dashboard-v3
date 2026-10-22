@@ -33,8 +33,43 @@ import MobileRecordList       from "../table/MobileRecordList";
 import MobileFilterSheet      from "../table/MobileFilterSheet";
 import api                   from "../../services/api";
 import baiApi                from "../../services/baiApi";
+import { STORAGE_PTL_TABLE_FILTER } from "../../constants/storageKeys";
 
 import type { SheetRecord, PTLSheetData, StatusMaster } from "../../state/taskStore";
+
+interface SavedPtlFilter {
+  search: string;
+  activeFilters: Record<string, string[]>;
+}
+
+function loadSavedPtlFilter(username?: string): SavedPtlFilter {
+  if (!username) return { search: "", activeFilters: {} };
+  try {
+    const raw = localStorage.getItem(`${username}_${STORAGE_PTL_TABLE_FILTER}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        search: typeof parsed.search === "string" ? parsed.search : "",
+        activeFilters:
+          parsed.activeFilters && typeof parsed.activeFilters === "object"
+            ? parsed.activeFilters
+            : {},
+      };
+    }
+  } catch {
+    // Ignore error
+  }
+  return { search: "", activeFilters: {} };
+}
+
+function savePtlFilter(username: string | undefined, data: SavedPtlFilter) {
+  if (!username) return;
+  try {
+    localStorage.setItem(`${username}_${STORAGE_PTL_TABLE_FILTER}`, JSON.stringify(data));
+  } catch {
+    // Ignore error
+  }
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 const DEFAULT_COL_WIDTH = 160;
@@ -184,10 +219,14 @@ function DrillBanner({ label, onClear }: { label: string; onClear: () => void })
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 export default function PTLDetailPanel() {
+  const { user }                                = useAuthStore();
+  const username                                = user?.username;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [localRecords, setLocalRecords]         = useState<SheetRecord[]>([]);
-  const [search, setSearch]                     = useState("");
+
+  const [search, setSearch]                     = useState(() => loadSavedPtlFilter(user?.username).search);
   const [saving, setSaving]                     = useState(false);
+  const pendingUpdatesRef                       = useRef(0);
   const isOffline                               = useTaskStore(s => s.isOffline);
   const [thresholds, setThresholds]             = useState<AgingThresholds | null>(null);
 
@@ -197,15 +236,9 @@ export default function PTLDetailPanel() {
     });
   }, []);
 
-  useEffect(() => {
-    getAgingThresholds().then(setThresholds).catch((err) => {
-      console.error("[AGING_DEBUG][PTL_DETAIL_LOAD]", err);
-    });
-  }, []);
-
   const { pageSize, tablePage, setPageSize, setTablePage } = useTableSettings(20);
 
-  const [activeFilters, setActiveFilters]       = useState<Record<string, string[]>>({});
+  const [activeFilters, setActiveFilters]       = useState<Record<string, string[]>>(() => loadSavedPtlFilter(user?.username).activeFilters);
   const [activeFilterCol, setActiveFilterCol]   = useState<string | null>(null);
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [filterPos, setFilterPos]               = useState({ top: 0, left: 0 });
@@ -215,8 +248,23 @@ export default function PTLDetailPanel() {
   const [drillLabel, setDrillLabel]             = useState<string | null>(null);
   const [filterRefreshKey, setFilterRefreshKey] = useState(0);
 
+  // Restore saved filter saat auth/user siap jika sebelumnya belum terisi
+  useEffect(() => {
+    if (!username) return;
+    const saved = loadSavedPtlFilter(username);
+    if (saved.search) setSearch((prev) => prev || saved.search);
+    if (Object.keys(saved.activeFilters).length > 0) {
+      setActiveFilters((prev) => (Object.keys(prev).length === 0 ? saved.activeFilters : prev));
+    }
+  }, [username]);
+
+  // Persist search & activeFilters setiap ada perubahan
+  useEffect(() => {
+    if (!username) return;
+    savePtlFilter(username, { search, activeFilters });
+  }, [username, search, activeFilters]);
+
   const { theme }                   = useThemeStore();
-  const { user }                    = useAuthStore();
   const { toasts, show: showToast } = useToast();
 
   const { ptlEditableColumns, togglePtlEditableColumn, loadPtlEditableColumnsFromDB } = useAppearanceStore();
@@ -266,18 +314,15 @@ export default function PTLDetailPanel() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
+  // Hanya isi localRecords dari ptlSheetData jika localRecords masih kosong (initial load)
+  // agar editan in-flight tidak ter-overwrite oleh ptlSheetData background updates
   useEffect(() => {
-    console.log("[PTLDetail] ptlSheetData changed:", ptlSheetData);
-    if (ptlSheetData?.records) {
-      console.log("[PTLDetail] Setting localRecords:", ptlSheetData.records.length);
+    if (ptlSheetData?.records && localRecords.length === 0) {
       setLocalRecords(ptlSheetData.records);
     }
-  }, [ptlSheetData]);
+  }, [ptlSheetData, localRecords.length]);
 
   useEffect(() => { loadPtlEditableColumnsFromDB(); }, []);
-  useEffect(() => {
-    getAgingThresholds().then(setThresholds).catch(() => {});
-  }, []);
 
   useEffect(() => {
     if (!ptlDrillFilter) return;
@@ -347,28 +392,43 @@ export default function PTLDetailPanel() {
 
   const handleUpdateCell = useCallback(async (rowId: number, col: string, value: string) => {
     if (isOffline || (typeof navigator !== "undefined" && !navigator.onLine)) { showToast("Offline — data hanya dapat dibaca", "error"); return; }
+    let previousValue = "";
     setLocalRecords(prev =>
-      prev.map(r => r.row_id === rowId ? { ...r, data: { ...r.data, [col]: value } } : r)
+      prev.map(r => {
+        if (r.row_id === rowId) {
+          previousValue = r.data[col] ?? "";
+          return { ...r, data: { ...r.data, [col]: value } };
+        }
+        return r;
+      })
     );
+    pendingUpdatesRef.current += 1;
     setSaving(true);
     try {
       await api.post(`/records/ptl-sheet/${rowId}/cells`, { updates: { [col]: value } });
       await updatePtlCache(rowId, { [col]: value });
     } catch (err: any) {
       setLocalRecords(prev =>
-        prev.map(r => r.row_id === rowId ? { ...r, data: { ...r.data, [col]: localRecords.find(s => s.row_id === rowId)?.data[col] ?? value } } : r)
+        prev.map(r => r.row_id === rowId ? { ...r, data: { ...r.data, [col]: previousValue } } : r)
       );
       showToast(err?.response?.data?.detail ?? "Gagal menyimpan", "error");
     } finally {
-      setSaving(false);
+      pendingUpdatesRef.current = Math.max(0, pendingUpdatesRef.current - 1);
+      if (pendingUpdatesRef.current === 0) {
+        setSaving(false);
+      }
     }
-  }, [showToast, updatePtlCache, localRecords, isOffline]);
+  }, [showToast, updatePtlCache, isOffline]);
 
   const handleUpdateStatus = useCallback(async (rowId: number, status: string, detail?: string) => {
     if (isOffline || (typeof navigator !== "undefined" && !navigator.onLine)) { showToast("Offline — data hanya dapat dibaca", "error"); return; }
+    let previousStatus = "";
+    let previousDetail = "";
     setLocalRecords(prev =>
       prev.map(r => {
         if (r.row_id !== rowId) return r;
+        previousStatus = r.data[statusCol] ?? "";
+        previousDetail = r.data[detailCol] ?? "";
         return {
           ...r,
           data: {
@@ -379,6 +439,7 @@ export default function PTLDetailPanel() {
         };
       })
     );
+    pendingUpdatesRef.current += 1;
     setSaving(true);
     try {
       const updates = {
@@ -388,9 +449,26 @@ export default function PTLDetailPanel() {
       await api.post(`/records/ptl-sheet/${rowId}/cells`, { updates });
       await updatePtlCache(rowId, updates);
     } catch (err: any) {
+      setLocalRecords(prev =>
+        prev.map(r =>
+          r.row_id === rowId
+            ? {
+                ...r,
+                data: {
+                  ...r.data,
+                  [statusCol]: previousStatus,
+                  [detailCol]: previousDetail,
+                },
+              }
+            : r
+        )
+      );
       showToast(err?.response?.data?.detail ?? "Gagal menyimpan status", "error");
     } finally {
-      setSaving(false);
+      pendingUpdatesRef.current = Math.max(0, pendingUpdatesRef.current - 1);
+      if (pendingUpdatesRef.current === 0) {
+        setSaving(false);
+      }
     }
   }, [statusCol, detailCol, showToast, updatePtlCache, isOffline]);
 
