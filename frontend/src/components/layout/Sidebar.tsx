@@ -90,7 +90,7 @@ function SubMenuBtn({ onClick, icon, label, active }: { onClick: () => void; ico
 // ── Main Sidebar ──────────────────────────────────────────────────────────────
 export default function Sidebar({ collapsed, onToast }: SidebarProps) {
   const { theme, toggleTheme } = useThemeStore();
-  const { currentPage, setPage, asbuiltView, setAsBuiltView } = useAppStore();
+  const { currentPage, setPage, asbuiltView, setAsBuiltRoute } = useAppStore();
   const { user } = useAuthStore();
   const isDark = theme === "dark";
 
@@ -230,7 +230,7 @@ export default function Sidebar({ collapsed, onToast }: SidebarProps) {
                   </button>
                   {!collapsed && asbuiltOpen && currentPage === "asbuilt" && (
                     <div className="mt-0.5 space-y-0.5">
-                      {ASBUILT_VIEWS.map(v => <SubMenuBtn key={v.id} onClick={() => setAsBuiltView(v.id)} icon={v.icon} label={v.label} active={asbuiltView === v.id} />)}
+                      {ASBUILT_VIEWS.map(v => <SubMenuBtn key={v.id} onClick={() => setAsBuiltRoute(v.id)} icon={v.icon} label={v.label} active={asbuiltView === v.id} />)}
                     </div>
                   )}
                 </div>

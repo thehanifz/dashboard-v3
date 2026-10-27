@@ -335,8 +335,9 @@ function LibraryPage({ onToast }: { onToast: ToastFn }) {
 
 // ── Generate Page ─────────────────────────────────────────────────────────────
 function GeneratePage({ onToast }: { onToast: ToastFn }) {
-  const [activeGenerator, setActiveGenerator] = useState(GENERATOR_REGISTRY[0]?.id || "");
-  const ActiveGen = GENERATOR_REGISTRY.find((g) => g.id === activeGenerator)?.Component;
+  const { asbuiltGenerator, setAsBuiltGenerator } = useAppStore();
+  const activeGenerator = asbuiltGenerator || GENERATOR_REGISTRY[0]?.id || "topology";
+  const ActiveGen = (GENERATOR_REGISTRY.find((g) => g.id === activeGenerator) || GENERATOR_REGISTRY[0])?.Component;
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -346,7 +347,7 @@ function GeneratePage({ onToast }: { onToast: ToastFn }) {
           style={{ color: "var(--text-secondary)" }}>Generator:</label>
         <select
           value={activeGenerator}
-          onChange={(e) => setActiveGenerator(e.target.value)}
+          onChange={(e) => setAsBuiltGenerator(e.target.value)}
           className="flex-1 min-w-0 sm:flex-none px-3 py-1.5 rounded-lg text-xs border"
           style={{
             background: "var(--bg-surface2)",
@@ -379,7 +380,7 @@ function GeneratePage({ onToast }: { onToast: ToastFn }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function AsBuiltPage() {
-  const { asbuiltView } = useAppStore();
+  const { asbuiltView, asbuiltGenerator, setAsBuiltRoute } = useAppStore();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { toasts, show: showToast } = useToast();
 
@@ -418,7 +419,7 @@ export default function AsBuiltPage() {
             ]).map((view) => (
               <button
                 key={view.id}
-                onClick={() => useAppStore.getState().setAsBuiltView(view.id)}
+                onClick={() => setAsBuiltRoute(view.id, view.id === "generate" ? asbuiltGenerator : undefined)}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
                 style={{
                   background: asbuiltView === view.id ? "var(--accent)" : "transparent",

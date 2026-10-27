@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ActiveSelection,
   Canvas,
@@ -44,6 +44,13 @@ import {
   Type,
   Ungroup,
   Undo2,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  Link2,
+  Save,
+  Search,
   Upload,
   Maximize,
   ZoomIn,
@@ -55,7 +62,30 @@ interface Props {
   onToast: (msg: string, type?: "success" | "error") => void;
 }
 
-type Tool = "select" | "text" | "rect" | "roundRect" | "circle" | "line" | "arrow" | "draw";
+type Tool = "select" | "text" | "rect" | "roundRect" | "circle" | "line" | "arrow" | "draw" | "connect";
+type DraftData = { name: string; canvasSize: { width: number; height: number }; background: string; json: string; savedAt: string };
+const DRAFT_KEY = "freedrawing:draft:v1";
+function iconCategoryOf(filename: string): string {
+  const n = filename.toLowerCase();
+  if (n.includes("pc")) return "PC";
+  if (n.includes("router")) return "Router";
+  if (n.includes("odp")) return "ODP";
+  if (n.includes("ont")) return "ONT";
+  if (n.includes("kabel") || n.includes("cable") || n.includes("fiber")) return "Kabel";
+  if (n.includes("ttd") || n.includes("tanda")) return "Tanda Tangan";
+  return "Lainnya";
+}
+function objectNameOf(obj: FabricObject): string {
+  const dataIcon = (obj as any).get?.("dataIcon") as string | undefined;
+  if (dataIcon) return dataIcon;
+  if ((obj as any).get?.("dataConnection")) return "Koneksi";
+  if (objectIsText(obj)) return (obj.text || "Teks").slice(0, 24) || "Teks";
+  return obj.type || "Object";
+}
+function slugifyName(name: string): string {
+  const slug = name.trim().replace(/[^a-zA-Z0-9-_ ]+/g, "").replace(/\s+/g, "-");
+  return slug || "free-drawing";
+}
 type HistoryState = string;
 
 const DEFAULT_WIDTH = 1600;
@@ -91,15 +121,61 @@ export default function FreeDrawing({ onToast }: Props) {
   const [uploadingIcon, setUploadingIcon] = useState(false);
   const [tool, setTool] = useState<Tool>("select");
   const [canvasSize, setCanvasSize] = useState({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
+  const [widthInput, setWidthInput] = useState(String(DEFAULT_WIDTH));
+  const [heightInput, setHeightInput] = useState(String(DEFAULT_HEIGHT));
+  useEffect(() => {
+    setWidthInput(String(canvasSize.width));
+    setHeightInput(String(canvasSize.height));
+  }, [canvasSize.width, canvasSize.height]);
+
+  const handleWidthChange = (val: string) => {
+    setWidthInput(val);
+    const n = Number(val);
+    if (!isNaN(n) && n >= 50 && n <= 10000) {
+      setCanvasSize((s) => ({ ...s, width: n }));
+    }
+  };
+  const handleWidthBlur = () => {
+    const parsed = Math.max(50, Math.min(10000, Number(widthInput) || DEFAULT_WIDTH));
+    setWidthInput(String(parsed));
+    setCanvasSize((s) => ({ ...s, width: parsed }));
+  };
+
+  const handleHeightChange = (val: string) => {
+    setHeightInput(val);
+    const n = Number(val);
+    if (!isNaN(n) && n >= 50 && n <= 10000) {
+      setCanvasSize((s) => ({ ...s, height: n }));
+    }
+  };
+  const handleHeightBlur = () => {
+    const parsed = Math.max(50, Math.min(10000, Number(heightInput) || DEFAULT_HEIGHT));
+    setHeightInput(String(parsed));
+    setCanvasSize((s) => ({ ...s, height: parsed }));
+  };
   const [zoom, setZoom] = useState(0.65);
   const zoomRef = useRef(zoom);
   const [selectedObject, setSelectedObject] = useState<FabricObject | null>(null);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isDirty, setIsDirty] = useState(false);
+  const [docName, setDocName] = useState("Asbuilt Baru");
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [draftInfo, setDraftInfo] = useState<DraftData | null>(null);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [iconQuery, setIconQuery] = useState("");
+  const [iconCategory, setIconCategory] = useState("Semua");
+  const [connectFrom, setConnectFrom] = useState<FabricObject | null>(null);
+  const [lockAspect, setLockAspect] = useState(true);
+  const docNameRef = useRef(docName);
+  const backgroundRef = useRef("#ffffff");
+  const connectFromRef = useRef<FabricObject | null>(null);
+  const userEditedRef = useRef(false);
   const [background, setBackground] = useState("#ffffff");
   const [gridEnabled, setGridEnabled] = useState(true);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [gridSize, setGridSize] = useState(20);
+  const snapEnabledRef = useRef(snapEnabled);
+  const gridSizeRef = useRef(gridSize);
   const [strokeColor, setStrokeColor] = useState("#111827");
   const [fillColor, setFillColor] = useState("#ffffff");
   const [strokeWidth, setStrokeWidth] = useState(2);
@@ -109,6 +185,18 @@ export default function FreeDrawing({ onToast }: Props) {
   const workspaceRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  useEffect(() => { docNameRef.current = docName; }, [docName]);
+  useEffect(() => { backgroundRef.current = background; }, [background]);
+  useEffect(() => { connectFromRef.current = connectFrom; }, [connectFrom]);
+  useEffect(() => { snapEnabledRef.current = snapEnabled; }, [snapEnabled]);
+  useEffect(() => { gridSizeRef.current = gridSize; }, [gridSize]);
+  // Draft recovery info (explicit restore, never auto-overwrites on mount).
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) setDraftInfo(JSON.parse(raw) as DraftData);
+    } catch { /* ignore corrupt draft */ }
+  }, []);
 
   // --- Canvas zoom (Ctrl/Cmd+Scroll, pinch, keyboard) ---
   // Why this exists: the old zoom was only a CSS scale on the wrapper div
@@ -264,7 +352,7 @@ export default function FreeDrawing({ onToast }: Props) {
   const serialize = useCallback(() => {
     const canvas = fabricRef.current;
     if (!canvas) return "";
-    return JSON.stringify(canvas.toJSON());
+    return JSON.stringify(canvas.toJSON(["dataIcon", "dataObjectId", "dataConnection"]));
   }, []);
 
   const updateHistoryState = useCallback(() => {
@@ -288,6 +376,82 @@ export default function FreeDrawing({ onToast }: Props) {
     updateHistoryState();
   }, [serialize, updateHistoryState]);
 
+
+  const iconCategories = useMemo(() => {
+    const set = new Set<string>(["Semua"]);
+    icons.forEach((icon) => set.add(iconCategoryOf(icon.filename)));
+    return [...set];
+  }, [icons]);
+  const filteredIcons = useMemo(() => {
+    const q = iconQuery.trim().toLowerCase();
+    return icons.filter((icon) => {
+      if (iconCategory !== "Semua" && iconCategoryOf(icon.filename) !== iconCategory) return false;
+      if (q && !icon.filename.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [icons, iconQuery, iconCategory]);
+
+  const saveDraft = useCallback(async (silent = false) => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const data: DraftData = {
+      name: docNameRef.current,
+      canvasSize: canvasSizeRef.current,
+      background: backgroundRef.current,
+      json: JSON.stringify(canvas.toJSON(["dataIcon", "dataObjectId", "dataConnection"])),
+      savedAt: new Date().toISOString(),
+    };
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+      setSavedAt(data.savedAt);
+      setIsDirty(false);
+      if (!silent) onToast(`Draft "${data.name}" tersimpan`, "success");
+    } catch {
+      if (!silent) onToast("Gagal menyimpan draft (penyimpanan penuh?)", "error");
+    }
+  }, [onToast]);
+
+  // Autosave (debounced) only after a real user edit, so the empty canvas
+  // created on mount never wipes a recoverable draft.
+  useEffect(() => {
+    if (!userEditedRef.current) return;
+    const t = window.setTimeout(() => { void saveDraft(true); }, 1000);
+    return () => window.clearTimeout(t);
+  }, [historyIndex, saveDraft]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
+  const restoreDraft = useCallback(async () => {
+    const canvas = fabricRef.current;
+    if (!canvas || !draftInfo) return;
+    restoringRef.current = true;
+    try {
+      await canvas.loadFromJSON(draftInfo.json);
+      setDocName(draftInfo.name);
+      setCanvasSize(draftInfo.canvasSize);
+      setBackground(draftInfo.background);
+      canvas.requestRenderAll();
+      syncSelection();
+    } finally {
+      restoringRef.current = false;
+    }
+    setDraftInfo(null);
+    setIsDirty(false);
+    onToast(`Draft "${draftInfo.name}" dipulihkan`, "success");
+  }, [draftInfo, onToast, syncSelection]);
+
+  const discardDraft = useCallback(() => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+    setDraftInfo(null);
+  }, []);
 
   const loadIcons = useCallback(async () => {
     setLoadingIcons(true);
@@ -317,33 +481,68 @@ export default function FreeDrawing({ onToast }: Props) {
     });
     fabricRef.current = canvas;
 
-    const onModified = () => {
-      if (snapEnabled) {
+    const updateConnections = (target?: any) => {
+      if (!canvas || (target && target.get?.("dataConnection"))) return;
+      canvas.getObjects().forEach((obj: any) => {
+        const conn = obj.get?.("dataConnection");
+        if (!conn) return;
+        const from = canvas.getObjects().find((o: any) => o.get?.("dataObjectId") === conn.fromId);
+        const to = canvas.getObjects().find((o: any) => o.get?.("dataObjectId") === conn.toId);
+        if (!from || !to) return;
+        const a = from.getCenterPoint ? from.getCenterPoint() : { x: (from.left || 0) + from.getScaledWidth() / 2, y: (from.top || 0) + from.getScaledHeight() / 2 };
+        const b = to.getCenterPoint ? to.getCenterPoint() : { x: (to.left || 0) + to.getScaledWidth() / 2, y: (to.top || 0) + to.getScaledHeight() / 2 };
+        obj.set({ x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+        obj.setCoords();
+      });
+    };
+
+    const onMoving = (event: { target?: FabricObject }) => {
+      const target = event.target;
+      if (!target || target.get?.("dataGrid")) return;
+      if (snapEnabledRef.current) {
+        const grid = gridSizeRef.current;
+        target.set({
+          left: Math.round((target.left || 0) / grid) * grid,
+          top: Math.round((target.top || 0) / grid) * grid,
+        });
+        target.setCoords();
+      }
+      updateConnections(target);
+    };
+
+    const onModified = (event: { target?: FabricObject }) => {
+      userEditedRef.current = true;
+      if (snapEnabledRef.current) {
+        const grid = gridSizeRef.current;
         canvas.getActiveObjects().forEach((obj) => {
           if (!obj.get("dataGrid")) {
             obj.set({
-              left: Math.round((obj.left || 0) / gridSize) * gridSize,
-              top: Math.round((obj.top || 0) / gridSize) * gridSize,
+              left: Math.round((obj.left || 0) / grid) * grid,
+              top: Math.round((obj.top || 0) / grid) * grid,
             });
             obj.setCoords();
           }
         });
         canvas.requestRenderAll();
       }
+      updateConnections(event.target);
       syncSelection();
       pushHistory();
     };
     const onAdded = (event: { target?: FabricObject }) => {
       if (event.target?.get("dataGrid")) return;
+      userEditedRef.current = true;
       syncSelection();
       pushHistory();
     };
     const onRemoved = (event: { target?: FabricObject }) => {
       if (event.target?.get("dataGrid")) return;
+      userEditedRef.current = true;
       syncSelection();
       pushHistory();
     };
 
+    canvas.on("object:moving", onMoving);
     canvas.on("object:modified", onModified);
     canvas.on("object:added", onAdded);
     canvas.on("object:removed", onRemoved);
@@ -385,6 +584,7 @@ export default function FreeDrawing({ onToast }: Props) {
     pushHistory();
 
     return () => {
+      canvas.off("object:moving", onMoving);
       canvas.off("object:modified", onModified);
       canvas.off("object:added", onAdded);
       canvas.off("object:removed", onRemoved);
@@ -403,18 +603,42 @@ export default function FreeDrawing({ onToast }: Props) {
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    canvas.setDimensions({ width: canvasSize.width, height: canvasSize.height });
+    canvas.setDimensions({
+      width: Math.round(canvasSize.width * zoom),
+      height: Math.round(canvasSize.height * zoom),
+    });
+    canvas.setZoom(zoom);
     canvas.set({ backgroundColor: "transparent" });
+    canvas.calcOffset();
     canvas.requestRenderAll();
-  }, [background, canvasSize.height, canvasSize.width]);
+  }, [background, canvasSize.height, canvasSize.width, zoom]);
 
+  useEffect(() => {
+    const node = workspaceRef.current;
+    if (!node) return;
+    const handleScroll = () => {
+      fabricRef.current?.calcOffset();
+    };
+    node.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleScroll);
+    return () => {
+      node.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleScroll);
+    };
+  }, []);
 
   const setToolMode = (nextTool: Tool) => {
     const canvas = fabricRef.current;
     if (!canvas) return;
+    if (nextTool !== "connect") setConnectFrom(null);
     setTool(nextTool);
     canvas.isDrawingMode = nextTool === "draw";
-    if (nextTool === "draw") {
+    if (nextTool === "select") {
+      canvas.selection = true;
+      canvas.defaultCursor = "default";
+      canvas.calcOffset();
+      canvas.requestRenderAll();
+    } else if (nextTool === "draw") {
       const brush = new PencilBrush(canvas);
       brush.color = strokeColor;
       brush.width = strokeWidth;
@@ -693,7 +917,7 @@ export default function FreeDrawing({ onToast }: Props) {
     setZoom(Number(nextZoom.toFixed(2)));
   };
 
-  const exportDrawing = (format: "png" | "svg") => {
+  const exportDrawing = (format: "png" | "svg" | "pdf") => {
     const canvas = fabricRef.current;
     if (!canvas) return;
 
@@ -703,62 +927,92 @@ export default function FreeDrawing({ onToast }: Props) {
       return;
     }
 
-    // Export only the actual drawing content, with a fixed 10px margin.
-    const bounds = objects.reduce(
-      (acc, obj) => {
-        const rect = obj.getBoundingRect();
-        return {
-          left: Math.min(acc.left, rect.left),
-          top: Math.min(acc.top, rect.top),
-          right: Math.max(acc.right, rect.left + rect.width),
-          bottom: Math.max(acc.bottom, rect.top + rect.height),
-        };
-      },
-      { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity },
-    );
-
-    const margin = 10;
-    const left = Math.max(0, bounds.left - margin);
-    const top = Math.max(0, bounds.top - margin);
-    const right = Math.min(canvas.getWidth(), bounds.right + margin);
-    const bottom = Math.min(canvas.getHeight(), bounds.bottom + margin);
-    const width = Math.max(1, right - left);
-    const height = Math.max(1, bottom - top);
-
+    const previousZoom = canvas.getZoom();
+    const previousDims = { width: canvas.getWidth(), height: canvas.getHeight() };
     const previousBackground = canvas.backgroundColor;
+
+    // Temporarily reset to 100% zoom and full canvas size for crisp 1:1 export
+    canvas.setDimensions({ width: canvasSize.width, height: canvasSize.height });
+    canvas.setZoom(1);
     canvas.set({ backgroundColor: background });
     canvas.requestRenderAll();
 
-    if (format === "png") {
-      const data = canvas.toDataURL({
-        format: "png",
-        left,
-        top,
-        width,
-        height,
-        multiplier: 2,
-      });
-      const a = document.createElement("a");
-      a.href = data;
-      a.download = "free-drawing.png";
-      a.click();
-    } else {
-      const svg = canvas.toSVG({
-        viewBox: { x: left, y: top, width, height },
-        width: `${width}px`,
-        height: `${height}px`,
-      });
-      const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "free-drawing.svg";
-      a.click();
-      URL.revokeObjectURL(url);
-    }
+    try {
+      // Export only the actual drawing content, with a fixed 10px margin.
+      const bounds = objects.reduce(
+        (acc, obj) => {
+          const rect = obj.getBoundingRect();
+          return {
+            left: Math.min(acc.left, rect.left),
+            top: Math.min(acc.top, rect.top),
+            right: Math.max(acc.right, rect.left + rect.width),
+            bottom: Math.max(acc.bottom, rect.top + rect.height),
+          };
+        },
+        { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity },
+      );
 
-    canvas.set({ backgroundColor: previousBackground });
-    canvas.requestRenderAll();
+      const baseName = slugifyName(docNameRef.current);
+      const margin = 10;
+      const left = Math.max(0, bounds.left - margin);
+      const top = Math.max(0, bounds.top - margin);
+      const right = Math.min(canvasSize.width, bounds.right + margin);
+      const bottom = Math.min(canvasSize.height, bounds.bottom + margin);
+      const width = Math.max(1, right - left);
+      const height = Math.max(1, bottom - top);
+
+      if (format === "pdf") {
+        const data = canvas.toDataURL({
+          format: "png",
+          left,
+          top,
+          width,
+          height,
+          multiplier: 2,
+        });
+        const win = window.open("", "_blank");
+        if (!win) {
+          onToast("Popup diblokir browser — izinkan popup untuk cetak PDF", "error");
+        } else {
+          win.document.write(`<html><head><title>${baseName}</title><style>@page{size:landscape;margin:10mm}body{margin:0}img{width:100%;height:auto}</style></head><body><img src="${data}" onload="window.print()"></body></html>`);
+          win.document.close();
+          onToast("Pilih 'Save as PDF' di dialog print browser", "success");
+        }
+        return;
+      }
+      if (format === "png") {
+        const data = canvas.toDataURL({
+          format: "png",
+          left,
+          top,
+          width,
+          height,
+          multiplier: 2,
+        });
+        const a = document.createElement("a");
+        a.href = data;
+        a.download = `${baseName}.png`;
+        a.click();
+      } else {
+        const svg = canvas.toSVG({
+          viewBox: { x: left, y: top, width, height },
+          width: `${width}px`,
+          height: `${height}px`,
+        });
+        const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${baseName}.svg`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } finally {
+      canvas.set({ backgroundColor: previousBackground });
+      canvas.setDimensions(previousDims);
+      canvas.setZoom(previousZoom);
+      canvas.requestRenderAll();
+    }
   };
 
   useEffect(() => {
@@ -766,6 +1020,18 @@ export default function FreeDrawing({ onToast }: Props) {
       const target = event.target as HTMLElement | null;
       const editingText = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
       if (editingText) return;
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        const canvas = fabricRef.current;
+        if (canvas) {
+          canvas.discardActiveObject();
+          canvas.requestRenderAll();
+          syncSelection();
+        }
+        setToolMode("select");
+        return;
+      }
       // Canvas zoom shortcuts. These must preventDefault, otherwise the
       // browser intercepts Ctrl/Cmd +/- and zooms the whole page.
       if ((event.ctrlKey || event.metaKey) && (event.key === "=" || event.key === "+")) {
@@ -811,6 +1077,45 @@ export default function FreeDrawing({ onToast }: Props) {
           if (objects.length) canvas.setActiveObject(new ActiveSelection(objects, { canvas }));
           canvas.requestRenderAll();
         }
+      } else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+        const canvas = fabricRef.current;
+        if (!canvas) return;
+        const active = canvas.getActiveObject() as any;
+        if (!active || active.isEditing) return;
+        const activeObjects = canvas.getActiveObjects();
+        if (!activeObjects || activeObjects.length === 0) return;
+
+        event.preventDefault();
+        const step = event.shiftKey ? 10 : 1;
+        const dx = event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
+        const dy = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
+
+        activeObjects.forEach((obj) => {
+          if (!obj.get("dataGrid")) {
+            obj.set({
+              left: (obj.left || 0) + dx,
+              top: (obj.top || 0) + dy,
+            });
+            obj.setCoords();
+          }
+        });
+
+        canvas.getObjects().forEach((obj: any) => {
+          const conn = obj.get?.("dataConnection");
+          if (!conn) return;
+          const from = canvas.getObjects().find((o: any) => o.get?.("dataObjectId") === conn.fromId);
+          const to = canvas.getObjects().find((o: any) => o.get?.("dataObjectId") === conn.toId);
+          if (!from || !to) return;
+          const a = from.getCenterPoint ? from.getCenterPoint() : { x: (from.left || 0) + from.getScaledWidth() / 2, y: (from.top || 0) + from.getScaledHeight() / 2 };
+          const b = to.getCenterPoint ? to.getCenterPoint() : { x: (to.left || 0) + to.getScaledWidth() / 2, y: (to.top || 0) + to.getScaledHeight() / 2 };
+          obj.set({ x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+          obj.setCoords();
+        });
+
+        canvas.requestRenderAll();
+        userEditedRef.current = true;
+        syncSelection();
+        pushHistory();
       } else if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
         deleteSelected();
@@ -844,6 +1149,57 @@ export default function FreeDrawing({ onToast }: Props) {
     setSelectedObject(selected);
   };
 
+  const updateObjectSize = (dimension: "width" | "height", value: number) => {
+    const canvas = fabricRef.current;
+    const obj: any = selectedObject;
+    if (!canvas || !obj || !obj.width || !obj.height) return;
+    const current = dimension === "width" ? obj.getScaledWidth() : obj.getScaledHeight();
+    if (!current || value <= 0) return;
+    const ratio = value / current;
+    const patch: Record<string, number> = dimension === "width"
+      ? { scaleX: (obj.scaleX || 1) * ratio, ...(lockAspect ? { scaleY: (obj.scaleY || 1) * ratio } : {}) }
+      : { scaleY: (obj.scaleY || 1) * ratio, ...(lockAspect ? { scaleX: (obj.scaleX || 1) * ratio } : {}) };
+    updateSelected(patch as any);
+  };
+
+
+  // Connect mode: first click picks the source, second click draws the line.
+  // This runs from the selection effect below, because Fabric owns clicks.
+  const createConnection = useCallback((fromObj: FabricObject, toObj: FabricObject) => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const ensureId = (obj: any) => {
+      if (!obj.get?.("dataObjectId")) obj.set("dataObjectId", `obj-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
+      return obj.get("dataObjectId") as string;
+    };
+    const fromId = ensureId(fromObj as any);
+    const toId = ensureId(toObj as any);
+    const a = (fromObj as any).getCenterPoint ? (fromObj as any).getCenterPoint() : { x: (fromObj.left || 0) + fromObj.getScaledWidth() / 2, y: (fromObj.top || 0) + fromObj.getScaledHeight() / 2 };
+    const b = (toObj as any).getCenterPoint ? (toObj as any).getCenterPoint() : { x: (toObj.left || 0) + toObj.getScaledWidth() / 2, y: (toObj.top || 0) + toObj.getScaledHeight() / 2 };
+    const line = new Line([a.x, a.y, b.x, b.y], { stroke: strokeColor, strokeWidth, selectable: true });
+    (line as any).set("dataConnection", { fromId, toId });
+    canvas.add(line);
+    canvas.setActiveObject(line);
+    canvas.requestRenderAll();
+    pushHistory();
+    onToast("Koneksi dibuat — garis akan mengikuti saat icon digeser", "success");
+  }, [onToast, pushHistory, strokeColor, strokeWidth]);
+
+  useEffect(() => {
+    if (tool !== "connect" || !selectedObject) return;
+    if (!connectFromRef.current) {
+      setConnectFrom(selectedObject);
+      onToast("Sumber dipilih — klik icon kedua untuk menghubungkan", "success");
+      return;
+    }
+    if (connectFromRef.current === selectedObject) return;
+    const from = connectFromRef.current;
+    setConnectFrom(null);
+    createConnection(from, selectedObject);
+    setToolMode("select");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedObject, tool]);
+
   const addIconAtPoint = async (icon: IconAsset, clientX: number, clientY: number) => {
     const canvas = fabricRef.current;
     if (!canvas) return;
@@ -854,14 +1210,24 @@ export default function FreeDrawing({ onToast }: Props) {
         scaleX: 0.45,
         scaleY: 0.45,
         dataIcon: icon.filename,
+        dataObjectId: `obj-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
       });
 
-      // Fabric 7 resolves the pointer against the current viewport transform,
-      // so drag/drop remains accurate at any zoom or pan level.
-      const scenePoint = canvas.getScenePoint({ clientX, clientY } as any);
+      const canvasEl = canvas.upperCanvasEl || canvas.lowerCanvasEl;
+      const rect = canvasEl.getBoundingClientRect();
+      const currentZoom = zoomRef.current || 1;
+      const sceneX = (clientX - rect.left) / currentZoom;
+      const sceneY = (clientY - rect.top) / currentZoom;
+      let left = sceneX - image.getScaledWidth() / 2;
+      let top = sceneY - image.getScaledHeight() / 2;
+      if (snapEnabledRef.current) {
+        const grid = gridSizeRef.current;
+        left = Math.round(left / grid) * grid;
+        top = Math.round(top / grid) * grid;
+      }
       image.set({
-        left: Math.max(0, scenePoint.x - image.getScaledWidth() / 2),
-        top: Math.max(0, scenePoint.y - image.getScaledHeight() / 2),
+        left: Math.max(0, Math.min(canvasSizeRef.current.width - image.getScaledWidth(), left)),
+        top: Math.max(0, Math.min(canvasSizeRef.current.height - image.getScaledHeight(), top)),
       });
 
       canvas.add(image);
@@ -894,53 +1260,83 @@ export default function FreeDrawing({ onToast }: Props) {
     }
   };
 
-  const toolbarButton = (active: boolean, label: string, icon: ReactNode, onClick: () => void, disabled = false) => (
+  const toolbarButton = (active: boolean, label: string, icon: ReactNode, onClick: () => void, disabled = false, showLabel = false, displayLabel?: string) => (
     <button
       type="button"
       title={label}
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-30"
+      className={showLabel ? "w-12 h-11 rounded-lg flex flex-col items-center justify-center gap-0.5 transition-colors disabled:opacity-30 shrink-0" : "w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-30"}
       style={{
         background: active ? "var(--accent-soft)" : "transparent",
         color: active ? "var(--accent)" : "var(--text-secondary)",
       }}
     >
       {icon}
+      {showLabel && <span className="text-[9px] leading-none font-medium">{displayLabel || label}</span>}
     </button>
   );
 
+  // Layers list, topmost first. Recomputed when history/selection changes.
+  const layers = useMemo(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return [] as FabricObject[];
+    return canvas.getObjects().filter((obj: any) => !obj.get?.("dataGrid")).slice().reverse();
+  }, [historyIndex, selectedObject]);
+  const moveLayer = (obj: FabricObject, dir: 1 | -1) => {
+    const canvas: any = fabricRef.current;
+    if (!canvas) return;
+    if (dir === 1) {
+      if (typeof canvas.bringObjectForward === "function") canvas.bringObjectForward(obj);
+      else canvas.bringObjectToFront(obj);
+    } else {
+      if (typeof canvas.sendObjectBackwards === "function") canvas.sendObjectBackwards(obj);
+      else canvas.sendObjectToBack(obj);
+    }
+    canvas.requestRenderAll();
+    pushHistory();
+    syncSelection();
+  };
+
   return (
     <div className="h-full flex flex-col overflow-hidden relative" style={{ color: "var(--text-primary)" }}>
-      <div className="hidden md:flex shrink-0 flex items-center gap-1 px-3 py-2 border-b" style={{ borderColor: "var(--border)" }}>
-        {toolbarButton(tool === "select", "Select", <MousePointer2 size={15} />, () => setToolMode("select"))}
-        {toolbarButton(tool === "text", "Text", <Type size={15} />, addText)}
-        {toolbarButton(tool === "rect", "Rectangle", <Square size={15} />, () => addShape("rect"))}
-        {toolbarButton(tool === "roundRect", "Rounded rectangle", <RectangleHorizontal size={15} />, () => addShape("roundRect"))}
-        {toolbarButton(tool === "circle", "Circle", <CircleIcon size={15} />, () => addShape("circle"))}
-        {toolbarButton(tool === "line", "Line", <Minus size={15} />, () => addLine(false))}
-        {toolbarButton(tool === "arrow", "Arrow", <ArrowRight size={15} />, () => addLine(true))}
-        {toolbarButton(tool === "draw", "Freehand", <Pencil size={15} />, () => setToolMode("draw"))}
-        <span className="w-px h-5 mx-1" style={{ background: "var(--border)" }} />
-        {toolbarButton(false, "Undo", <Undo2 size={15} />, () => void undo(), historyIndex <= 0)}
-        {toolbarButton(false, "Redo", <Redo2 size={15} />, () => void redo(), historyIndex >= historyRef.current.length - 1)}
-        {toolbarButton(false, "Copy", <Copy size={15} />, () => void copy(), !selected)}
-        {toolbarButton(false, "Paste", <Layers size={15} />, () => void paste(), !clipboardRef.current)}
-        {toolbarButton(false, "Duplicate", <Copy size={15} />, () => void duplicate(), !selected)}
-        {toolbarButton(false, "Delete", <Trash2 size={15} />, deleteSelected, !selected)}
-        {toolbarButton(false, "Group", <Group size={15} />, groupSelected, !selected)}
-        {toolbarButton(false, "Ungroup", <Ungroup size={15} />, ungroupSelected, !selected)}
-        <span className="w-px h-5 mx-1" style={{ background: "var(--border)" }} />
-        {toolbarButton(false, "Bring to front", <BringToFront size={15} />, bringToFront, !selected)}
-        {toolbarButton(false, "Send to back", <SendToBack size={15} />, sendToBack, !selected)}
-        <div className="ml-auto flex items-center gap-1">
+      <div className="hidden md:flex shrink-0 flex items-center gap-1 px-3 py-2 border-b overflow-x-auto" style={{ borderColor: "var(--border)" }}>
+        <div className="flex items-center gap-1 pr-2 border-r shrink-0" style={{ borderColor: "var(--border)" }}>
+          {toolbarButton(tool === "select", "Select", <MousePointer2 size={15} />, () => setToolMode("select"), false, true, "Select")}
+          {toolbarButton(tool === "text", "Text", <Type size={15} />, addText, false, true, "Text")}
+          {toolbarButton(tool === "rect", "Rectangle", <Square size={15} />, () => addShape("rect"), false, true, "Rect")}
+          {toolbarButton(tool === "roundRect", "Rounded rectangle", <RectangleHorizontal size={15} />, () => addShape("roundRect"), false, true, "Round")}
+          {toolbarButton(tool === "circle", "Circle", <CircleIcon size={15} />, () => addShape("circle"), false, true, "Circle")}
+          {toolbarButton(tool === "line", "Line", <Minus size={15} />, () => addLine(false), false, true, "Line")}
+          {toolbarButton(tool === "arrow", "Arrow", <ArrowRight size={15} />, () => addLine(true), false, true, "Arrow")}
+          {toolbarButton(tool === "draw", "Freehand", <Pencil size={15} />, () => setToolMode("draw"), false, true, "Draw")}
+          {toolbarButton(tool === "connect", "Connect — klik sumber, lalu target", <Link2 size={15} />, () => setToolMode("connect"), false, true, "Connect")}
+        </div>
+        <div className="flex items-center gap-1 px-2 border-r shrink-0" style={{ borderColor: "var(--border)" }}>
+          {toolbarButton(false, "Undo (Ctrl+Z)", <Undo2 size={15} />, () => void undo(), historyIndex <= 0)}
+          {toolbarButton(false, "Redo (Ctrl+Shift+Z)", <Redo2 size={15} />, () => void redo(), historyIndex >= historyRef.current.length - 1)}
+          {toolbarButton(false, "Copy (Ctrl+C)", <Copy size={15} />, () => void copy(), !selected)}
+          {toolbarButton(false, "Paste (Ctrl+V)", <Layers size={15} />, () => void paste(), !clipboardRef.current)}
+          {toolbarButton(false, "Duplicate (Ctrl+D)", <Copy size={15} />, () => void duplicate(), !selected)}
+          {toolbarButton(false, "Delete", <Trash2 size={15} />, deleteSelected, !selected)}
+          {toolbarButton(false, "Group", <Group size={15} />, groupSelected, !selected)}
+          {toolbarButton(false, "Ungroup", <Ungroup size={15} />, ungroupSelected, !selected)}
+        </div>
+        <div className="flex items-center gap-1 px-2 shrink-0">
+          {toolbarButton(false, "Bring to front", <BringToFront size={15} />, bringToFront, !selected)}
+          {toolbarButton(false, "Send to back", <SendToBack size={15} />, sendToBack, !selected)}
+        </div>
+        <div className="ml-auto flex items-center gap-2 shrink-0">
           <span className="hidden xl:block text-[11px] mr-1" style={{ color: "var(--text-muted)" }}>Ctrl + Scroll untuk zoom canvas</span>
-          <button onClick={() => exportDrawing("svg")} className="ml-2 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5" style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
+          <button type="button" onClick={() => exportDrawing("png")} className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 text-white" style={{ background: "var(--accent)" }}>
+            <Download size={13} /> PNG
+          </button>
+          <button type="button" onClick={() => exportDrawing("svg")} className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5" style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
             <Download size={13} /> SVG
           </button>
-          <button onClick={() => exportDrawing("png")} className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 text-white" style={{ background: "var(--accent)" }}>
-            <Download size={13} /> PNG
+          <button type="button" onClick={() => exportDrawing("pdf")} title="Buka dialog print browser, lalu pilih Save as PDF" className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5" style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
+            <Download size={13} /> PDF
           </button>
         </div>
       </div>      <div className="md:hidden shrink-0 flex items-center gap-1 px-2 py-2 border-b overflow-x-auto" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
@@ -956,38 +1352,59 @@ export default function FreeDrawing({ onToast }: Props) {
       </div>
 
       <div className="flex-1 min-h-0 flex overflow-hidden">
-        <aside className="hidden md:flex w-64 shrink-0 border-r flex flex-col overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
-          <div className="p-3 border-b shrink-0" style={{ borderColor: "var(--border)" }}>
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-bold">Free Drawing</h2>
-                <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Canvas diagram editor</p>
+        <aside className={leftCollapsed ? "hidden" : "hidden md:flex w-64 shrink-0 border-r flex flex-col overflow-hidden"} style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
+          <div className="p-3 border-b shrink-0 space-y-2" style={{ borderColor: "var(--border)" }}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <input value={docName} onChange={(e) => setDocName(e.target.value)} placeholder="Nama dokumen" aria-label="Nama dokumen" className="w-full bg-transparent text-sm font-bold outline-none border-b border-transparent focus:border-[var(--accent)]" style={{ color: "var(--text-primary)" }} />
+                <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Canvas diagram editor • {canvasSize.width} × {canvasSize.height}</p>
               </div>
+              <button type="button" title="Sembunyikan panel kiri" aria-label="Sembunyikan panel kiri" onClick={() => setLeftCollapsed(true)} className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)" }}><ChevronLeft size={14} /></button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => void saveDraft()} className="flex-1 h-8 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 text-white" style={{ background: "var(--accent)" }}><Save size={13} /> Simpan draft</button>
               <span className="text-[9px] px-2 py-1 rounded-full" style={{ background: isDirty ? "var(--accent-soft)" : "var(--bg-surface2)", color: isDirty ? "var(--accent)" : "var(--text-muted)" }}>
-                {isDirty ? "Edited" : "Ready"}
+                {isDirty ? "Belum tersimpan" : savedAt ? "Tersimpan" : "Ready"}
               </span>
             </div>
+            {savedAt && <p className="text-[9px]" style={{ color: "var(--text-muted)" }}>Terakhir tersimpan: {new Date(savedAt).toLocaleString("id-ID")}</p>}
           </div>
 
           <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-4">
+            {draftInfo && (
+              <div className="rounded-xl border p-3 space-y-2" style={{ background: "var(--accent-soft)", borderColor: "var(--border)" }}>
+                <p className="text-[11px] font-semibold">Draft ditemukan: {draftInfo.name}</p>
+                <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Tersimpan {new Date(draftInfo.savedAt).toLocaleString("id-ID")}. Pulihkan untuk melanjutkan, atau hapus jika tidak perlu.</p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => void restoreDraft()} className="flex-1 h-8 rounded-lg text-[11px] font-semibold text-white" style={{ background: "var(--accent)" }}>Pulihkan</button>
+                  <button type="button" onClick={discardDraft} className="h-8 px-3 rounded-lg text-[11px] font-semibold" style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)" }}>Hapus</button>
+                </div>
+              </div>
+            )}
             <section>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Icon Library</p>
-                <label className="cursor-pointer p-1.5 rounded-lg" title="Tambah icon" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
-                  {uploadingIcon ? <span className="text-[9px]">...</span> : <Upload size={14} />}
+                <label className="cursor-pointer px-2 py-1.5 rounded-lg flex items-center gap-1 text-[11px] font-semibold" title="Tambah icon (PNG/SVG, maks 5 MB)" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+                  {uploadingIcon ? <span className="text-[9px]">...</span> : <><Upload size={14} /> Upload</>}
                   <input type="file" accept="image/png,image/svg+xml" className="hidden" disabled={uploadingIcon} onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadIcon(file); e.currentTarget.value = ""; }} />
                 </label>
               </div>
+              <input value={iconQuery} onChange={(e) => setIconQuery(e.target.value)} placeholder="Cari icon..." aria-label="Cari icon" className="w-full mb-2 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} />
+              <div className="flex flex-wrap gap-1 mb-2">
+                {iconCategories.map((cat) => (
+                  <button key={cat} type="button" onClick={() => setIconCategory(cat)} className="px-2 py-1 rounded-full text-[10px] font-semibold" style={{ background: iconCategory === cat ? "var(--accent-soft)" : "var(--bg-surface2)", color: iconCategory === cat ? "var(--accent)" : "var(--text-secondary)" }}>{cat}</button>
+                ))}
+              </div>
               {loadingIcons ? (
                 <p className="text-[11px] py-4 text-center" style={{ color: "var(--text-muted)" }}>Memuat icon...</p>
-              ) : icons.length === 0 ? (
+              ) : filteredIcons.length === 0 ? (
                 <div className="text-center py-5 rounded-xl" style={{ background: "var(--bg-surface2)", color: "var(--text-muted)" }}>
                   <ImagePlus size={20} className="mx-auto mb-2 opacity-50" />
-                  <p className="text-[10px]">Belum ada icon</p>
+                  <p className="text-[10px]">{icons.length === 0 ? "Belum ada icon" : "Tidak ada icon yang cocok"}</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-3 gap-2">
-                  {icons.map((icon) => (
+                  {filteredIcons.map((icon) => (
                     <button key={icon.filename} type="button" title={icon.filename} draggable onDragStart={(e) => e.dataTransfer.setData("application/x-free-drawing-icon", icon.filename)} onClick={() => void addIcon(icon)} className="aspect-square rounded-xl p-2 flex flex-col items-center justify-center gap-1 border hover:shadow-sm" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)" }}>
                       <img src={icon.url} alt={icon.filename} className="max-w-full max-h-12 object-contain" draggable={false} />
                       <span className="w-full truncate text-[8px]" style={{ color: "var(--text-muted)" }}>{icon.filename}</span>
@@ -1000,8 +1417,8 @@ export default function FreeDrawing({ onToast }: Props) {
             <section className="space-y-2">
               <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Canvas</p>
               <div className="grid grid-cols-2 gap-2">
-                <label className="text-[9px]" style={{ color: "var(--text-muted)" }}>Width<input type="number" min={200} value={canvasSize.width} onChange={(e) => setCanvasSize((s) => ({ ...s, width: Math.max(200, Number(e.target.value) || 200) }))} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
-                <label className="text-[9px]" style={{ color: "var(--text-muted)" }}>Height<input type="number" min={200} value={canvasSize.height} onChange={(e) => setCanvasSize((s) => ({ ...s, height: Math.max(200, Number(e.target.value) || 200) }))} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
+                <label className="text-[9px]" style={{ color: "var(--text-muted)" }}>Width<input type="number" min={50} max={10000} value={widthInput} onChange={(e) => handleWidthChange(e.target.value)} onBlur={handleWidthBlur} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
+                <label className="text-[9px]" style={{ color: "var(--text-muted)" }}>Height<input type="number" min={50} max={10000} value={heightInput} onChange={(e) => handleHeightChange(e.target.value)} onBlur={handleHeightBlur} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
               </div>
               <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Background<input type="color" value={background} onChange={(e) => setBackground(e.target.value)} className="w-full h-8 mt-1 rounded-lg cursor-pointer" /></label>
               <label className="flex items-center justify-between text-[10px]" style={{ color: "var(--text-secondary)" }}><span>Show Grid</span><input type="checkbox" checked={gridEnabled} onChange={(e) => setGridEnabled(e.target.checked)} /></label>
@@ -1020,9 +1437,32 @@ export default function FreeDrawing({ onToast }: Props) {
         </aside>
 
         <div className="flex-1 min-w-0 min-h-0 relative flex flex-col overflow-hidden">
-        <main ref={workspaceRef as any} className="flex-1 min-w-0 min-h-0 overflow-auto flex items-center justify-center p-3 md:p-4 relative" style={{ background: "var(--bg-app)" }}>
+        {leftCollapsed && (
+          <button type="button" title="Tampilkan panel kiri" aria-label="Tampilkan panel kiri" onClick={() => setLeftCollapsed(false)} className="hidden md:flex absolute top-3 left-3 z-30 w-8 h-8 rounded-lg items-center justify-center shadow border" style={{ background: "var(--bg-surface)", borderColor: "var(--border)", color: "var(--text-secondary)" }}><ChevronRight size={15} /></button>
+        )}
+        {tool === "connect" && connectFrom && (
+          <div className="hidden md:flex absolute top-3 left-1/2 -translate-x-1/2 z-30 items-center gap-2 px-3 py-2 rounded-xl shadow-lg border text-[11px] font-semibold" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+            <Link2 size={14} /> Menghubungkan dari: {objectNameOf(connectFrom)} — klik objek kedua
+            <button type="button" onClick={() => { setConnectFrom(null); setToolMode("select"); }} className="ml-1 px-2 py-1 rounded-lg" style={{ background: "var(--bg-surface2)" }}>Batal</button>
+          </div>
+        )}
+        <main
+          ref={workspaceRef as any}
+          onClick={(e) => {
+            if (e.target === workspaceRef.current || (e.target as HTMLElement).tagName === "MAIN") {
+              const canvas = fabricRef.current;
+              if (canvas && canvas.getActiveObject()) {
+                canvas.discardActiveObject();
+                canvas.requestRenderAll();
+                syncSelection();
+              }
+            }
+          }}
+          className="flex-1 min-w-0 min-h-0 overflow-auto flex items-center justify-center p-3 md:p-4 relative"
+          style={{ background: "var(--bg-app)" }}
+        >
           <div
-            className="shadow-lg relative"
+            className="shadow-lg relative overflow-hidden"
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
@@ -1041,7 +1481,7 @@ export default function FreeDrawing({ onToast }: Props) {
               backgroundColor: background,
             }}
           >
-            <canvas ref={canvasElementRef} style={{ width: "100%", height: "100%" }} />
+            <canvas ref={canvasElementRef} />
           </div>
         </main>
 
@@ -1063,9 +1503,19 @@ export default function FreeDrawing({ onToast }: Props) {
               <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Pilih object di canvas untuk mengedit property.</p>
             ) : (
               <div className="space-y-2">
+                <p className="text-[11px] font-semibold truncate" title={objectNameOf(selected)}>{objectNameOf(selected)}</p>
                 <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>X<input type="number" value={Math.round(selected.left || 0)} onChange={(e) => updateSelected({ left: Number(e.target.value) })} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
                 <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Y<input type="number" value={Math.round(selected.top || 0)} onChange={(e) => updateSelected({ top: Number(e.target.value) })} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
                 <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Rotation<input type="number" value={Math.round(selected.angle || 0)} onChange={(e) => updateSelected({ angle: Number(e.target.value) })} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
+                {!objectIsText(selected) && !(selected as any).get?.("dataConnection") && (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Width<input type="number" min={1} value={Math.round((selected as any).getScaledWidth?.() || 0)} onChange={(e) => updateObjectSize("width", Number(e.target.value))} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
+                      <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Height<input type="number" min={1} value={Math.round((selected as any).getScaledHeight?.() || 0)} onChange={(e) => updateObjectSize("height", Number(e.target.value))} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
+                    </div>
+                    <label className="flex items-center justify-between text-[10px]" style={{ color: "var(--text-secondary)" }}><span>Kunci rasio</span><input type="checkbox" checked={lockAspect} onChange={(e) => setLockAspect(e.target.checked)} /></label>
+                  </>
+                )}
                 <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Opacity<input type="range" min={0} max={1} step={0.05} value={selected.opacity ?? 1} onChange={(e) => updateSelected({ opacity: Number(e.target.value) })} className="w-full mt-1" /></label>
                 <div className="grid grid-cols-2 gap-1">
                   {[
@@ -1073,6 +1523,24 @@ export default function FreeDrawing({ onToast }: Props) {
                     ["top", <ArrowUp size={13} />], ["middle", <ArrowDown size={13} />], ["bottom", <ArrowDown size={13} />],
                   ].map(([direction, icon]) => <button key={direction as string} type="button" onClick={() => align(direction as any)} className="h-7 rounded-lg flex items-center justify-center" style={{ background: "var(--bg-surface2)", color: "var(--text-secondary)" }}>{icon}</button>)}
                 </div>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t pt-3" style={{ borderColor: "var(--border)" }}>
+            <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Layers ({layers.length})</p>
+            {layers.length === 0 ? (
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Belum ada objek di canvas.</p>
+            ) : (
+              <div className="space-y-1">
+                {layers.map((obj: any, idx: number) => (
+                  <div key={obj.get?.("dataObjectId") || `layer-${idx}`} className="flex items-center gap-1 rounded-lg px-1 py-1" style={{ background: selected === obj ? "var(--accent-soft)" : "transparent" }}>
+                    <button type="button" onClick={() => { const canvas = fabricRef.current; if (!canvas) return; if (selected === obj) { canvas.discardActiveObject(); } else { canvas.setActiveObject(obj); } canvas.requestRenderAll(); syncSelection(); }} className="flex-1 min-w-0 text-left truncate text-[11px]" title={objectNameOf(obj)} style={{ color: "var(--text-primary)" }}>{objectNameOf(obj)}</button>
+                    <button type="button" title={obj.visible === false ? "Tampilkan" : "Sembunyikan"} aria-label={obj.visible === false ? "Tampilkan" : "Sembunyikan"} onClick={() => { const canvas = fabricRef.current; if (!canvas) return; obj.visible = obj.visible === false; canvas.requestRenderAll(); pushHistory(); syncSelection(); }} style={{ color: "var(--text-secondary)" }}>{obj.visible === false ? <EyeOff size={13} /> : <Eye size={13} />}</button>
+                    <button type="button" title="Naik satu layer" aria-label="Naik satu layer" onClick={() => moveLayer(obj, 1)} style={{ color: "var(--text-secondary)" }}><ArrowUp size={13} /></button>
+                    <button type="button" title="Turun satu layer" aria-label="Turun satu layer" onClick={() => moveLayer(obj, -1)} style={{ color: "var(--text-secondary)" }}><ArrowDown size={13} /></button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -1099,11 +1567,18 @@ export default function FreeDrawing({ onToast }: Props) {
             </div>
           )}
 
-          {selected && !objectIsText(selected) && (
+          {selected && !objectIsText(selected) && (selected as any).type !== "image" && !(selected as any).get?.("dataConnection") && (
             <div className="space-y-2">
               <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Appearance</p>
               <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Fill<input type="color" value={getObjectFill(selected)} onChange={(e) => updateSelected({ fill: e.target.value })} className="w-full h-8 mt-1 rounded-lg cursor-pointer" /></label>
               <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Stroke<input type="color" value={getObjectStroke(selected)} onChange={(e) => updateSelected({ stroke: e.target.value })} className="w-full h-8 mt-1 rounded-lg cursor-pointer" /></label>
+            </div>
+          )}
+          {selected && (selected as any).get?.("dataConnection") && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Koneksi</p>
+              <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Stroke<input type="color" value={getObjectStroke(selected)} onChange={(e) => updateSelected({ stroke: e.target.value })} className="w-full h-8 mt-1 rounded-lg cursor-pointer" /></label>
+              <label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Stroke Width<input type="number" min={1} max={20} value={Math.round(Number((selected as any).strokeWidth) || 2)} onChange={(e) => updateSelected({ strokeWidth: Math.max(1, Math.min(20, Number(e.target.value) || 1)) })} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
             </div>
           )}
         </aside>
@@ -1114,7 +1589,7 @@ export default function FreeDrawing({ onToast }: Props) {
             <button type="button" onClick={() => setMobilePanel(mobilePanel === "tools" ? null : "tools")} className="h-9 rounded-lg flex items-center justify-center gap-1 text-[10px] font-semibold" style={{ background: mobilePanel === "tools" ? "var(--accent-soft)" : "var(--bg-surface2)", color: mobilePanel === "tools" ? "var(--accent)" : "var(--text-secondary)" }}><SlidersHorizontal size={14} />Tools</button>
             <button type="button" onClick={() => setMobilePanel(mobilePanel === "icons" ? null : "icons")} className="h-9 rounded-lg flex items-center justify-center gap-1 text-[10px] font-semibold" style={{ background: mobilePanel === "icons" ? "var(--accent-soft)" : "var(--bg-surface2)", color: mobilePanel === "icons" ? "var(--accent)" : "var(--text-secondary)" }}><ImagePlus size={14} />Icons</button>
             <button type="button" onClick={() => setMobilePanel(mobilePanel === "properties" ? null : "properties")} className="h-9 rounded-lg flex items-center justify-center gap-1 text-[10px] font-semibold" style={{ background: mobilePanel === "properties" ? "var(--accent-soft)" : "var(--bg-surface2)", color: mobilePanel === "properties" ? "var(--accent)" : "var(--text-secondary)" }}><SlidersHorizontal size={14} />Properties</button>
-            <button type="button" onClick={() => setMobilePanel(null) || exportDrawing("png")} className="h-9 rounded-lg flex items-center justify-center gap-1 text-[10px] font-semibold" style={{ background: "var(--accent)", color: "#fff" }}><Download size={14} />PNG</button>
+            <button type="button" onClick={() => { setMobilePanel(null); exportDrawing("png"); }} className="h-9 rounded-lg flex items-center justify-center gap-1 text-[10px] font-semibold" style={{ background: "var(--accent)", color: "#fff" }}><Download size={14} />PNG</button>
           </div>
 
           {mobilePanel && (
@@ -1153,8 +1628,8 @@ export default function FreeDrawing({ onToast }: Props) {
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Canvas</p>
                     <div className="grid grid-cols-2 gap-2">
-                      <label className="text-[9px]" style={{ color: "var(--text-muted)" }}>Width<input type="number" min={200} value={canvasSize.width} onChange={(e) => setCanvasSize((s) => ({ ...s, width: Math.max(200, Number(e.target.value) || 200) }))} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
-                      <label className="text-[9px]" style={{ color: "var(--text-muted)" }}>Height<input type="number" min={200} value={canvasSize.height} onChange={(e) => setCanvasSize((s) => ({ ...s, height: Math.max(200, Number(e.target.value) || 200) }))} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
+                      <label className="text-[9px]" style={{ color: "var(--text-muted)" }}>Width<input type="number" min={50} max={10000} value={widthInput} onChange={(e) => handleWidthChange(e.target.value)} onBlur={handleWidthBlur} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
+                      <label className="text-[9px]" style={{ color: "var(--text-muted)" }}>Height<input type="number" min={50} max={10000} value={heightInput} onChange={(e) => handleHeightChange(e.target.value)} onBlur={handleHeightBlur} className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></label>
                     </div>
                     <label className="text-[9px] block mt-2" style={{ color: "var(--text-muted)" }}>Background<input type="color" value={background} onChange={(e) => setBackground(e.target.value)} className="w-full h-8 mt-1 rounded-lg cursor-pointer" /></label>
                     <label className="flex items-center justify-between text-[10px] mt-2" style={{ color: "var(--text-secondary)" }}><span>Show Grid</span><input type="checkbox" checked={gridEnabled} onChange={(e) => setGridEnabled(e.target.checked)} /></label>
@@ -1187,7 +1662,7 @@ export default function FreeDrawing({ onToast }: Props) {
                         <label className="text-[9px] block mt-2" style={{ color: "var(--text-muted)" }}>Opacity<input type="range" min={0} max={1} step={0.05} value={selected.opacity ?? 1} onChange={(e) => updateSelected({ opacity: Number(e.target.value) })} className="w-full mt-1" /></label>
                       </div>
                       {selected && objectIsText(selected) && <div className="space-y-2"><p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Text</p><textarea value={selected.text || ""} onChange={(e) => updateSelected({ text: e.target.value })} className="w-full min-h-20 px-2 py-1.5 rounded-lg border text-xs resize-y" style={{ background: "var(--bg-surface2)", borderColor: "var(--border)", color: "var(--text-primary)" }} /></div>}
-                      {!objectIsText(selected) && <div className="space-y-2"><p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Appearance</p><label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Fill<input type="color" value={getObjectFill(selected)} onChange={(e) => updateSelected({ fill: e.target.value })} className="w-full h-8 mt-1 rounded-lg cursor-pointer" /></label><label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Stroke<input type="color" value={getObjectStroke(selected)} onChange={(e) => updateSelected({ stroke: e.target.value })} className="w-full h-8 mt-1 rounded-lg cursor-pointer" /></label></div>}
+                      {!objectIsText(selected) && (selected as any).type !== "image" && !(selected as any).get?.("dataConnection") && <div className="space-y-2"><p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Appearance</p><label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Fill<input type="color" value={getObjectFill(selected)} onChange={(e) => updateSelected({ fill: e.target.value })} className="w-full h-8 mt-1 rounded-lg cursor-pointer" /></label><label className="text-[9px] block" style={{ color: "var(--text-muted)" }}>Stroke<input type="color" value={getObjectStroke(selected)} onChange={(e) => updateSelected({ stroke: e.target.value })} className="w-full h-8 mt-1 rounded-lg cursor-pointer" /></label></div>}
                     </>
                   )}
                 </div>
