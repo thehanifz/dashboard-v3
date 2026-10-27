@@ -45,6 +45,7 @@ import {
   Ungroup,
   Undo2,
   Upload,
+  Maximize,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -59,6 +60,8 @@ type HistoryState = string;
 
 const DEFAULT_WIDTH = 1600;
 const DEFAULT_HEIGHT = 900;
+const ZOOM_MIN = 0.15;
+const ZOOM_MAX = 2;
 const HISTORY_LIMIT = 80;
 
 function objectIsText(obj: FabricObject | undefined): obj is IText {
@@ -106,6 +109,127 @@ export default function FreeDrawing({ onToast }: Props) {
   const workspaceRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+
+  // --- Canvas zoom (Ctrl/Cmd+Scroll, pinch, keyboard) ---
+  // Why this exists: the old zoom was only a CSS scale on the wrapper div
+  // and there was no wheel handler at all, so Ctrl+Scroll fell through to
+  // the browser and zoomed the whole page instead of the canvas.
+  const canvasSizeRef = useRef(canvasSize);
+  useEffect(() => { canvasSizeRef.current = canvasSize; }, [canvasSize]);
+  const zoomAnchorRef = useRef<{ canvasX: number; canvasY: number; cursorX: number; cursorY: number } | null>(null);
+  const pinchRef = useRef<{ distance: number; midX: number; midY: number } | null>(null);
+
+  const clampZoom = (value: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(value.toFixed(2))));
+
+  // Zoom so that the canvas point under (clientX, clientY) stays under the
+  // cursor after the zoom. Scroll is adjusted after React applies the new
+  // zoom, because the wrapper size (canvasSize * zoom) only changes then.
+  const zoomAtPoint = useCallback((clientX: number, clientY: number, nextZoomRaw: number) => {
+    const node = workspaceRef.current;
+    if (!node) return;
+    const nextZoom = clampZoom(nextZoomRaw);
+    const oldZoom = zoomRef.current;
+    if (Math.abs(nextZoom - oldZoom) < 0.001) return;
+    const rect = node.getBoundingClientRect();
+    const cursorX = clientX - rect.left;
+    const cursorY = clientY - rect.top;
+    const contentWidth = canvasSizeRef.current.width * oldZoom;
+    const contentHeight = canvasSizeRef.current.height * oldZoom;
+    const offsetX = node.clientWidth > contentWidth ? (node.clientWidth - contentWidth) / 2 : 0;
+    const offsetY = node.clientHeight > contentHeight ? (node.clientHeight - contentHeight) / 2 : 0;
+    zoomAnchorRef.current = {
+      canvasX: (node.scrollLeft + cursorX - offsetX) / oldZoom,
+      canvasY: (node.scrollTop + cursorY - offsetY) / oldZoom,
+      cursorX,
+      cursorY,
+    };
+    setZoom(nextZoom);
+  }, []);
+
+  const zoomAtCenter = useCallback((nextZoomRaw: number) => {
+    const node = workspaceRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    zoomAtPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, nextZoomRaw);
+  }, [zoomAtPoint]);
+
+  useEffect(() => {
+    const anchor = zoomAnchorRef.current;
+    const node = workspaceRef.current;
+    if (!anchor || !node) return;
+    zoomAnchorRef.current = null;
+    requestAnimationFrame(() => {
+      const newContentWidth = canvasSizeRef.current.width * zoom;
+      const newContentHeight = canvasSizeRef.current.height * zoom;
+      const newOffsetX = node.clientWidth > newContentWidth ? (node.clientWidth - newContentWidth) / 2 : 0;
+      const newOffsetY = node.clientHeight > newContentHeight ? (node.clientHeight - newContentHeight) / 2 : 0;
+      node.scrollLeft = Math.max(0, anchor.canvasX * zoom + newOffsetX - anchor.cursorX);
+      node.scrollTop = Math.max(0, anchor.canvasY * zoom + newOffsetY - anchor.cursorY);
+    });
+  }, [zoom]);
+
+  useEffect(() => {
+    // v2: listen on window in the CAPTURE phase, not only on the workspace
+    // element. This catches Ctrl+Scroll even if a child (e.g. the Fabric
+    // canvas) stops propagation, and before the browser's page-zoom gesture
+    // runs. The target check keeps Ctrl+Scroll over the side panels
+    // behaving like normal browser zoom.
+    // Must be non-passive: a passive wheel listener cannot preventDefault,
+    // and the browser would still zoom the whole page on Ctrl+Scroll.
+    const onWheel = (event: WheelEvent) => {
+      const node = workspaceRef.current;
+      if (!node || !node.contains(event.target as Node)) return;
+      if (!event.ctrlKey && !event.metaKey) return; // plain scroll = pan/scroll, untouched
+      event.preventDefault();
+      event.stopPropagation();
+      // deltaMode 1 = lines (e.g. Firefox); normalise to pixels.
+      const deltaY = event.deltaMode === 1 ? event.deltaY * 33 : event.deltaY;
+      // Exponential factor: smooth on trackpads (tiny deltas) and mice
+      // (large deltas), instead of a fixed 10% jump per notch.
+      zoomAtPoint(event.clientX, event.clientY, zoomRef.current * Math.exp(-deltaY * 0.002));
+    };
+    const onTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 2) return;
+      const [a, b] = [event.touches[0], event.touches[1]];
+      pinchRef.current = {
+        distance: Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY),
+        midX: (a.clientX + b.clientX) / 2,
+        midY: (a.clientY + b.clientY) / 2,
+      };
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      if (event.touches.length !== 2 || !pinchRef.current) return;
+      event.preventDefault();
+      const [a, b] = [event.touches[0], event.touches[1]];
+      const distance = Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
+      const midX = (a.clientX + b.clientX) / 2;
+      const midY = (a.clientY + b.clientY) / 2;
+      if (distance > 0 && pinchRef.current.distance > 0) {
+        zoomAtPoint(midX, midY, zoomRef.current * (distance / pinchRef.current.distance));
+      }
+      pinchRef.current = { distance, midX, midY };
+    };
+    const onTouchEnd = (event: TouchEvent) => {
+      if (event.touches.length < 2) pinchRef.current = null;
+    };
+    const node = workspaceRef.current;
+    if (node) {
+      node.addEventListener("touchstart", onTouchStart, { passive: false });
+      node.addEventListener("touchmove", onTouchMove, { passive: false });
+      node.addEventListener("touchend", onTouchEnd);
+      node.addEventListener("touchcancel", onTouchEnd);
+    }
+    window.addEventListener("wheel", onWheel, { passive: false, capture: true });
+    return () => {
+      window.removeEventListener("wheel", onWheel, { capture: true });
+      if (node) {
+        node.removeEventListener("touchstart", onTouchStart);
+        node.removeEventListener("touchmove", onTouchMove);
+        node.removeEventListener("touchend", onTouchEnd);
+        node.removeEventListener("touchcancel", onTouchEnd);
+      }
+    };
+  }, [zoomAtPoint]);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 767px)");
@@ -642,6 +766,28 @@ export default function FreeDrawing({ onToast }: Props) {
       const target = event.target as HTMLElement | null;
       const editingText = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
       if (editingText) return;
+      // Canvas zoom shortcuts. These must preventDefault, otherwise the
+      // browser intercepts Ctrl/Cmd +/- and zooms the whole page.
+      if ((event.ctrlKey || event.metaKey) && (event.key === "=" || event.key === "+")) {
+        event.preventDefault();
+        zoomAtCenter(zoomRef.current * 1.2);
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key === "-") {
+        event.preventDefault();
+        zoomAtCenter(zoomRef.current / 1.2);
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key === "0") {
+        event.preventDefault();
+        fitCanvas();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key === "1") {
+        event.preventDefault();
+        zoomAtCenter(1);
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
         void (event.shiftKey ? redo() : undo());
@@ -789,10 +935,7 @@ export default function FreeDrawing({ onToast }: Props) {
         {toolbarButton(false, "Bring to front", <BringToFront size={15} />, bringToFront, !selected)}
         {toolbarButton(false, "Send to back", <SendToBack size={15} />, sendToBack, !selected)}
         <div className="ml-auto flex items-center gap-1">
-          {toolbarButton(false, "Zoom out", <ZoomOut size={15} />, () => setZoom((v) => Math.max(0.15, +(v - 0.1).toFixed(2))))}
-          <span className="text-[10px] w-10 text-center" style={{ color: "var(--text-muted)" }}>{Math.round(zoom * 100)}%</span>
-          {toolbarButton(false, "Zoom in", <ZoomIn size={15} />, () => setZoom((v) => Math.min(2, +(v + 0.1).toFixed(2))))}
-          {toolbarButton(false, "Fit canvas", <MousePointer2 size={15} />, fitCanvas)}
+          <span className="hidden xl:block text-[11px] mr-1" style={{ color: "var(--text-muted)" }}>Ctrl + Scroll untuk zoom canvas</span>
           <button onClick={() => exportDrawing("svg")} className="ml-2 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5" style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
             <Download size={13} /> SVG
           </button>
@@ -876,6 +1019,7 @@ export default function FreeDrawing({ onToast }: Props) {
           </div>
         </aside>
 
+        <div className="flex-1 min-w-0 min-h-0 relative flex flex-col overflow-hidden">
         <main ref={workspaceRef as any} className="flex-1 min-w-0 min-h-0 overflow-auto flex items-center justify-center p-3 md:p-4 relative" style={{ background: "var(--bg-app)" }}>
           <div
             className="shadow-lg relative"
@@ -900,6 +1044,17 @@ export default function FreeDrawing({ onToast }: Props) {
             <canvas ref={canvasElementRef} style={{ width: "100%", height: "100%" }} />
           </div>
         </main>
+
+        <div className="hidden md:flex absolute bottom-3 right-3 z-30 items-center gap-1 px-1.5 py-1.5 rounded-xl shadow-lg border" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+          <button type="button" title="Zoom out (Ctrl+-)" aria-label="Zoom out" onClick={() => zoomAtCenter(zoomRef.current / 1.2)} className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ color: "var(--text-secondary)" }}><ZoomOut size={15} /></button>
+          <input type="range" min={15} max={200} step={1} value={Math.round(zoom * 100)} onChange={(e) => zoomAtCenter(Number(e.target.value) / 100)} aria-label="Zoom canvas" title="Zoom canvas" className="w-24 cursor-pointer" />
+          <span className="text-[11px] w-11 text-center font-semibold" style={{ color: "var(--text-primary)" }}>{Math.round(zoom * 100)}%</span>
+          <button type="button" title="Zoom in (Ctrl++)" aria-label="Zoom in" onClick={() => zoomAtCenter(zoomRef.current * 1.2)} className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ color: "var(--text-secondary)" }}><ZoomIn size={15} /></button>
+          <span className="w-px h-5 mx-1" style={{ background: "var(--border)" }} />
+          <button type="button" title="Fit canvas (Ctrl+0)" onClick={fitCanvas} className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ color: "var(--text-secondary)" }}><Maximize size={15} /></button>
+          <button type="button" title="Zoom 100% (Ctrl+1)" onClick={() => zoomAtCenter(1)} className="h-8 px-2 rounded-lg text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>100%</button>
+        </div>
+        </div>
 
         <aside className="hidden md:block w-60 shrink-0 border-l overflow-y-auto custom-scrollbar p-3 space-y-4" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
           <div>
